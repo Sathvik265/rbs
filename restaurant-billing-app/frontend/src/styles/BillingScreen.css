@@ -1,0 +1,379 @@
+.billing-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f8f9fa;
+}
+
+.billing-header {
+  background-color: #2c3e50;
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.billing-header h1 {
+  font-size: 24px;
+  margin: 0;
+}
+
+.session-info {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.logout-btn {
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.logout-btn:hover {
+  background-color: #c0392b;
+}
+
+.billing-content {
+  flex: 1;
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  max-height: calc(100vh - 80px);
+}
+
+/* Left Panel */
+.left-panel {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.order-section,
+.item-entry-section,
+.bill-view-section {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.order-section h3,
+.item-entry-section h3,
+.bill-view-section h3 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 18px;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 8px;
+}
+
+.order-controls,
+.item-controls {
+  display: flex;
+  gap: 15px;
+  align-items: end;
+}
+
+.order-controls .form-group,
+.item-controls .form-group {
+  margin-bottom: 0;
+  min-width: 120px;
+}
+
+.create-order-btn,
+.add-item-btn {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.create-order-btn:hover,
+.add-item-btn:hover {
+  background-color: #2980b9;
+}
+
+.create-order-btn:disabled,
+.add-item-btn:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
+}
+
+/* Bill View Section */
+.bill-view-section {
+  flex: 1;
+  min-height: 300px;
+}
+
+.order-header {
+  background-color: #ecf0f1;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.order-header p {
+  margin: 0;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.items-list {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.no-items,
+.no-order {
+  text-align: center;
+  color: #7f8c8d;
+  padding: 40px;
+  font-style: italic;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #ecf0f1;
+  gap: 10px;
+}
+
+.item-row.cancelled {
+  opacity: 0.6;
+  text-decoration: line-through;
+  background-color: #ffeaa7;
+}
+
+.item-name {
+  flex: 2;
+  font-weight: 500;
+}
+
+.item-qty {
+  width: 60px;
+}
+
+.item-rate,
+.item-total {
+  width: 80px;
+  text-align: right;
+}
+
+.qty-input {
+  width: 50px;
+  padding: 4px;
+  text-align: center;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+}
+
+.cancel-item-btn {
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  width: 25px;
+  height: 25px;
+}
+
+.cancel-item-btn:hover {
+  background-color: #c0392b;
+}
+
+/* Right Panel */
+.right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.active-orders-section,
+.bill-summary-section,
+.shortcuts-section {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.active-orders-section h3,
+.bill-summary-section h3,
+.shortcuts-section h4 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  border-bottom: 2px solid #27ae60;
+  padding-bottom: 8px;
+}
+
+.orders-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.no-orders {
+  text-align: center;
+  color: #7f8c8d;
+  padding: 20px;
+  font-style: italic;
+}
+
+.order-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #ecf0f1;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.order-item:hover {
+  background-color: #f8f9fa;
+  border-color: #3498db;
+}
+
+.order-item.selected {
+  background-color: #e3f2fd;
+  border-color: #3498db;
+  font-weight: 500;
+}
+
+/* Bill Summary */
+.totals {
+  margin-bottom: 20px;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.total-row.grand-total {
+  font-weight: bold;
+  font-size: 18px;
+  color: #27ae60;
+  border-bottom: 2px solid #27ae60;
+  margin-top: 10px;
+  padding-top: 15px;
+}
+
+.print-bill-btn {
+  background-color: #27ae60;
+  color: white;
+  border: none;
+  padding: 15px;
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+}
+
+.print-bill-btn:hover:not(:disabled) {
+  background-color: #219a52;
+}
+
+.print-bill-btn:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
+}
+
+/* Keyboard Shortcuts */
+.shortcuts-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.shortcuts-section li {
+  padding: 6px 0;
+  color: #7f8c8d;
+  font-size: 13px;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.shortcuts-section li:last-child {
+  border-bottom: none;
+}
+
+/* Error Banner */
+.error-banner {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background-color: #e74c3c;
+  color: white;
+  padding: 15px 20px;
+  border-radius: 6px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  max-width: 400px;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .billing-content {
+    flex-direction: column;
+    max-height: none;
+  }
+
+  .left-panel,
+  .right-panel {
+    flex: none;
+  }
+
+  .order-controls,
+  .item-controls {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 768px) {
+  .billing-header {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+
+  .session-info {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .billing-content {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .order-controls,
+  .item-controls {
+    flex-direction: column;
+  }
+
+  .order-controls .form-group,
+  .item-controls .form-group {
+    min-width: auto;
+  }
+}
