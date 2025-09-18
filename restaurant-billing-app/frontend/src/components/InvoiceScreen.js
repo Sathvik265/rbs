@@ -1,61 +1,134 @@
-import React, { useState, useEffect } from 'react';
-import { fetchInvoicesByTableAndParty, createInvoice } from '../services/api';
+import React, { useRef, useEffect } from "react";
+import "../styles/InvoiceScreen.css";
 
-function InvoiceScreen() {
-  const [tableNumber, setTableNumber] = useState(1);
-  const [partyNumber, setPartyNumber] = useState(1);
-  const [invoices, setInvoices] = useState([]);
-  const [clerkId, setClerkId] = useState(1); // Replace with actual Clerk ID from authentication
+const InvoiceScreen = ({ bill, onClose }) => {
+  const printRef = useRef(null);
 
   useEffect(() => {
-    loadInvoices();
-  }, [tableNumber, partyNumber]);
+    // Auto-focus for keyboard navigation
+    if (printRef.current) {
+      printRef.current.focus();
+    }
+  }, []);
 
-  const loadInvoices = async () => {
-    const data = await fetchInvoicesByTableAndParty(tableNumber, partyNumber);
-    setInvoices(data);
-  };
-
-  const handleCreateInvoice = async () => {
-    try {
-      const newInvoice = await createInvoice(tableNumber, partyNumber, clerkId);
-      alert(`Invoice created successfully! Invoice ID: ${newInvoice.id}`);
-      loadInvoices();
-    } catch (error) {
-      alert('Error creating invoice: ' + error.message);
+  const handleKeyDown = (e) => {
+    if (e.key === "Escape") {
+      onClose();
+    } else if (e.key === "p" || e.key === "P") {
+      handlePrint();
     }
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return new Date().toLocaleDateString();
+    return new Date(dateString).toLocaleDateString();
+  };
+
+  const formatTime = (dateString) => {
+    if (!dateString) return new Date().toLocaleTimeString();
+    return new Date(dateString).toLocaleTimeString();
+  };
+
   return (
-    <div>
-      <h1>Invoice Screen</h1>
-      <label>
-        Table Number:
-        <input
-          type="number"
-          value={tableNumber}
-          onChange={(e) => setTableNumber(e.target.value)}
-        />
-      </label>
-      <label>
-        Party Number:
-        <input
-          type="number"
-          value={partyNumber}
-          onChange={(e) => setPartyNumber(e.target.value)}
-        />
-      </label>
-      <button onClick={handleCreateInvoice}>Generate Invoice</button>
-      <h2>Invoices</h2>
-      <ul>
-        {invoices.map((invoice) => (
-          <li key={invoice.id}>
-            Invoice ID: {invoice.id}, Total Amount: ${invoice.total_amount}, Created At: {new Date(invoice.created_at).toLocaleString()}
-          </li>
-        ))}
-      </ul>
+    <div
+      className="invoice-overlay"
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+      ref={printRef}
+    >
+      <div className="invoice-container">
+        <div className="invoice-header">
+          <button onClick={onClose} className="close-btn">
+            Close (ESC)
+          </button>
+          <button onClick={handlePrint} className="print-btn">
+            Print (P)
+          </button>
+        </div>
+
+        <div className="invoice-content" id="invoice-print">
+          {/* Receipt Header */}
+          <div className="receipt-header">
+            <h1>{bill.hotel_name || "Restaurant Name"}</h1>
+            <p>GST No: {bill.gst_number || "N/A"}</p>
+          </div>
+
+          {/* Bill Metadata */}
+          <div className="bill-metadata">
+            <div className="bill-info">
+              <p>
+                <strong>Bill No:</strong> {bill.bill_number}
+              </p>
+              <p>
+                <strong>Date:</strong> {formatDate(bill.print_timestamp)}
+              </p>
+              <p>
+                <strong>Time:</strong> {formatTime(bill.print_timestamp)}
+              </p>
+            </div>
+          </div>
+
+          {/* Items Table */}
+          <div className="items-section">
+            <table className="items-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Rate</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bill.items &&
+                  bill.items.map((item, index) => (
+                    <tr key={index}>
+                      <td>{item.item_name}</td>
+                      <td>{item.quantity}</td>
+                      <td>₹{parseFloat(item.unit_price).toFixed(2)}</td>
+                      <td>₹{parseFloat(item.line_total).toFixed(2)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totals Section */}
+          <div className="totals-section">
+            <div className="total-line">
+              <span>Subtotal:</span>
+              <span>₹{parseFloat(bill.subtotal).toFixed(2)}</span>
+            </div>
+            <div className="total-line">
+              <span>SGST (2.5%):</span>
+              <span>₹{parseFloat(bill.sgst_amount).toFixed(2)}</span>
+            </div>
+            <div className="total-line">
+              <span>CGST (2.5%):</span>
+              <span>₹{parseFloat(bill.cgst_amount).toFixed(2)}</span>
+            </div>
+            <div className="total-line grand-total">
+              <span>
+                <strong>Grand Total:</strong>
+              </span>
+              <span>
+                <strong>₹{parseFloat(bill.grand_total).toFixed(2)}</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="receipt-footer">
+            <p>{bill.footer_text || "Thank you! Visit Again"}</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
-}
+};
 
 export default InvoiceScreen;

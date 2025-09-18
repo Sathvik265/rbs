@@ -1,0 +1,169 @@
+.shift-management {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #f8f9fa;
+  padding: 20px;
+}
+
+.login-container {
+  background: white;
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 500px;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.login-header h1 {
+  color: #2c3e50;
+  margin-bottom: 10px;
+  font-size: 28px;
+}
+
+.login-header h2 {
+  color: #7f8c8d;
+  font-weight: 400;
+  font-size: 20px;
+}
+
+.login-form .form-group {
+  margin-bottom: 20px;
+}
+
+.login-form label {
+  font-weight: 600;
+  color: #34495e;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.login-form input {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  transition: border-color 0.3s;
+}
+
+.login-form input:focus {
+  border-color: #3498db;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.login-btn {
+  width: 100%;
+  padding: 14px;
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin-top: 20px;
+}
+
+.login-btn:hover:not(:disabled) {
+  background-color: #2980b9;
+}
+
+.login-btn:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background-color: #e74c3c;
+  color: white;
+  padding: 12px;
+  border-radius: 6px;
+  margin: 15px 0;
+  text-align: center;
+}
+
+.keyboard-shortcuts {
+  margin-top: 30px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  border-left: 4px solid #3498db;
+}
+
+.keyboard-shortcuts h4 {
+  color: #2c3e50;
+  margin-bottom: 15px;
+}
+
+.keyboard-shortcuts ul {
+  list-style: none;
+  padding: 0;
+}
+
+.keyboard-shortcuts li {
+  padding: 5px 0;
+  color: #7f8c8d;
+}
+
+/* Active Session */
+.active-session {
+  text-align: center;
+}
+
+.active-session h3 {
+  color: #27ae60;
+  margin-bottom: 20px;
+}
+
+.session-info {
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}
+
+.session-info p {
+  margin: 8px 0;
+  color: #2c3e50;
+}
+
+.end-shift-btn {
+  width: 100%;
+  padding: 12px;
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.end-shift-btn:hover:not(:disabled) {
+  background-color: #c0392b;
+}
+
+@media (max-width: 768px) {
+  .login-container {
+    padding: 20px;
+    margin: 10px;
+  }
+
+  .login-header h1 {
+    font-size: 24px;
+  }
+
+  .login-header h2 {
+    font-size: 18px;
+  }
+}

@@ -1,22 +1,15 @@
-const BillingModel = require('../models/billingModel');
+const { OrderModel, OrderItemModel } = require("../models/billingModel");
 
-const BillingController = {
-    async getAllBills(req, res) {
-        try {
-            const bills = await BillingModel.getAllBills();
-            res.status(200).json(bills);
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    },
-    async createBill(req, res) {
-        try {
-            const newBill = await BillingModel.createBill(req.body);
-            res.status(201).json(newBill);
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    },
-};
+class BillingController {
+  static async createOrder(req, res) {}
+  static async getOrder(req, res) {}
+  static async getOrderItems(req, res) {}
+  static async getOrderTotal(req, res) {}
+  static async addItemToOrder(req, res) {}
+  static async updateOrderItem(req, res) {}
+  static async cancelOrderItem(req, res) {}
+  static async getActiveOrders(req, res) {}
+  static async getOrdersByTable(req, res) {}
+}
 
 module.exports = BillingController;
