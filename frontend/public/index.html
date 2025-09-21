@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="Restaurant Billing System - Complete POS solution with keyboard-first design"
+    />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <title>Restaurant Billing System</title>
+    <style>
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        #printBillData, #printBillData * {
+          visibility: visible;
+        }
+        #printBillData {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <div id="printBillData" style="display: none;"></div>
+    <script>
+      // Print bill functionality
+      window.printBill = function(billData) {
+        const printDiv = document.getElementById('printBillData');
+        if (printDiv && billData) {
+          printDiv.innerHTML = billData;
+          printDiv.style.display = 'block';
+          window.print();
+          setTimeout(() => {
+            printDiv.style.display = 'none';
+            printDiv.innerHTML = '';
+          }, 100);
+        }
+      };
+    </script>
+  </body>
+</html>
