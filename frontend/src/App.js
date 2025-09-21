@@ -232,9 +232,8 @@ const safeObject = (obj, defaultValue = {}) => {
     : defaultValue;
 };
 
-// ULTRA SAFE BillPrint Component - This is the component causing the error
+// ULTRA SAFE BillPrint Component
 function BillPrint({ billData = null }) {
-  // Triple-layer safety check
   const data =
     billData || (typeof window !== "undefined" && window.printBillData) || null;
 
@@ -243,7 +242,6 @@ function BillPrint({ billData = null }) {
     return <div style={{ display: "none" }}>No bill data</div>;
   }
 
-  // Ultra safe access to all properties
   const header = safeObject(data.header);
   const items = safeArray(data.items);
   const billNumber = safeGet(header, "bill_number", "N/A");
@@ -257,13 +255,6 @@ function BillPrint({ billData = null }) {
   const sgst = safeGet(data, "sgst", 0);
   const cgst = safeGet(data, "cgst", 0);
   const grandTotal = safeGet(data, "grand_total", 0);
-
-  console.log("BillPrint rendering with data:", {
-    hasData: !!data,
-    hasHeader: !!header,
-    billNumber,
-    itemsCount: items.length,
-  });
 
   return (
     <div
@@ -724,7 +715,6 @@ function Billing({
   const [selectedHelpIndex, setSelectedHelpIndex] = useState(0);
   const searchInputRef = useRef(null);
 
-  // ULTRA SAFE current draft access
   const currentDraft = useMemo(() => {
     const defaultDraft = {
       header: {
@@ -1099,17 +1089,10 @@ function Billing({
       const billNumber = safeGet(billData, "header.bill_number", "Unknown");
       toast.success(`Bill #${billNumber} created`);
 
-      // Store for printing with ULTRA SAFE access
       if (typeof window !== "undefined") {
         window.printBillData = billData;
-        console.log("Stored bill data for printing:", {
-          hasHeader: !!safeGet(billData, "header"),
-          billNumber: safeGet(billData, "header.bill_number"),
-          itemCount: safeArray(billData.items).length,
-        });
       }
 
-      // Clear the draft
       if (setDrafts) {
         setDrafts((prev) => {
           const newDrafts = { ...safeObject(prev) };
@@ -1145,7 +1128,6 @@ function Billing({
       ? safeGet(currentDraft, "header.bill_number")
       : nextBillNumber;
 
-  // Help Panel Logic
   useEffect(() => {
     if (showHelp) {
       setSearchQuery("");
@@ -1213,7 +1195,6 @@ function Billing({
             <CardTitle>Billing for {billingDate}</CardTitle>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col space-y-4">
-            {/* Header Info */}
             <div className="grid grid-cols-4 gap-4">
               <div>
                 <Label>Table No</Label>
@@ -1247,7 +1228,6 @@ function Billing({
               </div>
             </div>
 
-            {/* Item Entry */}
             <div className="grid grid-cols-12 gap-4 items-end">
               <div className="col-span-5">
                 <Label>Item Code (F1 for Help)</Label>
@@ -1300,7 +1280,6 @@ function Billing({
               </div>
             </div>
 
-            {/* Bill Table */}
             <div className="flex-1 border rounded-md overflow-hidden">
               <div className="h-full overflow-y-auto">
                 <Table>
@@ -1718,9 +1697,732 @@ function SettingsEditor({ settings, onChange }) {
   );
 }
 
+// --- ADMIN MODULE COMPONENTS ---
+
+// Enhanced Admin Dashboard Component
+function EnhancedAdminDashboard({ mode }) {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const loadDashboardData = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/admin/dashboard`);
+      setDashboardData(res.data);
+    } catch (e) {
+      console.error("Failed to load dashboard data:", e);
+      toast.error("Failed to load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mode === "admin-full") {
+      loadDashboardData();
+      const interval = setInterval(loadDashboardData, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [mode]);
+
+  if (mode !== "admin-full") return null;
+
+  if (loading && !dashboardData) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center p-8">
+          <Loader2 size={24} className="mr-2" />
+          Loading dashboard...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Today's Sales</p>
+                <p className="text-2xl font-bold">
+                  ₹{dashboardData?.totalSales?.toFixed(2) || "0.00"}
+                </p>
+              </div>
+              <div className="text-green-600 text-2xl">💰</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Bills Generated</p>
+                <p className="text-2xl font-bold">
+                  {dashboardData?.totalBills || 0}
+                </p>
+              </div>
+              <div className="text-blue-600 text-2xl">📄</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Occupied Tables</p>
+                <p className="text-2xl font-bold">
+                  {dashboardData?.occupiedTables || 0}
+                </p>
+              </div>
+              <div className="text-orange-600 text-2xl">🪑</div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Vacant Tables</p>
+                <p className="text-2xl font-bold">
+                  {dashboardData?.vacantTables || 0}
+                </p>
+              </div>
+              <div className="text-gray-600 text-2xl">🪑</div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Top 5 Best-Selling Items Today</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {dashboardData?.topSellingItems?.length === 0 ? (
+            <p className="text-center text-gray-500 py-4">
+              No sales data for today
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item Name</TableHead>
+                  <TableHead className="text-right">Quantity Sold</TableHead>
+                  <TableHead className="text-right">Total Sales</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(dashboardData?.topSellingItems || []).map((item, index) => (
+                  <TableRow key={index}>
+                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell className="text-right">
+                      {item.quantity}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      ₹{item.sales.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end">
+        <Button
+          onClick={loadDashboardData}
+          disabled={loading}
+          className="gap-2"
+        >
+          {loading ? <Loader2 size={16} className="animate-spin" /> : "🔄"}
+          Refresh Data
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Sales Reports Component
+function SalesReports({ mode }) {
+  const [reportData, setReportData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: new Date().toISOString().split("T")[0],
+    reportType: "daily",
+  });
+
+  const generateReport = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/admin/reports/sales`, {
+        params: {
+          start_date: filters.startDate,
+          end_date: filters.endDate,
+          report_type: filters.reportType,
+        },
+      });
+      setReportData(res.data);
+    } catch (e) {
+      console.error("Failed to generate report:", e);
+      toast.error("Failed to generate sales report");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const exportReport = () => {
+    if (!reportData) return;
+
+    let csvContent = "Sales Report\n\n";
+    csvContent += `Period: ${filters.startDate} to ${filters.endDate}\n`;
+    csvContent += `Generated: ${new Date().toLocaleString()}\n\n`;
+
+    csvContent += "SUMMARY\n";
+    csvContent += `Total Revenue,₹${reportData.summary.totalRevenue.toFixed(
+      2
+    )}\n`;
+    csvContent += `Total Orders,${reportData.summary.totalOrders}\n`;
+    csvContent += `Days Covered,${reportData.summary.daysCovered}\n`;
+    csvContent += `Average Order Value,₹${reportData.summary.averageOrderValue.toFixed(
+      2
+    )}\n\n`;
+
+    csvContent += "ITEMS BREAKDOWN\n";
+    csvContent += "Item Name,Quantity,Avg Price,Total Sales,Times Ordered\n";
+    reportData.itemsBreakdown.forEach((item) => {
+      csvContent += `${item.name},${item.quantity},₹${item.avgPrice.toFixed(
+        2
+      )},₹${item.totalSales.toFixed(2)},${item.timesOrdered}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sales-report-${filters.startDate}-${filters.endDate}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  if (mode !== "admin-full") return null;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Sales Report Generation</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <Label>Start Date</Label>
+              <Input
+                type="date"
+                value={filters.startDate}
+                onChange={(e) =>
+                  setFilters({ ...filters, startDate: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>End Date</Label>
+              <Input
+                type="date"
+                value={filters.endDate}
+                onChange={(e) =>
+                  setFilters({ ...filters, endDate: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Report Type</Label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={filters.reportType}
+                onChange={(e) =>
+                  setFilters({ ...filters, reportType: e.target.value })
+                }
+              >
+                <option value="daily">Daily Breakdown</option>
+                <option value="summary">Summary Only</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                onClick={generateReport}
+                disabled={loading}
+                className="w-full gap-2"
+              >
+                {loading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  "📊"
+                )}
+                Generate Report
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const today = new Date().toISOString().split("T")[0];
+                setFilters({ ...filters, startDate: today, endDate: today });
+              }}
+            >
+              Today
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const today = new Date();
+                const weekAgo = new Date(
+                  today.getTime() - 7 * 24 * 60 * 60 * 1000
+                );
+                setFilters({
+                  ...filters,
+                  startDate: weekAgo.toISOString().split("T")[0],
+                  endDate: today.toISOString().split("T")[0],
+                });
+              }}
+            >
+              Last 7 Days
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const today = new Date();
+                const monthAgo = new Date(
+                  today.getTime() - 30 * 24 * 60 * 60 * 1000
+                );
+                setFilters({
+                  ...filters,
+                  startDate: monthAgo.toISOString().split("T")[0],
+                  endDate: today.toISOString().split("T")[0],
+                });
+              }}
+            >
+              Last 30 Days
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {reportData && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Report Summary</CardTitle>
+              <Button
+                onClick={exportReport}
+                variant="outline"
+                className="gap-2"
+              >
+                📥 Export CSV
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-4 gap-4 text-center">
+                <div>
+                  <p className="text-sm text-gray-600">Total Revenue</p>
+                  <p className="text-xl font-bold">
+                    ₹{reportData.summary.totalRevenue.toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Total Orders</p>
+                  <p className="text-xl font-bold">
+                    {reportData.summary.totalOrders}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Avg Order Value</p>
+                  <p className="text-xl font-bold">
+                    ₹{reportData.summary.averageOrderValue.toFixed(2)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Active Clerks</p>
+                  <p className="text-xl font-bold">
+                    {reportData.summary.activeClerks}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Method Summary</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center p-4 border rounded">
+                  <p className="text-sm text-gray-600">Cash</p>
+                  <p className="text-lg font-bold">
+                    ₹{reportData.paymentSummary.cash.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-gray-500">60% of total</p>
+                </div>
+                <div className="text-center p-4 border rounded">
+                  <p className="text-sm text-gray-600">Card</p>
+                  <p className="text-lg font-bold">
+                    ₹{reportData.paymentSummary.card.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-gray-500">35% of total</p>
+                </div>
+                <div className="text-center p-4 border rounded">
+                  <p className="text-sm text-gray-600">UPI</p>
+                  <p className="text-lg font-bold">
+                    ₹{reportData.paymentSummary.upi.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-gray-500">5% of total</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Items Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item Name</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                    <TableHead className="text-right">Avg Price</TableHead>
+                    <TableHead className="text-right">Total Sales</TableHead>
+                    <TableHead className="text-right">Times Ordered</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reportData.itemsBreakdown.slice(0, 10).map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell className="text-right">
+                        {item.quantity}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        ₹{item.avgPrice.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        ₹{item.totalSales.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {item.timesOrdered}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {reportData.itemsBreakdown.length > 10 && (
+                <p className="text-sm text-gray-500 mt-2 text-center">
+                  Showing top 10 items. Full data available in CSV export.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {filters.reportType === "daily" &&
+            reportData.dailyBreakdown.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Daily Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead className="text-right">Bills</TableHead>
+                        <TableHead className="text-right">
+                          Total Sales
+                        </TableHead>
+                        <TableHead className="text-right">
+                          Unique Tables
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {reportData.dailyBreakdown.map((day, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            {new Date(day.date).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {day.billsCount}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            ₹{day.totalSales.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {day.uniqueTables}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Shift Reconciliation Component
+function ShiftReconciliation({ mode }) {
+  const [shifts, setShifts] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [loading, setLoading] = useState(false);
+  const [showReconciliation, setShowReconciliation] = useState(false);
+  const [selectedShift, setSelectedShift] = useState(null);
+
+  const loadShifts = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/admin/reconciliation/shifts`, {
+        params: { date: selectedDate },
+      });
+      setShifts(res.data.shifts || []);
+    } catch (e) {
+      console.error("Failed to load shifts:", e);
+      toast.error("Failed to load shift data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mode === "admin-full") {
+      loadShifts();
+    }
+  }, [selectedDate, mode]);
+
+  const submitReconciliation = async (shiftId, actualAmount, notes) => {
+    try {
+      const res = await axios.post(`${API}/admin/reconciliation/submit`, {
+        shift_id: shiftId,
+        actual_cash_amount: parseFloat(actualAmount),
+        notes: notes,
+        reconciled_by: "Admin",
+      });
+
+      toast.success("Reconciliation submitted successfully");
+      setShowReconciliation(false);
+      setSelectedShift(null);
+      loadShifts();
+
+      return res.data.reconciliation;
+    } catch (e) {
+      console.error("Reconciliation error:", e);
+      toast.error("Failed to submit reconciliation");
+      return null;
+    }
+  };
+
+  if (mode !== "admin-full") return null;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Shift Reconciliation</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4 items-end">
+            <div className="flex-1">
+              <Label>Select Date</Label>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+              />
+            </div>
+            <Button onClick={loadShifts} disabled={loading} className="gap-2">
+              {loading ? <Loader2 size={16} className="animate-spin" /> : "🔍"}
+              Load Shifts
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {shifts.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-8">
+            <p className="text-gray-500">
+              No shifts found for the selected date
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              Shifts for {new Date(selectedDate).toLocaleDateString()}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Clerk</TableHead>
+                  <TableHead>Shift Code</TableHead>
+                  <TableHead>Login Time</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Bills</TableHead>
+                  <TableHead className="text-right">Expected Cash</TableHead>
+                  <TableHead className="text-right">Tables Served</TableHead>
+                  <TableHead>Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {shifts.map((shift) => (
+                  <TableRow key={shift.id}>
+                    <TableCell className="font-medium">
+                      {shift.clerkInitials}
+                    </TableCell>
+                    <TableCell>{shift.shiftCode}</TableCell>
+                    <TableCell>
+                      {new Date(shift.loginTime).toLocaleTimeString()}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`px-2 py-1 rounded text-xs ${
+                          shift.isActive
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {shift.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {shift.totalBills}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      ₹{shift.expectedCash.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {shift.tablesServed}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSelectedShift(shift);
+                          setShowReconciliation(true);
+                        }}
+                        disabled={shift.expectedCash === 0}
+                      >
+                        Reconcile
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {showReconciliation && selectedShift && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>Cash Reconciliation</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600">Shift Details</p>
+                <p className="font-medium">
+                  {selectedShift.clerkInitials} - {selectedShift.shiftCode}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm text-gray-600">
+                  Expected Cash (from bills)
+                </p>
+                <p className="text-lg font-bold text-green-600">
+                  ₹{selectedShift.expectedCash.toFixed(2)}
+                </p>
+              </div>
+
+              <div>
+                <Label>Actual Cash Counted</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  id="actualCash"
+                />
+              </div>
+
+              <div>
+                <Label>Notes (Optional)</Label>
+                <Textarea
+                  placeholder="Any discrepancies or notes..."
+                  id="notes"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowReconciliation(false);
+                    setSelectedShift(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    const actualAmount =
+                      document.getElementById("actualCash").value;
+                    const notes = document.getElementById("notes").value;
+
+                    if (!actualAmount) {
+                      toast.error("Please enter actual cash amount");
+                      return;
+                    }
+
+                    submitReconciliation(selectedShift.id, actualAmount, notes);
+                  }}
+                >
+                  Submit Reconciliation
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Consolidated AdminPanel Component
 function AdminPanel({ mode }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [adminActiveTab, setAdminActiveTab] = useState("dashboard");
 
   const loadSettings = async () => {
     setLoading(true);
@@ -1749,36 +2451,55 @@ function AdminPanel({ mode }) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
-          <CardTitle>Admin Actions ({mode})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ul className="list-disc ml-5">
-            <li>Menu Management (Available)</li>
-            <li>Bill Generation (Available)</li>
-            <li>Settings Configuration (Available)</li>
-            <li>Reporting (Available - Recent Bills)</li>
-            <li>Shift Management (Coming Soon)</li>
-            <li>Audit Trail (Coming Soon)</li>
-          </ul>
+        <CardContent className="p-4">
+          <Tabs value={adminActiveTab} onValueChange={setAdminActiveTab}>
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="dashboard" className="gap-1">
+                📊 Dashboard
+              </TabsTrigger>
+              <TabsTrigger value="reports" className="gap-1">
+                📈 Sales Reports
+              </TabsTrigger>
+              <TabsTrigger value="reconciliation" className="gap-1">
+                💰 Reconciliation
+              </TabsTrigger>
+              <TabsTrigger value="settings" className="gap-1">
+                ⚙️ Settings
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="dashboard" className="mt-6">
+              <EnhancedAdminDashboard mode={mode} />
+            </TabsContent>
+
+            <TabsContent value="reports" className="mt-6">
+              <SalesReports mode={mode} />
+            </TabsContent>
+
+            <TabsContent value="reconciliation" className="mt-6">
+              <ShiftReconciliation mode={mode} />
+            </TabsContent>
+
+            <TabsContent value="settings" className="mt-6">
+              {loading ? (
+                <Card>
+                  <CardContent className="flex items-center justify-center p-8">
+                    <Loader2 size={24} className="mr-2" />
+                    Loading settings...
+                  </CardContent>
+                </Card>
+              ) : (
+                <SettingsEditor settings={settings} onChange={setSettings} />
+              )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
-
-      {mode === "admin-full" &&
-        (loading ? (
-          <Card>
-            <CardContent className="flex items-center justify-center p-8">
-              <Loader2 size={24} className="mr-2" />
-              Loading settings...
-            </CardContent>
-          </Card>
-        ) : (
-          <SettingsEditor settings={settings} onChange={setSettings} />
-        ))}
     </div>
   );
 }
 
+// Main App Component
 function App() {
   const [mode, setMode] = useState("none");
   const [billingDate, setBillingDate] = useState(null);
