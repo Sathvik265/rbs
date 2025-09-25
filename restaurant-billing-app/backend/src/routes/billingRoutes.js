@@ -1,9 +1,11 @@
 const express = require('express');
-const BillingController = require('../controllers/billingController');
-
 const router = express.Router();
+const billingController = require('../controllers/billingController');
 
-router.get('/bills', BillingController.getAllBills);
-router.post('/bills', BillingController.createBill);
+router.post('/', billingController.createBill);
+router.get('/all', billingController.getAllBills);
+router.get('/last', billingController.getLastBill);
+router.get('/by_date', billingController.getBillsByDate);
+router.get('/next_number', billingController.getNextBillNumber);
 
 module.exports = router;

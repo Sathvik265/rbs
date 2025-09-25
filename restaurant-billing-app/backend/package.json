@@ -1,12 +1,12 @@
 {
   "name": "restaurant-billing-backend",
-  "version": "2.1.0",
-  "description": "Complete backend for restaurant billing system with PostgreSQL and Shift Management",
+  "version": "2.0.0",
+  "description": "Complete backend for restaurant billing system with PostgreSQL",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "init-db": "psql -U $DB_USER -d $DB_NAME -f database_schema_enhanced.sql",
+    "init-db": "psql -U $DB_USER -d $DB_NAME -f database_schema.sql",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
@@ -15,7 +15,7 @@
     "express": "^4.21.2",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
-    "node-cron": "^3.0.3",
+    "node-cron": "^4.2.1",
     "pg": "^8.10.0",
     "uuid": "^9.0.0"
   },
@@ -27,10 +27,7 @@
     "billing",
     "pos",
     "postgresql",
-    "express",
-    "shift-management",
-    "cron",
-    "admin-panel"
+    "express"
   ],
   "author": "Restaurant Billing Team",
   "license": "MIT"
