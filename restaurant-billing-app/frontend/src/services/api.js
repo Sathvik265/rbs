@@ -33,6 +33,10 @@ api.interceptors.request.use(
 // Add response interceptor for error handling
 api.interceptors.response.use(
   (response) => {
+    console.log(
+      `API Response: ${response.status} ${response.config.url}`,
+      response.data
+    );
     return response;
   },
   (error) => {
@@ -92,23 +96,26 @@ export const getLastBill = async (table_no, bill_date) => {
 };
 
 export const getBillsByDate = async (bill_date) => {
-  const response = await api.get(`/bills/by_date?bill_date=${bill_date}`);
+  const response = await api.get(`/bill/by_date?bill_date=${bill_date}`);
   return response.data;
 };
 
 // ==================== SHIFT MANAGEMENT ====================
 export const getCurrentShifts = async () => {
-  const response = await api.get("/shifts/current");
+  const response = await api.get("/shifts/status");
   return response.data;
 };
 
-export const closeShift = async (user_id, shift_type) => {
-  const response = await api.post("/shifts/close", { user_id, shift_type });
+export const closeShift = async (session_id) => {
+  const response = await api.post("/shifts/close", { session_id });
   return response.data;
 };
 
-export const reopenShift = async (shiftId, user_id) => {
-  const response = await api.post(`/shifts/reopen/${shiftId}`, { user_id });
+export const manualToggleShift = async (shift_id, new_status) => {
+  const response = await api.post("/shifts/manual-toggle", {
+    shift_id,
+    new_status,
+  });
   return response.data;
 };
 
@@ -128,8 +135,17 @@ export const getShiftWiseReport = async (bill_date) => {
   return response.data;
 };
 
-export const getBillsByShift = async (shiftId) => {
-  const response = await api.get(`/reports/by-shift?shiftId=${shiftId}`);
+export const getDateRangeReport = async (startDate, endDate) => {
+  const response = await api.get(
+    `/reports/date-range?startDate=${startDate}&endDate=${endDate}`
+  );
+  return response.data;
+};
+
+export const getTimeRangeReport = async (date, startTime, endTime) => {
+  const response = await api.get(
+    `/reports/time-range?date=${date}&startTime=${startTime}&endTime=${endTime}`
+  );
   return response.data;
 };
 
@@ -140,58 +156,15 @@ export const getItemReport = async (startDate, endDate) => {
   return response.data;
 };
 
-export const getTimeReport = async (date, startTime, endTime) => {
-  const response = await api.get(
-    `/reports/by-time?date=${date}&startTime=${startTime}&endTime=${endTime}`
-  );
+// ==================== DASHBOARD ====================
+export const getTopItems = async () => {
+  const response = await api.get("/dashboard/top-items");
   return response.data;
 };
 
-// ==================== ADMIN OPERATIONS ====================
-export const getDashboard = async () => {
-  const response = await api.get("/admin/dashboard");
-  return response.data;
-};
-
-export const getSalesReport = async (
-  start_date,
-  end_date,
-  report_type = "daily"
-) => {
-  const response = await api.get(
-    `/admin/reports/sales?start_date=${start_date}&end_date=${end_date}&report_type=${report_type}`
-  );
-  return response.data;
-};
-
-export const getShiftReconciliation = async (date) => {
-  const response = await api.get(`/admin/reconciliation/shifts?date=${date}`);
-  return response.data;
-};
-
-export const submitReconciliation = async (reconciliationData) => {
-  const response = await api.post(
-    "/admin/reconciliation/submit",
-    reconciliationData
-  );
-  return response.data;
-};
-
-export const getReconciliationHistory = async (
-  start_date,
-  end_date,
-  limit = 50
-) => {
-  let url = `/admin/reconciliation/history?limit=${limit}`;
-  if (start_date && end_date) {
-    url += `&start_date=${start_date}&end_date=${end_date}`;
-  }
-  const response = await api.get(url);
-  return response.data;
-};
-
-export const getAnalyticsTrends = async (period = "7d") => {
-  const response = await api.get(`/admin/analytics/trends?period=${period}`);
+// ==================== RECONCILIATION ====================
+export const getUnprintedBills = async () => {
+  const response = await api.get("/reconciliation/unprinted");
   return response.data;
 };
 
@@ -210,66 +183,6 @@ export const updateSettings = async (settings) => {
 export const healthCheck = async () => {
   const response = await api.get("/health");
   return response.data;
-};
-
-// ==================== LEGACY SUPPORT (for backward compatibility) ====================
-// DEPRECATED: These functions are kept for backward compatibility but should be updated to use the new API
-
-export const fetchTransactions = async (tableNumber) => {
-  // This was likely for fetching bills by table
-  try {
-    const today = new Date().toISOString().split("T")[0];
-    const response = await api.get(
-      `/bill/last?table_no=${tableNumber}&bill_date=${today}`
-    );
-    return [response.data]; // Return as array for compatibility
-  } catch (error) {
-    if (error.response?.status === 404) {
-      return []; // No bills found
-    }
-    throw error;
-  }
-};
-
-export const createTransaction = async (transaction) => {
-  // This should be mapped to createBill
-  return await createBill(transaction);
-};
-
-export const fetchInvoicesByTableAndParty = async (
-  tableNumber,
-  partyNumber
-) => {
-  // This needs to be implemented based on your specific requirements
-  // For now, return empty array
-  console.warn(
-    "fetchInvoicesByTableAndParty is deprecated and not implemented"
-  );
-  return [];
-};
-
-export const fetchAllInvoices = async () => {
-  // This should be mapped to getBillsByDate
-  const today = new Date().toISOString().split("T")[0];
-  return await getBillsByDate(today);
-};
-
-export const createInvoice = async (tableNumber, partyNumber, clerkId) => {
-  // This should be mapped to createBill with appropriate data structure
-  console.warn("createInvoice is deprecated. Use createBill instead.");
-  const billData = {
-    header: {
-      table_no: tableNumber,
-      party_no: partyNumber,
-      clerk_initials: clerkId,
-      section: "GENERAL",
-      track: "DINE_IN",
-    },
-    item_codes: [],
-    quantities: [],
-    bill_date: new Date().toISOString().split("T")[0],
-  };
-  return await createBill(billData);
 };
 
 export default api;

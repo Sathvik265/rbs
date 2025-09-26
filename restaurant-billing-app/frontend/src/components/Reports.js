@@ -18,6 +18,8 @@ function Reports({ billingDate }) {
       setReportData(null);
       setError(null);
 
+      console.log(`Generating ${type} report for date: ${billingDate}`);
+
       let response;
       if (type === "item-wise") {
         response = await getItemWiseReport(billingDate);
@@ -27,10 +29,15 @@ function Reports({ billingDate }) {
         response = await getShiftWiseReport(billingDate);
       }
 
-      setReportData(response.report || []);
+      console.log(`${type} report response:`, response);
+      const reportResult = response.report || response || [];
+      setReportData(reportResult);
     } catch (err) {
       console.error(`Error generating ${type} report:`, err);
-      setError(`Failed to generate ${type} report`);
+      setError(
+        `Failed to generate ${type} report: ` +
+          (err.response?.data?.detail || err.message)
+      );
     } finally {
       setLoading(false);
     }
@@ -38,21 +45,44 @@ function Reports({ billingDate }) {
 
   const renderReport = () => {
     if (loading) {
-      return <div className="loading">Generating report...</div>;
+      return (
+        <div
+          className="loading"
+          style={{ padding: "20px", textAlign: "center" }}
+        >
+          Generating report...
+        </div>
+      );
     }
 
     if (error) {
       return (
-        <div className="error-message">
+        <div
+          className="error-message"
+          style={{
+            color: "red",
+            padding: "10px",
+            margin: "10px 0",
+            border: "1px solid red",
+            borderRadius: "4px",
+            backgroundColor: "#f8d7da",
+          }}
+        >
           {error}
-          <button onClick={() => setError(null)}>×</button>
         </div>
       );
     }
 
     if (!reportData) {
       return (
-        <div className="no-report">
+        <div
+          className="no-report"
+          style={{
+            padding: "20px",
+            textAlign: "center",
+            color: "#666",
+          }}
+        >
           <p>Select a report type to generate.</p>
         </div>
       );
@@ -60,7 +90,16 @@ function Reports({ billingDate }) {
 
     if (reportData.length === 0) {
       return (
-        <div className="no-data">
+        <div
+          className="no-data"
+          style={{
+            padding: "20px",
+            textAlign: "center",
+            border: "1px solid #ccc",
+            borderRadius: "4px",
+            backgroundColor: "#f9f9f9",
+          }}
+        >
           <p>No data available for this report.</p>
         </div>
       );
@@ -69,57 +108,228 @@ function Reports({ billingDate }) {
     // Render different tables based on report type
     if (reportType === "item-wise") {
       return (
-        <div className="report-table">
-          <div className="table-header">
-            <span>Item Name</span>
-            <span>Quantity Sold</span>
-            <span>Total Amount</span>
-          </div>
-          {reportData.map((row, index) => (
-            <div key={index} className="table-row">
-              <span>{row.item_name}</span>
-              <span>{row.total_quantity}</span>
-              <span>₹{row.total_amount.toFixed(2)}</span>
-            </div>
-          ))}
+        <div style={{ overflowX: "auto" }}>
+          <h3>Item-wise Report</h3>
+          <table
+            className="report-table"
+            style={{ width: "100%", borderCollapse: "collapse" }}
+          >
+            <thead>
+              <tr style={{ backgroundColor: "#f0f0f0" }}>
+                <th
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "12px",
+                    textAlign: "left",
+                  }}
+                >
+                  Item Name
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "12px",
+                    textAlign: "right",
+                  }}
+                >
+                  Quantity Sold
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "12px",
+                    textAlign: "right",
+                  }}
+                >
+                  Total Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {reportData.map((row, index) => (
+                <tr
+                  key={index}
+                  style={{
+                    backgroundColor: index % 2 === 0 ? "#fff" : "#f9f9f9",
+                  }}
+                >
+                  <td style={{ border: "1px solid #ccc", padding: "10px" }}>
+                    {row.item_name}
+                  </td>
+                  <td
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "10px",
+                      textAlign: "right",
+                    }}
+                  >
+                    {row.total_quantity}
+                  </td>
+                  <td
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "10px",
+                      textAlign: "right",
+                    }}
+                  >
+                    ₹{parseFloat(row.total_amount || 0).toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       );
     }
 
     if (reportType === "time-wise") {
       return (
-        <div className="report-table">
-          <div className="table-header">
-            <span>Time Slot</span>
-            <span>Number of Bills</span>
-            <span>Total Amount</span>
-          </div>
-          {reportData.map((row, index) => (
-            <div key={index} className="table-row">
-              <span>{row.time_slot}</span>
-              <span>{row.bill_count}</span>
-              <span>₹{row.total_amount.toFixed(2)}</span>
-            </div>
-          ))}
+        <div style={{ overflowX: "auto" }}>
+          <h3>Time-wise Report</h3>
+          <table
+            className="report-table"
+            style={{ width: "100%", borderCollapse: "collapse" }}
+          >
+            <thead>
+              <tr style={{ backgroundColor: "#f0f0f0" }}>
+                <th
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "12px",
+                    textAlign: "left",
+                  }}
+                >
+                  Time Slot
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "12px",
+                    textAlign: "right",
+                  }}
+                >
+                  Number of Bills
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "12px",
+                    textAlign: "right",
+                  }}
+                >
+                  Total Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {reportData.map((row, index) => (
+                <tr
+                  key={index}
+                  style={{
+                    backgroundColor: index % 2 === 0 ? "#fff" : "#f9f9f9",
+                  }}
+                >
+                  <td style={{ border: "1px solid #ccc", padding: "10px" }}>
+                    {row.time_slot}
+                  </td>
+                  <td
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "10px",
+                      textAlign: "right",
+                    }}
+                  >
+                    {row.bill_count}
+                  </td>
+                  <td
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "10px",
+                      textAlign: "right",
+                    }}
+                  >
+                    ₹{parseFloat(row.total_amount || 0).toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       );
     }
 
     if (reportType === "shift-wise") {
       return (
-        <div className="report-table">
-          <div className="table-header">
-            <span>Shift</span>
-            <span>Number of Bills</span>
-            <span>Total Amount</span>
-          </div>
-          {reportData.map((row, index) => (
-            <div key={index} className="table-row">
-              <span>{row.shift_name}</span>
-              <span>{row.bill_count}</span>
-              <span>₹{row.total_amount.toFixed(2)}</span>
-            </div>
-          ))}
+        <div style={{ overflowX: "auto" }}>
+          <h3>Shift-wise Report</h3>
+          <table
+            className="report-table"
+            style={{ width: "100%", borderCollapse: "collapse" }}
+          >
+            <thead>
+              <tr style={{ backgroundColor: "#f0f0f0" }}>
+                <th
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "12px",
+                    textAlign: "left",
+                  }}
+                >
+                  Shift
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "12px",
+                    textAlign: "right",
+                  }}
+                >
+                  Number of Bills
+                </th>
+                <th
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "12px",
+                    textAlign: "right",
+                  }}
+                >
+                  Total Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {reportData.map((row, index) => (
+                <tr
+                  key={index}
+                  style={{
+                    backgroundColor: index % 2 === 0 ? "#fff" : "#f9f9f9",
+                  }}
+                >
+                  <td style={{ border: "1px solid #ccc", padding: "10px" }}>
+                    {row.shift_name}
+                  </td>
+                  <td
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "10px",
+                      textAlign: "right",
+                    }}
+                  >
+                    {row.bill_count}
+                  </td>
+                  <td
+                    style={{
+                      border: "1px solid #ccc",
+                      padding: "10px",
+                      textAlign: "right",
+                    }}
+                  >
+                    ₹{parseFloat(row.total_amount || 0).toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       );
     }
@@ -128,32 +338,68 @@ function Reports({ billingDate }) {
   };
 
   return (
-    <div className="reports-container">
+    <div className="reports" style={{ padding: "20px" }}>
       <div className="reports-header">
         <h2>Reports for {billingDate}</h2>
       </div>
 
-      <div className="report-controls">
+      <div className="report-buttons" style={{ marginBottom: "30px" }}>
         <button
           onClick={() => handleGenerateReport("item-wise")}
           disabled={loading}
-          className={reportType === "item-wise" ? "active" : ""}
+          style={{
+            marginRight: "15px",
+            padding: "12px 20px",
+            cursor: loading ? "not-allowed" : "pointer",
+            backgroundColor:
+              loading && reportType === "item-wise" ? "#ccc" : "#007bff",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            fontWeight: "bold",
+          }}
         >
-          Item Wise Report
+          {loading && reportType === "item-wise"
+            ? "Loading..."
+            : "Item-wise Report"}
         </button>
         <button
           onClick={() => handleGenerateReport("time-wise")}
           disabled={loading}
-          className={reportType === "time-wise" ? "active" : ""}
+          style={{
+            marginRight: "15px",
+            padding: "12px 20px",
+            cursor: loading ? "not-allowed" : "pointer",
+            backgroundColor:
+              loading && reportType === "time-wise" ? "#ccc" : "#28a745",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            fontWeight: "bold",
+          }}
         >
-          Time Wise Report
+          {loading && reportType === "time-wise"
+            ? "Loading..."
+            : "Time-wise Report"}
         </button>
         <button
           onClick={() => handleGenerateReport("shift-wise")}
           disabled={loading}
-          className={reportType === "shift-wise" ? "active" : ""}
+          style={{
+            marginRight: "15px",
+            padding: "12px 20px",
+            cursor: loading ? "not-allowed" : "pointer",
+            backgroundColor:
+              loading && reportType === "shift-wise" ? "#ccc" : "#ffc107",
+            color: "black",
+            border: "none",
+            borderRadius: "4px",
+            fontWeight: "bold",
+          }}
         >
-          Shift Wise Report
+          {loading && reportType === "shift-wise"
+            ? "Loading..."
+            : "Shift-wise Report"}
         </button>
       </div>
 

@@ -12,6 +12,7 @@ function BillingScreen({ billingDate, userMode, track }) {
   const [currentItem, setCurrentItem] = useState({ code: "", quantity: 1 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
   useEffect(() => {
     fetchNextBillNumber();
@@ -41,7 +42,8 @@ function BillingScreen({ billingDate, userMode, track }) {
 
       const newItem = {
         no: items.length + 1,
-        item: item.name,
+        code: currentItem.code,
+        name: item.name,
         qty: parseInt(currentItem.quantity),
         rate: item.price_general || 0,
         amount: parseInt(currentItem.quantity) * (item.price_general || 0),
@@ -60,6 +62,8 @@ function BillingScreen({ billingDate, userMode, track }) {
 
   const handleClearItems = () => {
     setItems([]);
+    setError(null);
+    setSuccess(null);
   };
 
   const handleRemoveItem = (index) => {
@@ -71,7 +75,6 @@ function BillingScreen({ billingDate, userMode, track }) {
     const sgst = subtotal * 0.025; // 2.5%
     const cgst = subtotal * 0.025; // 2.5%
     const grandTotal = subtotal + sgst + cgst;
-
     return { subtotal, sgst, cgst, grandTotal };
   };
 
@@ -90,7 +93,10 @@ function BillingScreen({ billingDate, userMode, track }) {
 
     try {
       setLoading(true);
+      setError(null);
+      setSuccess(null);
 
+      // Prepare bill data in the format expected by the backend
       const billPayload = {
         header: {
           table_no: billData.table_no,
@@ -99,238 +105,372 @@ function BillingScreen({ billingDate, userMode, track }) {
           clerk_initials: "CLK",
           track: track || "DINE_IN",
         },
-        item_codes: items.map((_, index) => `ITEM${index + 1}`),
-        quantities: items.map((item) => item.qty),
+        items: items.map((item) => ({
+          code: item.code,
+          name: item.name,
+          qty: item.qty,
+          rate: item.rate,
+          amount: item.amount,
+        })),
         bill_date: billingDate,
         grand_total: grandTotal,
-        session_id: sessionStorage.getItem('session_id'),
+        session_id: sessionStorage.getItem("session_id"),
         subtotal: subtotal,
         sgst: sgst,
         cgst: cgst,
         tax_amount: sgst + cgst,
       };
 
-      await createBill(billPayload);
+      console.log("Creating bill with payload:", billPayload);
+      const response = await createBill(billPayload);
+      console.log("Bill creation response:", response);
+
+      // FIXED: Properly handle the response to show bill number
+      const billNumber = response.bill_number;
+      if (billNumber) {
+        setSuccess(`Bill #${billNumber} created successfully!`);
+      } else {
+        setSuccess("Bill created successfully!");
+      }
 
       // Reset form
       setItems([]);
       setBillData((prev) => ({ ...prev, table_no: "", party_no: "1" }));
-      fetchNextBillNumber();
+      await fetchNextBillNumber();
     } catch (err) {
       console.error("Error creating bill:", err);
-      setError("Failed to create bill");
+      const errorMessage =
+        err.response?.data?.error || err.response?.data?.detail || err.message;
+      setError("Failed to create bill: " + errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleKeyPress = (e, action) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (action === "addItem") {
+        handleAddItem();
+      } else if (action === "printBill") {
+        handlePrintBill();
+      }
+    }
+  };
+
   return (
-    <div className="billing-container">
-      <div className="billing-left-panel">
-        <div className="billing-header">
-          <h2>Billing for {billingDate}</h2>
+    <div className="billing-screen">
+      <div className="billing-header">
+        <h2>Billing for {billingDate}</h2>
+        {track && <div className="current-track">Current Track: {track}</div>}
+      </div>
+
+      <div className="bill-form">
+        <div className="form-row">
+          <div className="form-group">
+            <label>Table No.</label>
+            <input
+              type="text"
+              value={billData.table_no}
+              onChange={(e) =>
+                setBillData((prev) => ({ ...prev, table_no: e.target.value }))
+              }
+              placeholder="Type & Enter"
+              onKeyPress={(e) =>
+                e.key === "Enter" && document.getElementById("party-no").focus()
+              }
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Party No.</label>
+            <input
+              id="party-no"
+              type="text"
+              value={billData.party_no}
+              onChange={(e) =>
+                setBillData((prev) => ({ ...prev, party_no: e.target.value }))
+              }
+              onKeyPress={(e) =>
+                e.key === "Enter" && document.getElementById("section").focus()
+              }
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Section</label>
+            <input
+              id="section"
+              type="text"
+              value={billData.section}
+              onChange={(e) =>
+                setBillData((prev) => ({ ...prev, section: e.target.value }))
+              }
+              onKeyPress={(e) =>
+                e.key === "Enter" &&
+                document.getElementById("item-code").focus()
+              }
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Bill No.</label>
+            <input type="text" value={billData.bill_no} disabled />
+          </div>
         </div>
 
-        <div className="billing-form">
-          <div className="form-row">
-            <div className="form-group">
-              <label>Table No.</label>
-              <input
-                type="text"
-                value={billData.table_no}
-                onChange={(e) =>
-                  setBillData((prev) => ({ ...prev, table_no: e.target.value }))
-                }
-                placeholder="Type & Enter"
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Party No.</label>
-              <input
-                type="text"
-                value={billData.party_no}
-                onChange={(e) =>
-                  setBillData((prev) => ({ ...prev, party_no: e.target.value }))
-                }
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Section</label>
-              <input
-                type="text"
-                value={billData.section}
-                onChange={(e) =>
-                  setBillData((prev) => ({ ...prev, section: e.target.value }))
-                }
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Bill No.</label>
-              <input type="text" value={billData.bill_no} readOnly />
-            </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Item Code (F1 for Help)</label>
+            <input
+              id="item-code"
+              type="text"
+              value={currentItem.code}
+              onChange={(e) =>
+                setCurrentItem((prev) => ({
+                  ...prev,
+                  code: e.target.value,
+                }))
+              }
+              placeholder="Enter Item Code"
+              onKeyPress={(e) => handleKeyPress(e, "addItem")}
+            />
           </div>
 
-          <div className="item-entry-section">
-            <div className="form-row">
-              <div className="form-group">
-                <label>Item Code (F1 for Help)</label>
-                <input
-                  type="text"
-                  value={currentItem.code}
-                  onChange={(e) =>
-                    setCurrentItem((prev) => ({
-                      ...prev,
-                      code: e.target.value,
-                    }))
-                  }
-                  placeholder="Enter Item Code"
-                  onKeyPress={(e) => e.key === "Enter" && handleAddItem()}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Quantity</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={currentItem.quantity}
-                  onChange={(e) =>
-                    setCurrentItem((prev) => ({
-                      ...prev,
-                      quantity: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div className="form-group">
-                <button
-                  onClick={handleAddItem}
-                  disabled={loading}
-                  className="add-item-btn"
-                >
-                  Add Item
-                </button>
-
-                <button onClick={handleClearItems} className="clear-items-btn">
-                  Clear Items
-                </button>
-              </div>
-            </div>
+          <div className="form-group">
+            <label>Quantity</label>
+            <input
+              type="number"
+              min="1"
+              value={currentItem.quantity}
+              onChange={(e) =>
+                setCurrentItem((prev) => ({
+                  ...prev,
+                  quantity: e.target.value,
+                }))
+              }
+              onKeyPress={(e) => handleKeyPress(e, "addItem")}
+            />
           </div>
 
-          {error && (
-            <div className="error-message">
-              {error}
-              <button onClick={() => setError(null)}>×</button>
-            </div>
-          )}
-
-          <div className="items-table">
-            <div className="table-header">
-              <span>No.</span>
-              <span>Item</span>
-              <span>Qty</span>
-              <span>Rate</span>
-              <span>Amount</span>
-            </div>
-
-            {items.map((item, index) => (
-              <div
-                key={index}
-                className="table-row"
-                onClick={() => handleRemoveItem(index)}
-              >
-                <span>{item.no}</span>
-                <span>{item.item}</span>
-                <span>{item.qty}</span>
-                <span>₹{item.rate.toFixed(2)}</span>
-                <span>₹{item.amount.toFixed(2)}</span>
-              </div>
-            ))}
-
-            {items.length === 0 && (
-              <div className="empty-table">
-                <div className="empty-message">No items added yet</div>
-              </div>
-            )}
+          <div className="form-group">
+            <button onClick={handleAddItem} disabled={loading}>
+              {loading ? "Adding..." : "Add Item"}
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="billing-right-panel">
-        <div className="help-section">
-          <div className="help-header">
-            <span>🔍</span> Help
-          </div>
-
-          <div className="help-content">
-            <p>Press F1 to Item Code to search for Items.</p>
-
-            <div className="keyboard-shortcuts">
-              <h4>Keyboard Shortcuts</h4>
-              <ul>
-                <li>
-                  <strong>F1:</strong> Open Item search in Help Panel
-                </li>
-                <li>
-                  <strong>Esc:</strong> Clear Item search in Help Panel
-                </li>
-                <li>
-                  <strong>Enter:</strong> Move between fields / Add Item
-                </li>
-                <li>
-                  <strong>Arrow Up/Down:</strong> Navigate Item Code
-                </li>
-                <li>
-                  <strong>PageDown:</strong> Move from Table No. to Item Code
-                </li>
-                <li>
-                  <strong>End / Home:</strong> Finalize and Print Bill
-                </li>
-              </ul>
-            </div>
-          </div>
+      {/* Success Message */}
+      {success && (
+        <div
+          className="success-message"
+          style={{
+            color: "green",
+            padding: "10px",
+            margin: "10px 0",
+            border: "1px solid green",
+            borderRadius: "4px",
+            backgroundColor: "#d4edda",
+          }}
+        >
+          {success}
         </div>
+      )}
 
-        <div className="finalize-section">
-          <h3>Finalize Bill</h3>
+      {/* Error Message */}
+      {error && (
+        <div
+          className="error-message"
+          style={{
+            color: "red",
+            padding: "10px",
+            margin: "10px 0",
+            border: "1px solid red",
+            borderRadius: "4px",
+            backgroundColor: "#f8d7da",
+          }}
+        >
+          {error}
+        </div>
+      )}
 
-          <div className="bill-totals">
-            <div className="total-row">
-              <span>Subtotal:</span>
-              <span>₹{subtotal.toFixed(2)}</span>
-            </div>
-            <div className="total-row">
-              <span>SGST (2.5%):</span>
-              <span>₹{sgst.toFixed(2)}</span>
-            </div>
-            <div className="total-row">
-              <span>CGST (2.5%):</span>
-              <span>₹{cgst.toFixed(2)}</span>
-            </div>
-          </div>
+      {/* Items Table */}
+      <table
+        className="items-table"
+        style={{ width: "100%", borderCollapse: "collapse", marginTop: "20px" }}
+      >
+        <thead>
+          <tr style={{ backgroundColor: "#f0f0f0" }}>
+            <th style={{ border: "1px solid #ccc", padding: "8px" }}>No.</th>
+            <th style={{ border: "1px solid #ccc", padding: "8px" }}>Item</th>
+            <th style={{ border: "1px solid #ccc", padding: "8px" }}>Qty</th>
+            <th style={{ border: "1px solid #ccc", padding: "8px" }}>Rate</th>
+            <th style={{ border: "1px solid #ccc", padding: "8px" }}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, index) => (
+            <tr
+              key={index}
+              className="table-row"
+              onClick={() => handleRemoveItem(index)}
+              title="Click to remove item"
+              style={{ cursor: "pointer" }}
+            >
+              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
+                {item.no}
+              </td>
+              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
+                {item.name}
+              </td>
+              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
+                {item.qty}
+              </td>
+              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
+                ₹{item.rate.toFixed(2)}
+              </td>
+              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
+                ₹{item.amount.toFixed(2)}
+              </td>
+            </tr>
+          ))}
+          {items.length === 0 && (
+            <tr>
+              <td
+                colSpan="5"
+                className="no-items"
+                style={{
+                  border: "1px solid #ccc",
+                  padding: "20px",
+                  textAlign: "center",
+                  color: "#999",
+                }}
+              >
+                No items added yet
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
 
-          <div className="grand-total">
-            <span>Grand Total:</span>
-            <span>₹{grandTotal.toFixed(2)}</span>
-          </div>
+      <div className="form-actions" style={{ marginTop: "20px" }}>
+        <button
+          onClick={handleClearItems}
+          disabled={items.length === 0}
+          style={{
+            padding: "8px 16px",
+            marginRight: "10px",
+            cursor: "pointer",
+          }}
+        >
+          Clear All
+        </button>
 
-          <button
-            onClick={handlePrintBill}
-            disabled={loading || items.length === 0}
-            className="print-bill-btn"
+        <div className="help-text">
+          🔍 Help
+          <div
+            className="help-content"
+            style={{ fontSize: "12px", marginTop: "5px" }}
           >
-            🖨️ Print Bill
-          </button>
-
-          <div className="made-with-error">
-            <span>📱 Made with Error</span>
+            <p>Press F1 to Item Code to search for Items.</p>
+            <h4>Keyboard Shortcuts</h4>
+            <ul style={{ margin: "5px 0", paddingLeft: "20px" }}>
+              <li>
+                <strong>F1:</strong> Open Item search in Help Panel
+              </li>
+              <li>
+                <strong>Esc:</strong> Clear Item search in Help Panel
+              </li>
+              <li>
+                <strong>Enter:</strong> Move between fields / Add Item
+              </li>
+              <li>
+                <strong>Arrow Up/Down:</strong> Navigate Item Code
+              </li>
+              <li>
+                <strong>PageDown:</strong> Move from Table No. to Item Code
+              </li>
+              <li>
+                <strong>End / Home:</strong> Finalize and Print Bill
+              </li>
+            </ul>
           </div>
         </div>
+      </div>
+
+      {/* Bill Totals */}
+      <div
+        className="bill-totals"
+        style={{
+          marginTop: "30px",
+          padding: "20px",
+          border: "1px solid #ccc",
+          borderRadius: "8px",
+          backgroundColor: "#f9f9f9",
+        }}
+      >
+        <h3>Finalize Bill</h3>
+
+        <div className="totals-grid">
+          <div className="total-row" style={{ marginBottom: "10px" }}>
+            <span>Subtotal:</span>
+            <span style={{ float: "right", fontWeight: "bold" }}>
+              ₹{subtotal.toFixed(2)}
+            </span>
+          </div>
+          <div className="total-row" style={{ marginBottom: "10px" }}>
+            <span>SGST (2.5%):</span>
+            <span style={{ float: "right", fontWeight: "bold" }}>
+              ₹{sgst.toFixed(2)}
+            </span>
+          </div>
+          <div className="total-row" style={{ marginBottom: "10px" }}>
+            <span>CGST (2.5%):</span>
+            <span style={{ float: "right", fontWeight: "bold" }}>
+              ₹{cgst.toFixed(2)}
+            </span>
+          </div>
+          <hr />
+          <div
+            className="total-row grand-total"
+            style={{ marginBottom: "20px" }}
+          >
+            <span style={{ fontSize: "18px", fontWeight: "bold" }}>
+              Grand Total:
+            </span>
+            <span
+              style={{
+                float: "right",
+                fontSize: "18px",
+                fontWeight: "bold",
+                color: "#007bff",
+              }}
+            >
+              ₹{grandTotal.toFixed(2)}
+            </span>
+          </div>
+        </div>
+
+        <button
+          className="print-bill-btn"
+          onClick={handlePrintBill}
+          disabled={loading || items.length === 0}
+          onKeyPress={(e) => handleKeyPress(e, "printBill")}
+          style={{
+            width: "100%",
+            padding: "12px",
+            fontSize: "16px",
+            fontWeight: "bold",
+            backgroundColor: items.length === 0 || loading ? "#ccc" : "#007bff",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: items.length === 0 || loading ? "not-allowed" : "pointer",
+          }}
+        >
+          {loading ? "Creating Bill..." : "📱 Print Bill"}
+        </button>
       </div>
     </div>
   );
