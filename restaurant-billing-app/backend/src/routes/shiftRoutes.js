@@ -14,4 +14,11 @@ router.get("/status", shiftController.getShiftStatus);
 // GET /api/shifts/current - For getting current shift status (used by frontend)
 router.get("/current", shiftController.getShiftStatus);
 
+// Demo routes for UI-only demonstrations
+// GET /api/shifts/demo?date=YYYY-MM-DD
+router.get("/demo", shiftController.getShiftDemo);
+
+// POST /api/shifts/demo-toggle - Toggle shift status in demo store
+router.post("/demo-toggle", shiftController.demoToggle);
+
 module.exports = router;

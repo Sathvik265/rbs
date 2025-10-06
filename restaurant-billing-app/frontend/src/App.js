@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import ReactDOM from "react-dom";
 import axios from "axios";
+import { updateMenuItem } from "./services/api";
 import "./styles/App.css";
 
 const BACKEND_URL = "http://127.0.0.1:8000";
@@ -1396,6 +1398,155 @@ function FoodMenu({ mode }) {
     load();
   }, []);
 
+  // Edit modal state & handlers (admin only)
+  const [editingItem, setEditingItem] = useState(null);
+  const saveEditedItem = async () => {
+    if (!editingItem) return;
+    try {
+      const payload = {
+        name: editingItem.name,
+        alpha_code: editingItem.alpha_code,
+        numeric_code: editingItem.numeric_code,
+        price_fixed: editingItem.price_fixed,
+        price_general: editingItem.price_general,
+        price_ac: editingItem.price_ac,
+        category: editingItem.category,
+      };
+      await updateMenuItem(editingItem.id, payload);
+      toast.success("Item updated");
+      setEditingItem(null);
+      // reload items
+      load();
+    } catch (e) {
+      // Detailed error logging to help diagnose why the PUT did not reach/accept
+      console.error("Failed to update item:", e);
+      console.error("Error response:", e?.response);
+      let userMessage = "Failed to update item";
+      if (e?.response) {
+        try {
+          const status = e.response.status;
+          const data = e.response.data;
+          userMessage =
+            (data && data.detail) ||
+            (data && JSON.stringify(data)) ||
+            `${e.message} (status ${status})`;
+        } catch (inner) {
+          userMessage = e.message;
+        }
+      } else {
+        userMessage = e.message || userMessage;
+      }
+      toast.error(userMessage);
+    }
+  };
+
+  const renderEditModal = () => {
+    console.log("renderEditModal called", editingItem);
+    if (!editingItem) return null;
+
+    const overlayStyle = {
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0,0,0,0.45)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 2147483647,
+      padding: 12,
+    };
+
+    const cardStyle = {
+      maxWidth: 560,
+      width: "100%",
+      zIndex: 2147483648,
+    };
+
+    const modal = (
+      <div style={overlayStyle} aria-modal="true" role="dialog">
+        <Card style={cardStyle}>
+          <CardHeader>
+            <CardTitle>Edit Item</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <Label>Name</Label>
+                <Input
+                  value={editingItem.name}
+                  onChange={(e) =>
+                    setEditingItem({ ...editingItem, name: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Alpha Code</Label>
+                <Input
+                  value={editingItem.alpha_code}
+                  onChange={(e) =>
+                    setEditingItem({
+                      ...editingItem,
+                      alpha_code: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Numeric Code</Label>
+                <Input
+                  value={editingItem.numeric_code}
+                  onChange={(e) =>
+                    setEditingItem({
+                      ...editingItem,
+                      numeric_code: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Fixed Price</Label>
+                <Input
+                  type="number"
+                  value={editingItem.price_fixed}
+                  onChange={(e) =>
+                    setEditingItem({
+                      ...editingItem,
+                      price_fixed: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label>General Price</Label>
+                <Input
+                  type="number"
+                  value={editingItem.price_general}
+                  onChange={(e) =>
+                    setEditingItem({
+                      ...editingItem,
+                      price_general: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Button onClick={saveEditedItem}>Save</Button>
+                <Button variant="outline" onClick={() => setEditingItem(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+
+    // Render into document.body to avoid clipping/overflow issues and ensure it's on top
+    return ReactDOM.createPortal(modal, document.body);
+  };
+
   const handleNewItemChange = (e) => {
     const { name, value } = e.target;
     setNewItem((prev) => ({ ...prev, [name]: value }));
@@ -1557,19 +1708,59 @@ function FoodMenu({ mode }) {
                   <TableCell>{safeGet(item, "category", "-")}</TableCell>
                   {mode === "admin-full" && (
                     <TableCell>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteItem(safeGet(item, "id"))}
-                      >
-                        X
-                      </Button>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            // open edit modal
+                            console.log("Edit clicked", safeGet(item, "id"));
+                            setEditingItem({
+                              id: safeGet(item, "id"),
+                              name: safeGet(item, "name", ""),
+                              alpha_code: safeGet(item, "alpha_code", ""),
+                              numeric_code: safeGet(item, "numeric_code", ""),
+                              price_fixed: safeGet(item, "price_fixed", 0),
+                              price_general: safeGet(item, "price_general", 0),
+                              price_ac: safeGet(item, "price_ac", 0),
+                              category: safeGet(item, "category", ""),
+                            });
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteItem(safeGet(item, "id"))}
+                        >
+                          X
+                        </Button>
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+        )}
+        {renderEditModal()}
+        {/* DEBUG: Visible badge to show editingItem is set (temporary) */}
+        {editingItem && (
+          <div
+            style={{
+              position: "fixed",
+              right: 12,
+              bottom: 12,
+              background: "rgba(220,38,38,0.9)",
+              color: "white",
+              padding: "8px 12px",
+              borderRadius: 6,
+              zIndex: 99999,
+            }}
+          >
+            DEBUG: editingItem {editingItem.id}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -2414,6 +2605,8 @@ function EnhancedAdminPanel({ mode, sessionId }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [adminActiveTab, setAdminActiveTab] = useState("dashboard");
+  // local state for the nested Reports tabs so clicking triggers switches properly
+  const [reportsInnerTab, setReportsInnerTab] = useState("time-range");
 
   const loadSettings = async () => {
     setLoading(true);
@@ -2457,7 +2650,7 @@ function EnhancedAdminPanel({ mode, sessionId }) {
 
         <TabsContent value="reports">
           <div className="space-y-6">
-            <Tabs value="time-range" onValueChange={() => {}}>
+            <Tabs value={reportsInnerTab} onValueChange={setReportsInnerTab}>
               <TabsList>
                 <TabsTrigger value="time-range">Time Range</TabsTrigger>
                 <TabsTrigger value="date-range">Date Range</TabsTrigger>

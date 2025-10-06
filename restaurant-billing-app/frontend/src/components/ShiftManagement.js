@@ -1,21 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { getCurrentShifts, manualToggleShift } from "../services/api";
 
-function ShiftManagement({ billingDate }) {
+// Show a compact 4-row table for admins, and the existing card/grid view for clerks
+function ShiftManagement({ billingDate, mode = "clerk" }) {
   const [shifts, setShifts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
 
-  useEffect(() => {
-    fetchShifts();
-  }, [billingDate]);
-
-  const fetchShifts = async () => {
+  const fetchShifts = useCallback(async () => {
     try {
       setLoading(true);
-      console.log("Fetching shifts...");
-      const response = await getCurrentShifts();
+      console.log("Fetching shifts for date:", billingDate);
+      const response = await getCurrentShifts(billingDate);
       console.log("Shifts response:", response);
 
       // Handle both array response and object with shifts property
@@ -32,7 +29,11 @@ function ShiftManagement({ billingDate }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [billingDate]);
+
+  useEffect(() => {
+    fetchShifts();
+  }, [fetchShifts]);
 
   const handleToggleShift = async (shiftId, currentStatus) => {
     const newStatus = currentStatus === "OPEN" ? "CLOSED" : "OPEN";
@@ -43,7 +44,8 @@ function ShiftManagement({ billingDate }) {
         `Toggling shift ${shiftId} from ${currentStatus} to ${newStatus}`
       );
 
-      await manualToggleShift(shiftId, newStatus);
+      // pass billingDate so demo or date-aware backend endpoints toggle the correct day's shift
+      await manualToggleShift(shiftId, newStatus, billingDate);
       await fetchShifts(); // Refresh data
       setError(null);
     } catch (err) {
@@ -71,6 +73,9 @@ function ShiftManagement({ billingDate }) {
         return shiftName;
     }
   };
+
+  // Admin wants a 4-row table with statuses for all shifts
+  const isAdmin = mode && mode.toLowerCase().includes("admin");
 
   if (loading) {
     return (
@@ -125,6 +130,163 @@ function ShiftManagement({ billingDate }) {
             Shifts are automatically created at the start of each day.
           </small>
         </div>
+      ) : // If admin mode, render a table with the 4 shifts and their statuses
+      isAdmin ? (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th
+                  style={{
+                    textAlign: "left",
+                    padding: "8px",
+                    borderBottom: "1px solid #ddd",
+                  }}
+                >
+                  Shift
+                </th>
+                <th
+                  style={{
+                    textAlign: "left",
+                    padding: "8px",
+                    borderBottom: "1px solid #ddd",
+                  }}
+                >
+                  Start Time
+                </th>
+                <th
+                  style={{
+                    textAlign: "left",
+                    padding: "8px",
+                    borderBottom: "1px solid #ddd",
+                  }}
+                >
+                  End Time
+                </th>
+                <th
+                  style={{
+                    textAlign: "left",
+                    padding: "8px",
+                    borderBottom: "1px solid #ddd",
+                  }}
+                >
+                  Status
+                </th>
+                <th
+                  style={{
+                    textAlign: "left",
+                    padding: "8px",
+                    borderBottom: "1px solid #ddd",
+                  }}
+                >
+                  Closed By
+                </th>
+                <th
+                  style={{
+                    textAlign: "left",
+                    padding: "8px",
+                    borderBottom: "1px solid #ddd",
+                  }}
+                >
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {["`", "``", "RBS1", "RBS2"].map((sName) => {
+                const shift = shifts.find((x) => x.shift_name === sName) || {};
+                return (
+                  <tr key={sName}>
+                    <td
+                      style={{
+                        padding: "8px",
+                        borderBottom: "1px solid #f0f0f0",
+                      }}
+                    >
+                      {getShiftDisplayName(sName)}
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        borderBottom: "1px solid #f0f0f0",
+                      }}
+                    >
+                      {shift.start_time
+                        ? new Date(shift.start_time).toLocaleTimeString()
+                        : "-"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        borderBottom: "1px solid #f0f0f0",
+                      }}
+                    >
+                      {shift.end_time
+                        ? new Date(shift.end_time).toLocaleTimeString()
+                        : "-"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        borderBottom: "1px solid #f0f0f0",
+                      }}
+                    >
+                      <strong>
+                        {(shift.status || "CLOSED").toUpperCase()}
+                      </strong>
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        borderBottom: "1px solid #f0f0f0",
+                      }}
+                    >
+                      {shift.closed_by || "-"}
+                    </td>
+                    <td
+                      style={{
+                        padding: "8px",
+                        borderBottom: "1px solid #f0f0f0",
+                      }}
+                    >
+                      <button
+                        onClick={() =>
+                          handleToggleShift(
+                            shift.shift_id,
+                            shift.status || "CLOSED"
+                          )
+                        }
+                        disabled={
+                          !shift.shift_id || actionLoading === shift.shift_id
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 4,
+                          border: "none",
+                          backgroundColor:
+                            shift.status === "OPEN" ? "#f44336" : "#4CAF50",
+                          color: "white",
+                          cursor:
+                            !shift.shift_id || actionLoading === shift.shift_id
+                              ? "not-allowed"
+                              : "pointer",
+                        }}
+                      >
+                        {actionLoading === shift.shift_id
+                          ? shift.status === "OPEN"
+                            ? "Processing..."
+                            : "Processing..."
+                          : shift.status === "OPEN"
+                          ? "Close"
+                          : "Open"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div
           className="shifts-container"
@@ -177,7 +339,9 @@ function ShiftManagement({ billingDate }) {
               <div className="shift-details" style={{ marginBottom: "15px" }}>
                 <div className="shift-time" style={{ marginBottom: "8px" }}>
                   <strong>Start Time:</strong>{" "}
-                  {new Date(shift.start_time).toLocaleTimeString()}
+                  {shift.start_time
+                    ? new Date(shift.start_time).toLocaleTimeString()
+                    : "-"}
                 </div>
                 {shift.end_time && (
                   <div className="shift-time" style={{ marginBottom: "8px" }}>

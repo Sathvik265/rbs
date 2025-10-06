@@ -161,6 +161,63 @@ app.delete("/api/menu/:id", async (req, res) => {
   }
 });
 
+// PUT /api/menu/:id - update menu item
+app.put("/api/menu/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      alpha_code,
+      numeric_code,
+      price_fixed,
+      price_general,
+      price_ac,
+      category,
+      is_active,
+    } = req.body;
+
+    if (!name || (!alpha_code && !numeric_code)) {
+      return res.status(400).json({ detail: "Name and code required" });
+    }
+
+    const result = await pool.query(
+      `UPDATE items SET
+         name = $1,
+         alpha_code = $2,
+         numeric_code = $3,
+         price_fixed = $4,
+         price_general = $5,
+         price_ac = $6,
+         category = $7,
+         is_active = COALESCE($8, is_active),
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = $9
+       RETURNING *`,
+      [
+        name,
+        alpha_code ? alpha_code.toUpperCase() : null,
+        numeric_code,
+        parseFloat(price_fixed) || 0,
+        parseFloat(price_general) || 0,
+        parseFloat(price_ac) || 0,
+        category,
+        is_active === undefined ? null : is_active,
+        id,
+      ]
+    );
+
+    if (result.rows.length === 0)
+      return res.status(404).json({ detail: "Item not found" });
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Update menu item error:", error);
+    if (error.constraint)
+      return res.status(400).json({ detail: "Item code already exists" });
+    res.status(500).json({ detail: "Failed to update menu item" });
+  }
+});
+
 // GET /api/menu/lookup/:code
 app.get("/api/menu/lookup/:code", async (req, res) => {
   try {

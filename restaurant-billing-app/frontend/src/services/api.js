@@ -101,8 +101,24 @@ export const getBillsByDate = async (bill_date) => {
 };
 
 // ==================== SHIFT MANAGEMENT ====================
-export const getCurrentShifts = async () => {
-  const response = await api.get("/shifts/status");
+const USE_DEMO =
+  (process.env.REACT_APP_USE_DEMO_SHIFTS || "false").toLowerCase() === "true";
+
+export const getCurrentShifts = async (date) => {
+  // Demo mode: call /shifts/demo
+  if (USE_DEMO) {
+    const url = date
+      ? `/shifts/demo?date=${encodeURIComponent(date)}`
+      : "/shifts/demo";
+    const response = await api.get(url);
+    return response.data;
+  }
+
+  // If a date is provided, pass it as a query parameter
+  const url = date
+    ? `/shifts/status?date=${encodeURIComponent(date)}`
+    : "/shifts/status";
+  const response = await api.get(url);
   return response.data;
 };
 
@@ -111,7 +127,15 @@ export const closeShift = async (session_id) => {
   return response.data;
 };
 
-export const manualToggleShift = async (shift_id, new_status) => {
+export const manualToggleShift = async (shift_id, new_status, date) => {
+  if (USE_DEMO) {
+    const url = date
+      ? `/shifts/demo-toggle?date=${encodeURIComponent(date)}`
+      : "/shifts/demo-toggle";
+    const response = await api.post(url, { shift_id });
+    return response.data;
+  }
+
   const response = await api.post("/shifts/manual-toggle", {
     shift_id,
     new_status,
@@ -153,6 +177,11 @@ export const getItemReport = async (startDate, endDate) => {
   const response = await api.get(
     `/reports/by-item?startDate=${startDate}&endDate=${endDate}`
   );
+  return response.data;
+};
+
+export const updateMenuItem = async (id, item) => {
+  const response = await api.put(`/menu/${id}`, item);
   return response.data;
 };
 
