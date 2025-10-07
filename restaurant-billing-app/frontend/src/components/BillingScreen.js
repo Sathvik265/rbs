@@ -125,8 +125,13 @@ function BillingScreen({ billingDate, userMode, track }) {
       const response = await createBill(billPayload);
       console.log("Bill creation response:", response);
 
-      // FIXED: Properly handle the response to show bill number
-      const billNumber = response.bill_number;
+      // Try multiple possible locations for the bill number depending on
+      // backend response shape. Prioritize top-level `bill_number`, then
+      // `header.billnumber`, then `billnumber`.
+      const billNumber =
+        response?.bill_number ??
+        response?.header?.billnumber ??
+        response?.billnumber;
       if (billNumber) {
         setSuccess(`Bill #${billNumber} created successfully!`);
       } else {

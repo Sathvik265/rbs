@@ -2,6 +2,8 @@
 const pool = require("../db");
 
 function toIntOrNull(v) {
+  // Treat null/undefined/empty-string as null (do not coerce to 0)
+  if (v === null || v === undefined || v === "") return null;
   const n = Number(v);
   return Number.isInteger(n) ? n : null;
 }
@@ -22,16 +24,18 @@ const BillingModel = {
   async createBill(data) {
     const {
       header = {},
-      items = [],
       bill_date,
       grand_total,
       session_id,
+      modified_from_bill_id,
       subtotal,
       sgst,
       cgst,
       tax_amount,
       track, // may be provided from client; used to resolve shift if needed
     } = data || {};
+    // `items` may be provided in data or built below from item_codes; declare as let so we can reassign
+    let items = data && Array.isArray(data.items) ? data.items : [];
 
     // Normalize header fields from various client shapes
     const table_no =
@@ -49,11 +53,12 @@ const BillingModel = {
     const table_no_int = toIntOrNull(table_no);
     const party_no_int = toIntOrNull(party_no);
     const session_id_int = toIntOrNull(session_id);
-    const subtotal_num = toNumOrZero(subtotal);
-    const sgst_num = toNumOrZero(sgst);
-    const cgst_num = toNumOrZero(cgst);
-    const tax_amount_num = toNumOrZero(tax_amount);
-    const grand_total_num = toNumOrZero(grand_total);
+    const modified_from_bill_int = toIntOrNull(modified_from_bill_id);
+    let subtotal_num = toNumOrZero(subtotal);
+    let sgst_num = toNumOrZero(sgst);
+    let cgst_num = toNumOrZero(cgst);
+    let tax_amount_num = toNumOrZero(tax_amount);
+    let grand_total_num = toNumOrZero(grand_total);
 
     if (!bill_date) {
       throw new Error("bill_date is required");
@@ -63,7 +68,7 @@ const BillingModel = {
     try {
       await client.query("BEGIN");
 
-      // Get or advance bill number per bill_date
+      // Get or advance bill number per bill_date (FOR UPDATE)
       const seq = await client.query(
         "SELECT last_number FROM bill_sequences WHERE bill_date = $1 FOR UPDATE",
         [bill_date]
@@ -77,7 +82,8 @@ const BillingModel = {
         );
         nextBillNumber = 1;
       } else {
-        nextBillNumber = Number(seq.rows.last_number) + 1;
+        const lastNumber = Number(seq.rows[0].last_number) || 0;
+        nextBillNumber = lastNumber + 1;
         await client.query(
           "UPDATE bill_sequences SET last_number = $1 WHERE bill_date = $2",
           [nextBillNumber, bill_date]
@@ -88,13 +94,15 @@ const BillingModel = {
       let shift_id = null;
 
       // If a valid numeric session_id was provided, try to use its shift
-      if (session_id_int !== null) {
+      let resolved_session_id = session_id_int;
+      if (resolved_session_id !== null) {
         const sessionRes = await client.query(
           "SELECT shift_id, shift_code, session_date FROM sessions WHERE session_id = $1",
           [session_id_int]
         );
+        console.log("DEBUG: sessionRes.rows:", sessionRes.rows);
         if (sessionRes.rows.length > 0) {
-          const s = sessionRes.rows;
+          const s = sessionRes.rows[0];
           if (s.shift_id) {
             shift_id = s.shift_id;
           } else if (s.shift_code && s.session_date) {
@@ -103,12 +111,31 @@ const BillingModel = {
               [s.shift_code, s.session_date]
             );
             if (shiftRes.rows.length > 0) {
-              shift_id = shiftRes.rows.shift_id;
+              shift_id = shiftRes.rows[0].shift_id;
               await client.query(
                 "UPDATE sessions SET shift_id = $1 WHERE session_id = $2",
                 [shift_id, session_id_int]
               );
             }
+          }
+        }
+      }
+
+      // If session_id was not numeric or not provided, try to resolve a session
+      // by clerk initials, track and bill_date (this covers cases where frontend
+      // sends NaN or leaves session_id empty). We prefer an open session for that clerk.
+      if (resolved_session_id === null && hdr_track && clerk_initials) {
+        const sessionByTrack = await client.query(
+          `SELECT session_id, shift_id FROM sessions
+           WHERE shift_code = $1 AND session_date = $2 AND clerk_initials = $3
+           ORDER BY session_id DESC LIMIT 1`,
+          [hdr_track, bill_date, clerk_initials]
+        );
+        console.log("DEBUG: sessionByTrack.rows:", sessionByTrack.rows);
+        if (sessionByTrack.rows.length > 0) {
+          resolved_session_id = sessionByTrack.rows[0].session_id;
+          if (sessionByTrack.rows[0].shift_id) {
+            shift_id = sessionByTrack.rows[0].shift_id;
           }
         }
       }
@@ -119,9 +146,103 @@ const BillingModel = {
           "SELECT shift_id FROM shifts WHERE shift_name = $1 AND date = $2 AND status = 'OPEN' LIMIT 1",
           [hdr_track, bill_date]
         );
+        console.log("DEBUG: shiftRes.rows:", shiftRes.rows);
         if (shiftRes.rows.length > 0) {
-          shift_id = shiftRes.rows.shift_id;
+          shift_id = shiftRes.rows[0].shift_id;
         }
+      }
+
+      // Ensure shift_id is a valid UUID string; if not, set to null so we don't
+      // send invalid values (e.g. 0) to a UUID column which would cause errors.
+      const isValidUUID = (v) => {
+        if (!v) return false;
+        if (typeof v !== "string") return false;
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          v
+        );
+      };
+
+      if (!isValidUUID(shift_id)) {
+        shift_id = null;
+      }
+
+      // If frontend sent item_codes + quantities (legacy payload), build the
+      // full items[] here by looking up item details from `items` table so we
+      // can compute subtotal/grand_total and insert bill_items.
+      const { item_codes = [], quantities = [] } = data || {};
+      if (
+        Array.isArray(items) &&
+        items.length === 0 &&
+        Array.isArray(item_codes) &&
+        item_codes.length > 0
+      ) {
+        const built = [];
+        let runningSubtotal = 0;
+        for (let i = 0; i < item_codes.length; i++) {
+          const code = item_codes[i];
+          const qty = Number(quantities && quantities[i]) || 1;
+          // lookup by alpha_code or numeric_code
+          const itemRes = await client.query(
+            `SELECT id, name, alpha_code, numeric_code, price_fixed, price_general, price_ac
+             FROM items WHERE UPPER(alpha_code) = UPPER($1) OR numeric_code = $1 LIMIT 1`,
+            [code]
+          );
+          let unit_price = 0;
+          let name = code;
+          let codeOut = code;
+          if (itemRes.rows.length > 0) {
+            const r = itemRes.rows[0];
+            name = r.name || name;
+            codeOut = r.alpha_code || r.numeric_code || codeOut;
+            unit_price = Number(r.price_fixed) || Number(r.price_general) || 0;
+          }
+          const line_total = Number(unit_price) * Number(qty || 0);
+          runningSubtotal += Number(line_total);
+          built.push({
+            code: codeOut,
+            name,
+            quantity: qty,
+            unit_price,
+            line_total,
+          });
+        }
+        items = built;
+        // set subtotal_num and grand_total_num based on computed values
+        // taxes are not computed here (frontend may send them), so set grand_total = subtotal
+        const computedSubtotal = Number(runningSubtotal) || 0;
+        // override the numeric totals we'll insert into header
+        // ensure variables used later are updated
+        // subtotal_num and grand_total_num were defined earlier
+        subtotal_num = computedSubtotal;
+        grand_total_num = computedSubtotal;
+      }
+
+      // Debug: print resolved ids and types to help diagnose invalid UUID insertion
+      try {
+        console.log("DEBUG: about to insert bill with:", {
+          nextBillNumber,
+          bill_date,
+          table_no_int,
+          party_no_int,
+          section,
+          hdr_track,
+          clerk_initials,
+          subtotal_num,
+          sgst_num,
+          cgst_num,
+          tax_amount_num,
+          grand_total_num,
+          resolved_session_id,
+          shift_id,
+          modified_from_bill_int,
+          types: {
+            resolved_session_id: typeof resolved_session_id,
+            shift_id: typeof shift_id,
+            modified_from_bill_int: typeof modified_from_bill_int,
+          },
+        });
+      } catch (logErr) {
+        console.error("DEBUG log error:", logErr);
       }
 
       // Insert into bills (ensure no NaN reaches SQL)
@@ -129,11 +250,11 @@ const BillingModel = {
         `INSERT INTO bills (
            bill_number, bill_date, table_no, party_no, section, track,
            clerk_initials, subtotal, sgst, cgst, tax_amount, grand_total,
-           session_id, shift_id
+           session_id, shift_id, modified_from_bill_id
          ) VALUES (
            $1,$2,$3,$4,$5,$6,
            $7,$8,$9,$10,$11,$12,
-           $13,$14
+           $13,$14,$15
          )
          RETURNING id, created_at`,
         [
@@ -149,13 +270,14 @@ const BillingModel = {
           cgst_num, // numeric defaulted to 0
           tax_amount_num, // numeric defaulted to 0
           grand_total_num, // numeric defaulted to 0
-          session_id_int, // nullable int
-          shift_id, // nullable int
+          resolved_session_id, // nullable int (resolved or null)
+          shift_id, // nullable (uuid or id)
+          modified_from_bill_int, // nullable int
         ]
       );
 
-      const billId = billInsert.rows.id;
-      const createdAt = billInsert.rows.created_at;
+      const billId = billInsert.rows[0].id;
+      const createdAt = billInsert.rows[0].created_at;
 
       // Insert bill items (protect against NaN)
       if (Array.isArray(items)) {
@@ -275,7 +397,7 @@ const BillingModel = {
 
     if (res.rows.length === 0) return null;
 
-    const b = res.rows;
+    const b = res.rows[0];
     return {
       id: b.id,
       header: {
@@ -337,7 +459,12 @@ const BillingModel = {
         );
         nextBillNumber = 1;
       } else {
-        nextBillNumber = Number(r.rows.last_number) + 1;
+        const lastNumber = Number(r.rows[0].last_number) || 0;
+        nextBillNumber = lastNumber + 1;
+        await client.query(
+          "UPDATE bill_sequences SET last_number = $1 WHERE bill_date = $2",
+          [nextBillNumber, bill_date]
+        );
       }
 
       await client.query("COMMIT");
