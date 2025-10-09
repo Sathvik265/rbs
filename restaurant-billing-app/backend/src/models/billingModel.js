@@ -1,4 +1,7 @@
-// models/billingModel.js
+// Updated billing model for the new database schema
+// Removed session_id, shift_id, modified_from_bill_id dependencies
+// Works with the new merged shift_sessions table
+
 const pool = require("../db");
 
 function toIntOrNull(v) {
@@ -26,15 +29,14 @@ const BillingModel = {
       header = {},
       bill_date,
       grand_total,
-      session_id,
-      modified_from_bill_id,
       subtotal,
       sgst,
       cgst,
       tax_amount,
-      track, // may be provided from client; used to resolve shift if needed
+      track, // used to identify shift type
     } = data || {};
-    // `items` may be provided in data or built below from item_codes; declare as let so we can reassign
+
+    // `items` may be provided in data or built below from item_codes
     let items = data && Array.isArray(data.items) ? data.items : [];
 
     // Normalize header fields from various client shapes
@@ -52,8 +54,6 @@ const BillingModel = {
     // Coerce all possibly-numeric values safely to avoid NaN into SQL
     const table_no_int = toIntOrNull(table_no);
     const party_no_int = toIntOrNull(party_no);
-    const session_id_int = toIntOrNull(session_id);
-    const modified_from_bill_int = toIntOrNull(modified_from_bill_id);
     let subtotal_num = toNumOrZero(subtotal);
     let sgst_num = toNumOrZero(sgst);
     let cgst_num = toNumOrZero(cgst);
@@ -90,85 +90,35 @@ const BillingModel = {
         );
       }
 
-      // Resolve shift_id if possible
-      let shift_id = null;
-
-      // If a valid numeric session_id was provided, try to use its shift
-      let resolved_session_id = session_id_int;
-      if (resolved_session_id !== null) {
-        const sessionRes = await client.query(
-          "SELECT shift_id, shift_code, session_date FROM sessions WHERE session_id = $1",
-          [session_id_int]
+      // Create or get shift session for the clerk and track
+      let shift_session_id = null;
+      if (clerk_initials && hdr_track) {
+        // First, try to find an existing open shift session
+        const existingSession = await client.query(
+          `SELECT shift_session_id FROM shift_sessions 
+                     WHERE clerk_initials = $1 AND shift_name = $2 AND session_date = $3 
+                     AND status = 'OPEN' ORDER BY start_time DESC LIMIT 1`,
+          [clerk_initials, hdr_track, bill_date]
         );
-        console.log("DEBUG: sessionRes.rows:", sessionRes.rows);
-        if (sessionRes.rows.length > 0) {
-          const s = sessionRes.rows[0];
-          if (s.shift_id) {
-            shift_id = s.shift_id;
-          } else if (s.shift_code && s.session_date) {
-            const shiftRes = await client.query(
-              "SELECT shift_id FROM shifts WHERE shift_name = $1 AND date = $2",
-              [s.shift_code, s.session_date]
-            );
-            if (shiftRes.rows.length > 0) {
-              shift_id = shiftRes.rows[0].shift_id;
-              await client.query(
-                "UPDATE sessions SET shift_id = $1 WHERE session_id = $2",
-                [shift_id, session_id_int]
-              );
-            }
-          }
+
+        if (existingSession.rows.length > 0) {
+          shift_session_id = existingSession.rows[0].shift_session_id;
+        } else {
+          // Create a new shift session for this clerk and track
+          const newSession = await client.query(
+            `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status)
+                         VALUES ($1, $2, $3, 'OPEN') 
+                         ON CONFLICT (shift_name, session_date, clerk_initials) 
+                         DO UPDATE SET status = 'OPEN', start_time = CURRENT_TIMESTAMP
+                         RETURNING shift_session_id`,
+            [hdr_track, clerk_initials, bill_date]
+          );
+          shift_session_id = newSession.rows[0].shift_session_id;
         }
-      }
-
-      // If session_id was not numeric or not provided, try to resolve a session
-      // by clerk initials, track and bill_date (this covers cases where frontend
-      // sends NaN or leaves session_id empty). We prefer an open session for that clerk.
-      if (resolved_session_id === null && hdr_track && clerk_initials) {
-        const sessionByTrack = await client.query(
-          `SELECT session_id, shift_id FROM sessions
-           WHERE shift_code = $1 AND session_date = $2 AND clerk_initials = $3
-           ORDER BY session_id DESC LIMIT 1`,
-          [hdr_track, bill_date, clerk_initials]
-        );
-        console.log("DEBUG: sessionByTrack.rows:", sessionByTrack.rows);
-        if (sessionByTrack.rows.length > 0) {
-          resolved_session_id = sessionByTrack.rows[0].session_id;
-          if (sessionByTrack.rows[0].shift_id) {
-            shift_id = sessionByTrack.rows[0].shift_id;
-          }
-        }
-      }
-
-      // If still null, try to resolve using track on the bill date
-      if (shift_id === null && hdr_track) {
-        const shiftRes = await client.query(
-          "SELECT shift_id FROM shifts WHERE shift_name = $1 AND date = $2 AND status = 'OPEN' LIMIT 1",
-          [hdr_track, bill_date]
-        );
-        console.log("DEBUG: shiftRes.rows:", shiftRes.rows);
-        if (shiftRes.rows.length > 0) {
-          shift_id = shiftRes.rows[0].shift_id;
-        }
-      }
-
-      // Ensure shift_id is a valid UUID string; if not, set to null so we don't
-      // send invalid values (e.g. 0) to a UUID column which would cause errors.
-      const isValidUUID = (v) => {
-        if (!v) return false;
-        if (typeof v !== "string") return false;
-        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          v
-        );
-      };
-
-      if (!isValidUUID(shift_id)) {
-        shift_id = null;
       }
 
       // If frontend sent item_codes + quantities (legacy payload), build the
-      // full items[] here by looking up item details from `items` table so we
-      // can compute subtotal/grand_total and insert bill_items.
+      // full items[] here by looking up item details from `items` table
       const { item_codes = [], quantities = [] } = data || {};
       if (
         Array.isArray(items) &&
@@ -178,26 +128,32 @@ const BillingModel = {
       ) {
         const built = [];
         let runningSubtotal = 0;
+
         for (let i = 0; i < item_codes.length; i++) {
           const code = item_codes[i];
           const qty = Number(quantities && quantities[i]) || 1;
+
           // lookup by alpha_code or numeric_code
           const itemRes = await client.query(
             `SELECT id, name, alpha_code, numeric_code, price_fixed, price_general, price_ac
-             FROM items WHERE UPPER(alpha_code) = UPPER($1) OR numeric_code = $1 LIMIT 1`,
+                         FROM items WHERE UPPER(alpha_code) = UPPER($1) OR numeric_code = $1 LIMIT 1`,
             [code]
           );
+
           let unit_price = 0;
           let name = code;
           let codeOut = code;
+
           if (itemRes.rows.length > 0) {
             const r = itemRes.rows[0];
             name = r.name || name;
             codeOut = r.alpha_code || r.numeric_code || codeOut;
             unit_price = Number(r.price_fixed) || Number(r.price_general) || 0;
           }
+
           const line_total = Number(unit_price) * Number(qty || 0);
           runningSubtotal += Number(line_total);
+
           built.push({
             code: codeOut,
             name,
@@ -206,20 +162,41 @@ const BillingModel = {
             line_total,
           });
         }
+
         items = built;
-        // set subtotal_num and grand_total_num based on computed values
-        // taxes are not computed here (frontend may send them), so set grand_total = subtotal
-        const computedSubtotal = Number(runningSubtotal) || 0;
-        // override the numeric totals we'll insert into header
-        // ensure variables used later are updated
-        // subtotal_num and grand_total_num were defined earlier
-        subtotal_num = computedSubtotal;
-        grand_total_num = computedSubtotal;
+        // Override computed totals
+        subtotal_num = runningSubtotal;
+        grand_total_num =
+          runningSubtotal + toNumOrZero(sgst) + toNumOrZero(cgst);
       }
 
-      // Debug: print resolved ids and types to help diagnose invalid UUID insertion
-      try {
-        console.log("DEBUG: about to insert bill with:", {
+      console.log("DEBUG: Creating bill with:", {
+        nextBillNumber,
+        bill_date,
+        table_no_int,
+        party_no_int,
+        section,
+        hdr_track,
+        clerk_initials,
+        subtotal_num,
+        sgst_num,
+        cgst_num,
+        tax_amount_num,
+        grand_total_num,
+        shift_session_id,
+      });
+
+      // Insert into bills (simplified - removed session_id, shift_id, modified_from_bill_id, updated_at)
+      const billInsert = await client.query(
+        `INSERT INTO bills (
+                    bill_number, bill_date, table_no, party_no, section, track,
+                    clerk_initials, subtotal, sgst, cgst, tax_amount, grand_total
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6,
+                    $7, $8, $9, $10, $11, $12
+                )
+                RETURNING id, created_at`,
+        [
           nextBillNumber,
           bill_date,
           table_no_int,
@@ -232,54 +209,13 @@ const BillingModel = {
           cgst_num,
           tax_amount_num,
           grand_total_num,
-          resolved_session_id,
-          shift_id,
-          modified_from_bill_int,
-          types: {
-            resolved_session_id: typeof resolved_session_id,
-            shift_id: typeof shift_id,
-            modified_from_bill_int: typeof modified_from_bill_int,
-          },
-        });
-      } catch (logErr) {
-        console.error("DEBUG log error:", logErr);
-      }
-
-      // Insert into bills (ensure no NaN reaches SQL)
-      const billInsert = await client.query(
-        `INSERT INTO bills (
-           bill_number, bill_date, table_no, party_no, section, track,
-           clerk_initials, subtotal, sgst, cgst, tax_amount, grand_total,
-           session_id, shift_id, modified_from_bill_id
-         ) VALUES (
-           $1,$2,$3,$4,$5,$6,
-           $7,$8,$9,$10,$11,$12,
-           $13,$14,$15
-         )
-         RETURNING id, created_at`,
-        [
-          nextBillNumber,
-          bill_date,
-          table_no_int, // nullable int
-          party_no_int, // nullable int
-          section, // text
-          hdr_track, // text
-          clerk_initials, // text
-          subtotal_num, // numeric defaulted to 0
-          sgst_num, // numeric defaulted to 0
-          cgst_num, // numeric defaulted to 0
-          tax_amount_num, // numeric defaulted to 0
-          grand_total_num, // numeric defaulted to 0
-          resolved_session_id, // nullable int (resolved or null)
-          shift_id, // nullable (uuid or id)
-          modified_from_bill_int, // nullable int
         ]
       );
 
       const billId = billInsert.rows[0].id;
       const createdAt = billInsert.rows[0].created_at;
 
-      // Insert bill items (protect against NaN)
+      // Insert bill items
       if (Array.isArray(items)) {
         for (const it of items) {
           const code =
@@ -302,6 +238,7 @@ const BillingModel = {
             it.rate !== undefined
               ? toNumOrZero(it.rate)
               : toNumOrZero(it.unit_price);
+
           // If line_total not provided or invalid, compute safely
           let line_total =
             it.amount !== undefined
@@ -315,23 +252,23 @@ const BillingModel = {
 
           await client.query(
             `INSERT INTO bill_items (bill_id, item_code, item_name, quantity, unit_price, line_total)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
+                         VALUES ($1, $2, $3, $4, $5, $6)`,
             [billId, code, name, quantity, unit_price, line_total]
           );
         }
       }
 
-      // Build printable structure expected by frontend printing
+      // Build printable structure expected by frontend
       const itemsRes = await client.query(
         `SELECT
-           item_code AS code,
-           item_name AS name,
-           quantity,
-           unit_price,
-           line_total
-         FROM bill_items
-         WHERE bill_id = $1
-         ORDER BY id`,
+                    item_code AS code,
+                    item_name AS name,
+                    quantity,
+                    unit_price,
+                    line_total
+                 FROM bill_items
+                 WHERE bill_id = $1
+                 ORDER BY id`,
         [billId]
       );
 
@@ -358,8 +295,7 @@ const BillingModel = {
           grandtotal: grand_total_num,
         },
         meta: {
-          session_id: session_id_int,
-          shift_id,
+          shift_session_id,
           created_at: createdAt,
         },
       };
@@ -373,25 +309,23 @@ const BillingModel = {
 
   async getLastBill(table_no, bill_date) {
     const res = await pool.query(
-      `
-      SELECT b.*,
-             COALESCE(json_agg(
-               json_build_object(
-                 'code', bi.item_code,
-                 'name', bi.item_name,
-                 'quantity', bi.quantity,
-                 'unit_price', bi.unit_price,
-                 'line_total', bi.line_total
-               )
-               ORDER BY bi.id
-             ) FILTER (WHERE bi.id IS NOT NULL), '[]'::json) AS items
-      FROM bills b
-      LEFT JOIN bill_items bi ON bi.bill_id = b.id
-      WHERE b.table_no = $1 AND b.bill_date = $2
-      GROUP BY b.id
-      ORDER BY b.bill_number DESC
-      LIMIT 1
-      `,
+      `SELECT b.*,
+                COALESCE(json_agg(
+                    json_build_object(
+                        'code', bi.item_code,
+                        'name', bi.item_name,
+                        'quantity', bi.quantity,
+                        'unit_price', bi.unit_price,
+                        'line_total', bi.line_total
+                    )
+                    ORDER BY bi.id
+                ) FILTER (WHERE bi.id IS NOT NULL), '[]'::json) AS items
+             FROM bills b
+             LEFT JOIN bill_items bi ON bi.bill_id = b.id
+             WHERE b.table_no = $1 AND b.bill_date = $2
+             GROUP BY b.id
+             ORDER BY b.bill_number DESC
+             LIMIT 1`,
       [toIntOrNull(table_no), bill_date]
     );
 
@@ -420,23 +354,21 @@ const BillingModel = {
 
   async getBillsByDate(bill_date) {
     const result = await pool.query(
-      `
-      SELECT b.id, b.bill_number, b.table_no, b.party_no, b.grand_total, b.created_at,
-             COALESCE(json_agg(
-               json_build_object(
-                 'name', bi.item_name,
-                 'quantity', bi.quantity,
-                 'unit_price', bi.unit_price,
-                 'line_total', bi.line_total
-               )
-               ORDER BY bi.id
-             ) FILTER (WHERE bi.id IS NOT NULL), '[]'::json) AS items
-      FROM bills b
-      LEFT JOIN bill_items bi ON bi.bill_id = b.id
-      WHERE b.bill_date = $1
-      GROUP BY b.id
-      ORDER BY b.bill_number DESC
-      `,
+      `SELECT b.id, b.bill_number, b.table_no, b.party_no, b.grand_total, b.created_at,
+                COALESCE(json_agg(
+                    json_build_object(
+                        'name', bi.item_name,
+                        'quantity', bi.quantity,
+                        'unit_price', bi.unit_price,
+                        'line_total', bi.line_total
+                    )
+                    ORDER BY bi.id
+                ) FILTER (WHERE bi.id IS NOT NULL), '[]'::json) AS items
+             FROM bills b
+             LEFT JOIN bill_items bi ON bi.bill_id = b.id
+             WHERE b.bill_date = $1
+             GROUP BY b.id
+             ORDER BY b.bill_number DESC`,
       [bill_date]
     );
     return result.rows;
@@ -446,6 +378,7 @@ const BillingModel = {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+
       const r = await client.query(
         "SELECT last_number FROM bill_sequences WHERE bill_date = $1 FOR UPDATE",
         [bill_date]

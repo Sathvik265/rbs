@@ -96,14 +96,14 @@ function BillingScreen({ billingDate, userMode, track }) {
       setError(null);
       setSuccess(null);
 
-      // Prepare bill data in the format expected by the backend
+      // Updated payload - removed session_id dependency
       const billPayload = {
         header: {
           table_no: billData.table_no,
           party_no: billData.party_no,
           section: billData.section,
           clerk_initials: "CLK",
-          track: track || "DINE_IN",
+          track: track || "`", // Changed from "DINE_IN" to "`" to match shift names
         },
         items: items.map((item) => ({
           code: item.code,
@@ -114,7 +114,6 @@ function BillingScreen({ billingDate, userMode, track }) {
         })),
         bill_date: billingDate,
         grand_total: grandTotal,
-        session_id: sessionStorage.getItem("session_id"),
         subtotal: subtotal,
         sgst: sgst,
         cgst: cgst,
@@ -125,13 +124,15 @@ function BillingScreen({ billingDate, userMode, track }) {
       const response = await createBill(billPayload);
       console.log("Bill creation response:", response);
 
-      // Try multiple possible locations for the bill number depending on
-      // backend response shape. Prioritize top-level `bill_number`, then
-      // `header.billnumber`, then `billnumber`.
+      // Updated bill number extraction - handles all possible response formats
       const billNumber =
-        response?.bill_number ??
-        response?.header?.billnumber ??
-        response?.billnumber;
+        response?.bill_number ||
+        response?.header?.bill_number ||
+        response?.header?.billnumber ||
+        response?.billnumber ||
+        response?.header?.billNumber ||
+        null;
+
       if (billNumber) {
         setSuccess(`Bill #${billNumber} created successfully!`);
       } else {

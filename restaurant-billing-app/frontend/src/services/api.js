@@ -123,21 +123,34 @@ export const getCurrentShifts = async (date) => {
 };
 
 export const closeShift = async (session_id) => {
-  const response = await api.post("/shifts/close", { session_id });
+  // send both names for compatibility; backend accepts shift_session_id
+  const response = await api.post("/shifts/close", {
+    session_id,
+    shift_session_id: session_id,
+  });
   return response.data;
 };
 
-export const manualToggleShift = async (shift_id, new_status, date) => {
+export const manualToggleShift = async (
+  sessionIdOrShiftId,
+  new_status,
+  date
+) => {
+  // Keep demo and production behavior; use shift_session_id key for backend
   if (USE_DEMO) {
     const url = date
       ? `/shifts/demo-toggle?date=${encodeURIComponent(date)}`
       : "/shifts/demo-toggle";
-    const response = await api.post(url, { shift_id });
+    const response = await api.post(url, {
+      shift_session_id: sessionIdOrShiftId,
+    });
     return response.data;
   }
 
   const response = await api.post("/shifts/manual-toggle", {
-    shift_id,
+    // send both keys for compatibility
+    shift_session_id: sessionIdOrShiftId,
+    shift_id: sessionIdOrShiftId,
     new_status,
   });
   return response.data;
