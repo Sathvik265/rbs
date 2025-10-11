@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { getNextBillNumber, createBill, lookupMenuItem } from "../services/api";
+import {
+  getNextBillNumber,
+  createBill,
+  lookupMenuItem,
+  getShiftStatus,
+} from "../services/api";
 
 function BillingScreen({ billingDate, userMode, track }) {
   const [billData, setBillData] = useState({
@@ -13,10 +18,30 @@ function BillingScreen({ billingDate, userMode, track }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [activeShift, setActiveShift] = useState(null);
+  const [clerkInitials, setClerkInitials] = useState("CLK");
+  const [isShiftLoading, setIsShiftLoading] = useState(true);
 
   useEffect(() => {
     fetchNextBillNumber();
+    fetchShiftStatus();
   }, [billingDate]);
+
+  const fetchShiftStatus = async () => {
+    setIsShiftLoading(true);
+    try {
+      const status = await getShiftStatus(billingDate);
+      const openShift = status.find((s) => s.status === "OPEN");
+      setActiveShift(openShift);
+      if (openShift) {
+        setClerkInitials(openShift.clerk_initials || "CLK");
+      }
+    } catch (err) {
+      console.error("Error fetching shift status:", err);
+    } finally {
+      setIsShiftLoading(false);
+    }
+  };
 
   const fetchNextBillNumber = async () => {
     try {
@@ -102,8 +127,8 @@ function BillingScreen({ billingDate, userMode, track }) {
           table_no: billData.table_no,
           party_no: billData.party_no,
           section: billData.section,
-          clerk_initials: "CLK",
-          track: track || "`", // Changed from "DINE_IN" to "`" to match shift names
+          clerk_initials: clerkInitials,
+          track: activeShift?.shift_name || track || "`",
         },
         items: items.map((item) => ({
           code: item.code,
@@ -461,21 +486,31 @@ function BillingScreen({ billingDate, userMode, track }) {
         <button
           className="print-bill-btn"
           onClick={handlePrintBill}
-          disabled={loading || items.length === 0}
+          disabled={loading || items.length === 0 || isShiftLoading}
           onKeyPress={(e) => handleKeyPress(e, "printBill")}
           style={{
             width: "100%",
             padding: "12px",
             fontSize: "16px",
             fontWeight: "bold",
-            backgroundColor: items.length === 0 || loading ? "#ccc" : "#007bff",
+            backgroundColor:
+              items.length === 0 || loading || isShiftLoading
+                ? "#ccc"
+                : "#007bff",
             color: "white",
             border: "none",
             borderRadius: "4px",
-            cursor: items.length === 0 || loading ? "not-allowed" : "pointer",
+            cursor:
+              items.length === 0 || loading || isShiftLoading
+                ? "not-allowed"
+                : "pointer",
           }}
         >
-          {loading ? "Creating Bill..." : "📱 Print Bill"}
+          {isShiftLoading
+            ? "Loading Shift..."
+            : loading
+            ? "Creating Bill..."
+            : "📱 Print Bill"}
         </button>
       </div>
     </div>

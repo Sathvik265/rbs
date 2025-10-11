@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import axios from "axios";
-import { updateMenuItem } from "./services/api";
+import { updateMenuItem, getShiftStatus } from "./services/api";
+import RecentBills from "./components/RecentBills";
 import "./styles/App.css";
 
 const BACKEND_URL = "http://127.0.0.1:8000";
@@ -1776,6 +1777,7 @@ function Billing({
   activeTab,
   track = "",
   sessionId = null,
+  activeShift,
 }) {
   const [entryCode, setEntryCode] = useState("");
   const [qty, setQty] = useState(1);
@@ -2148,8 +2150,8 @@ function Billing({
           table_no: safeGet(header, "table_no", currentTable),
           party_no: safeGet(header, "party_no", "1"),
           section: safeGet(header, "section", "G"),
-          track: safeGet(header, "track", track),
-          clerk_initials: "CLK",
+          track: activeShift?.shift_name || track || "`",
+          clerk_initials: activeShift?.clerk_initials || "CLK",
         },
         item_codes: lines.map((l) => safeGet(l, "code", "")),
         quantities: lines.map((l) => safeGet(l, "quantity", 1)),
@@ -2160,7 +2162,7 @@ function Billing({
 
       const res = await axios.post(`${API}/bill`, payload);
       const billData = res.data;
-      const billNumber = safeGet(billData, "header.bill_number", "Unknown");
+      const billNumber = billData?.bill_number || "Unknown";
 
       toast.success(`Bill #${billNumber} created`);
 
@@ -2712,6 +2714,22 @@ function App() {
   const [drafts, setDrafts] = useState({});
   const [currentTable, setCurrentTable] = useState("");
   const [activeTab, setActiveTab] = useState("billing");
+  const [activeShift, setActiveShift] = useState(null);
+
+  useEffect(() => {
+    const fetchShiftStatus = async () => {
+      if (billingDate) {
+        try {
+          const status = await getShiftStatus(billingDate);
+          const openShift = status.find((s) => s.status === "OPEN");
+          setActiveShift(openShift);
+        } catch (err) {
+          console.error("Error fetching shift status:", err);
+        }
+      }
+    };
+    fetchShiftStatus();
+  }, [billingDate]);
 
   const handleLogin = (newMode, date, newTrack, newSessionId, newShiftId) => {
     setMode(newMode);
@@ -2785,6 +2803,7 @@ function App() {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList>
                 <TabsTrigger value="billing">Billing</TabsTrigger>
+                <TabsTrigger value="recent-bills">Recent Bills</TabsTrigger>
                 <TabsTrigger value="shifts">Shifts</TabsTrigger>
                 <TabsTrigger value="menu">Food Menu</TabsTrigger>
                 {isAdmin && <TabsTrigger value="admin">Admin</TabsTrigger>}
@@ -2800,7 +2819,12 @@ function App() {
                   activeTab={activeTab}
                   track={track}
                   sessionId={sessionId}
+                  activeShift={activeShift}
                 />
+              </TabsContent>
+
+              <TabsContent value="recent-bills">
+                <RecentBills billingDate={billingDate} />
               </TabsContent>
 
               <TabsContent value="shifts">

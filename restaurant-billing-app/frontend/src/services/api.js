@@ -100,6 +100,12 @@ export const getBillsByDate = async (bill_date) => {
   return response.data;
 };
 
+export const getShiftStatus = async (date) => {
+  const url = date ? `/shifts/status?date=${date}` : "/shifts/status";
+  const response = await api.get(url);
+  return response.data;
+};
+
 // ==================== SHIFT MANAGEMENT ====================
 const USE_DEMO =
   (process.env.REACT_APP_USE_DEMO_SHIFTS || "false").toLowerCase() === "true";
