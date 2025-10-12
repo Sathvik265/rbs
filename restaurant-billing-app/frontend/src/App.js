@@ -504,12 +504,12 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
   const isClerk = mode === "clerk";
 
   // Load shift status for admin
-  const loadShiftStatus = async () => {
-    if (!isAdmin) return;
+  const loadShiftStatus = React.useCallback(async () => {
+    if (!isAdmin || !currentDate) return;
 
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/shifts/status`, {
+      const res = await axios.get(`${API}/shifts/status?date=${currentDate}`, {
         headers: { Authorization: "admin" },
       });
       setShifts(safeArray(res.data));
@@ -520,7 +520,7 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAdmin, currentDate]);
 
   useEffect(() => {
     if (isAdmin) {
@@ -529,7 +529,7 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
       const interval = setInterval(loadShiftStatus, 30000);
       return () => clearInterval(interval);
     }
-  }, [isAdmin]);
+  }, [isAdmin, loadShiftStatus]);
 
   // Close shift
   const handleCloseShift = async () => {
@@ -623,7 +623,7 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
             </TableHeader>
             <TableBody>
               {shifts.map((shift) => (
-                <TableRow key={shift.shift_id}>
+                <TableRow key={shift.shift_session_id}>
                   <TableCell className="font-medium">
                     {shift.shift_name}
                   </TableCell>
@@ -655,7 +655,7 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
                         shift.status === "OPEN" ? "destructive" : "success"
                       }
                       onClick={() =>
-                        handleToggleShift(shift.shift_id, shift.status)
+                        handleToggleShift(shift.shift_session_id, shift.status)
                       }
                     >
                       {shift.status === "OPEN" ? "Close" : "Re-open"}
@@ -1778,6 +1778,7 @@ function Billing({
   track = "",
   sessionId = null,
   activeShift,
+  isShiftLoading,
 }) {
   const [entryCode, setEntryCode] = useState("");
   const [qty, setQty] = useState(1);
@@ -2498,11 +2499,17 @@ function Billing({
               </div>
               <Button
                 onClick={handlePrintBill}
-                disabled={loading || safeArray(currentDraft.lines).length === 0}
+                disabled={
+                  loading ||
+                  isShiftLoading ||
+                  safeArray(currentDraft.lines).length === 0
+                }
                 className="w-full"
                 size="lg"
               >
-                {loading ? (
+                {isShiftLoading ? (
+                  <Loader2 size={16} className="mr-2" />
+                ) : loading ? (
                   <Loader2 size={16} className="mr-2" />
                 ) : (
                   "Print Bill"
@@ -2715,21 +2722,27 @@ function App() {
   const [currentTable, setCurrentTable] = useState("");
   const [activeTab, setActiveTab] = useState("billing");
   const [activeShift, setActiveShift] = useState(null);
+  const [isShiftLoading, setIsShiftLoading] = useState(true);
 
   useEffect(() => {
     const fetchShiftStatus = async () => {
-      if (billingDate) {
+      if (billingDate && track) {
+        setIsShiftLoading(true);
         try {
           const status = await getShiftStatus(billingDate);
-          const openShift = status.find((s) => s.status === "OPEN");
-          setActiveShift(openShift);
+          const openShift = status.find(
+            (s) => s.status === "OPEN" && s.shift_name === track
+          );
+          setActiveShift(openShift || status.find((s) => s.status === "OPEN"));
         } catch (err) {
           console.error("Error fetching shift status:", err);
+        } finally {
+          setIsShiftLoading(false);
         }
       }
     };
     fetchShiftStatus();
-  }, [billingDate]);
+  }, [billingDate, track]);
 
   const handleLogin = (newMode, date, newTrack, newSessionId, newShiftId) => {
     setMode(newMode);
@@ -2820,6 +2833,7 @@ function App() {
                   track={track}
                   sessionId={sessionId}
                   activeShift={activeShift}
+                  isShiftLoading={isShiftLoading}
                 />
               </TabsContent>
 
