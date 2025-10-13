@@ -9,14 +9,8 @@ const BillingModel = {
   },
 
   async createBill(data) {
-    const {
-      track,
-      clerk_initials,
-      table_no,
-      party_no,
-      bill_date,
-      bill_number,
-    } = data;
+    const { header, bill_date, bill_number } = data;
+    const { track, clerk_initials, table_no, party_no } = header;
 
     const client = await pool.connect();
     try {

@@ -24,7 +24,7 @@ exports.closeShift = async (req, res) => {
       // Close specific shift session by ID
       updateQuery = `
                 UPDATE shift_sessions 
-                SET status = 'CLOSED', end_time = CURRENT_TIMESTAMP, is_active = false
+                SET status = 'CLOSED', end_time = CURRENT_TIMESTAMP
                 WHERE shift_session_id = $1 AND status = 'OPEN'
                 RETURNING *`;
       updateParams = [shift_session_id];
@@ -32,7 +32,7 @@ exports.closeShift = async (req, res) => {
       // Close current active shift session for the clerk
       updateQuery = `
                 UPDATE shift_sessions 
-                SET status = 'CLOSED', end_time = CURRENT_TIMESTAMP, is_active = false
+                SET status = 'CLOSED', end_time = CURRENT_TIMESTAMP
                 WHERE clerk_initials = $1 AND session_date = CURRENT_DATE AND status = 'OPEN'
                 RETURNING *`;
       updateParams = [clerk_initials];
@@ -94,8 +94,7 @@ exports.manualToggle = async (req, res) => {
     const updateResult = await pool.query(
       `UPDATE shift_sessions 
              SET status = $1::varchar, 
-                 end_time = CASE WHEN $1::varchar = 'CLOSED' THEN CURRENT_TIMESTAMP ELSE NULL END,
-                 is_active = CASE WHEN $1::varchar = 'OPEN' THEN true ELSE false END
+                 end_time = CASE WHEN $1::varchar = 'CLOSED' THEN CURRENT_TIMESTAMP ELSE NULL END
              WHERE shift_session_id = $2::uuid 
              RETURNING *`,
       [newStatus, shiftSessionId]
@@ -187,7 +186,6 @@ exports.createShiftSession = async (req, res) => {
              DO UPDATE SET 
                 status = 'OPEN', 
                 start_time = CURRENT_TIMESTAMP,
-                is_active = true,
                 end_time = NULL
              RETURNING *`,
       [shift_name, clerk_initials, date]
@@ -220,7 +218,7 @@ exports.getClerkShiftSessions = async (req, res) => {
     }
 
     if (active_only === "true") {
-      query += ` AND is_active = true`;
+      query += ` AND status = 'OPEN'`;
     }
 
     query += ` ORDER BY session_date DESC, start_time DESC`;
