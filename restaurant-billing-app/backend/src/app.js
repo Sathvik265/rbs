@@ -114,7 +114,7 @@ app.post("/api/auth/login", async (req, res) => {
 app.get("/api/menu", async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM items WHERE is_active = true ORDER BY category, name"
+      "SELECT * FROM items ORDER BY category, name"
     );
     res.json(result.rows);
   } catch (error) {
@@ -167,7 +167,7 @@ app.delete("/api/menu/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      "UPDATE items SET is_active = false WHERE id = $1 RETURNING *",
+      "DELETE FROM items WHERE id = $1 RETURNING *",
       [id]
     );
     if (result.rows.length === 0)
@@ -206,9 +206,8 @@ app.put("/api/menu/:id", async (req, res) => {
                 price_fixed = $4,
                 price_general = $5,
                 price_ac = $6,
-                category = $7,
-                is_active = COALESCE($8, is_active)
-             WHERE id = $9
+                category = $7
+             WHERE id = $8
              RETURNING *`,
       [
         name,
@@ -218,7 +217,6 @@ app.put("/api/menu/:id", async (req, res) => {
         parseFloat(price_general) || 0,
         parseFloat(price_ac) || 0,
         category,
-        is_active === undefined ? null : is_active,
         id,
       ]
     );
@@ -241,7 +239,7 @@ app.get("/api/menu/lookup/:code", async (req, res) => {
     const upperCode = code.toUpperCase();
     const result = await pool.query(
       `SELECT * FROM items 
-             WHERE (UPPER(alpha_code) = $1 OR UPPER(numeric_code) = $1) AND is_active = true LIMIT 1`,
+             WHERE (UPPER(alpha_code) = $1 OR UPPER(numeric_code) = $1) LIMIT 1`,
       [upperCode]
     );
 

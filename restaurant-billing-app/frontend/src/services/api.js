@@ -78,6 +78,16 @@ export const lookupMenuItem = async (code) => {
 };
 
 // ==================== BILLING OPERATIONS ====================
+export const createOrder = async (orderData) => {
+  const response = await api.post("/bill/order", orderData);
+  return response.data;
+};
+
+export const getPendingOrdersByTable = async (table_no) => {
+  const response = await api.get(`/bill/order/pending/${table_no}`);
+  return response.data;
+};
+
 export const getNextBillNumber = async (bill_date) => {
   const response = await api.get(`/bill/next_number?bill_date=${bill_date}`);
   return response.data;
@@ -96,8 +106,9 @@ export const getLastBill = async (table_no, bill_date) => {
 };
 
 export const getBillsByDate = async (bill_date) => {
-  const response = await api.get(`/bill/by_date?bill_date=${bill_date}`);
-  return response.data;
+  const response = await api.get("/bill/all");
+  const allBills = response.data;
+  return allBills.filter((bill) => bill.bill_date === bill_date);
 };
 
 export const getShiftStatus = async (date) => {

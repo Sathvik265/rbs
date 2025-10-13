@@ -125,7 +125,7 @@ exports.getShiftStatus = async (req, res) => {
     console.log("Getting shift session status for date:", requestedDate);
 
     let result = await pool.query(
-      `SELECT shift_session_id, shift_name, clerk_initials, status, start_time, end_time, closed_by, is_active
+      `SELECT shift_session_id, shift_name, clerk_initials, status, start_time, end_time, closed_by
              FROM shift_sessions 
              WHERE session_date = $1 
              ORDER BY shift_name, start_time DESC`,
@@ -151,7 +151,7 @@ exports.getShiftStatus = async (req, res) => {
 
       // Re-query to return created shift sessions
       result = await pool.query(
-        `SELECT shift_session_id, shift_name, clerk_initials, status, start_time, end_time, closed_by, is_active
+        `SELECT shift_session_id, shift_name, clerk_initials, status, start_time, end_time, closed_by
                  FROM shift_sessions 
                  WHERE session_date = $1 
                  ORDER BY shift_name, start_time DESC`,
