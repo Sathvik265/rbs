@@ -1,3 +1,4 @@
+DB Creation: 
 -- Restaurant Billing System Database Schema - Updated Version
 -- PostgreSQL 17.6 compatibility
 -- Merged sessions and shifts into shift_sessions table
@@ -215,3 +216,373 @@ $init_shifts$;
 -- Verification queries (optional - can be removed in production)
 SELECT 'Database schema updated successfully with merged shift_sessions table' AS status;
 SELECT COUNT(*) AS total_shift_sessions_created FROM shift_sessions WHERE session_date = CURRENT_DATE;
+
+
+
+
+DB Updation: 
+-- ========================================================================
+-- RESTAURANT BILLING SYSTEM DATABASE MODIFICATIONS (CLEAN VERSION)
+-- PostgreSQL Script to Apply Requested Changes to Existing Database
+-- Handles Foreign Key Constraints Properly
+-- Compatible with all PostgreSQL clients
+-- ========================================================================
+ROLLBACK;
+BEGIN;
+
+-- ========================================================================
+-- 1. DROP FOREIGN KEY CONSTRAINT FROM BILL_ITEMS FIRST
+-- ========================================================================
+
+-- Drop the foreign key constraint that depends on bills primary key
+ALTER TABLE bill_items DROP CONSTRAINT IF EXISTS bill_items_bill_id_fkey;
+
+-- ========================================================================
+-- 2. MODIFY BILLS TABLE - Change Primary Key Structure
+-- ========================================================================
+
+-- Now we can safely drop the existing primary key constraint
+ALTER TABLE bills DROP CONSTRAINT IF EXISTS bills_pkey;
+
+-- Drop the existing unique constraint if it exists
+ALTER TABLE bills DROP CONSTRAINT IF EXISTS bills_bill_number_bill_date_key;
+
+-- Create the new composite primary key as requested
+-- Using: track, clerk_initials, table_no, party_no, bill_number
+ALTER TABLE bills ADD CONSTRAINT bills_pkey 
+PRIMARY KEY (track, clerk_initials, table_no, party_no, bill_number);
+
+-- ========================================================================
+-- 3. MODIFY BILL_ITEMS TABLE - Add Required Columns
+-- ========================================================================
+
+-- Add the composite key columns to bill_items table
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS track VARCHAR(20);
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS clerk_initials VARCHAR(10);
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS table_no VARCHAR(20);
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS party_no VARCHAR(20);
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS bill_number INTEGER;
+
+-- Add numeric item code column (as requested - item 6)
+ALTER TABLE bill_items ADD COLUMN IF NOT EXISTS numeric_item_code VARCHAR(20);
+
+-- ========================================================================
+-- 4. UPDATE EXISTING DATA IN BILL_ITEMS
+-- ========================================================================
+
+-- Update bill_items with data from related bills table
+-- This populates the new columns in bill_items with data from the bills table
+UPDATE bill_items 
+SET 
+    track = b.track,
+    clerk_initials = b.clerk_initials,
+    table_no = b.table_no,
+    party_no = b.party_no,
+    bill_number = b.bill_number,
+    numeric_item_code = COALESCE(bill_items.item_code, '')
+FROM bills b
+WHERE bill_items.bill_id = b.id;
+
+-- ========================================================================
+-- 5. CREATE ORDERS TABLE (Temporary storage before bill printing)
+-- ========================================================================
+
+CREATE TABLE IF NOT EXISTS orders (
+    id SERIAL PRIMARY KEY,
+
+    -- Bill identification columns (matching bills table composite key)
+    track VARCHAR(20) NOT NULL,
+    clerk_initials VARCHAR(10) NOT NULL,
+    table_no VARCHAR(20) NOT NULL,
+    party_no VARCHAR(20) NOT NULL DEFAULT '1',
+    bill_number INTEGER NOT NULL,
+
+    -- Item details (similar to bill_items structure)
+    item_code VARCHAR(20),
+    numeric_item_code VARCHAR(20),
+    item_name VARCHAR(255),
+    quantity INTEGER DEFAULT 1 CHECK (quantity > 0),
+    unit_price DECIMAL(10,2) DEFAULT 0 CHECK (unit_price >= 0),
+    line_total DECIMAL(10,2) DEFAULT 0 CHECK (line_total >= 0),
+
+    -- Additional fields for order management
+    order_status VARCHAR(20) DEFAULT 'PENDING', -- 'PENDING', 'PREPARING', 'READY'
+    special_instructions TEXT,
+    ordered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Audit fields
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add comment to explain the purpose
+COMMENT ON TABLE orders IS 'Temporary storage for orders before bill printing. Records are moved to bill_items when bill is printed and then deleted from this table.';
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_orders_composite_key ON orders (track, clerk_initials, table_no, party_no, bill_number);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (order_status);
+CREATE INDEX IF NOT EXISTS idx_orders_table_no ON orders (table_no);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders (created_at);
+
+-- ========================================================================
+-- 6. CREATE SECTIONS TABLE (Table-Section Mappings)
+-- ========================================================================
+
+CREATE TABLE IF NOT EXISTS sections (
+    table_id INTEGER PRIMARY KEY,
+    section_name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add comment to explain the purpose
+COMMENT ON TABLE sections IS 'Maps tables to sections. Each table belongs to a specific section (Parcel, General, AC).';
+
+-- Insert the section mappings as specified
+INSERT INTO sections (table_id, section_name) VALUES
+    -- Table 1 for parcel
+    (1, 'Parcel'),
+    -- Tables 2-14 for general section  
+    (2, 'General'), (3, 'General'), (4, 'General'), (5, 'General'), (6, 'General'),
+    (7, 'General'), (8, 'General'), (9, 'General'), (10, 'General'), (11, 'General'),
+    (12, 'General'), (13, 'General'), (14, 'General'),
+    -- Tables 15-30 for AC section
+    (15, 'AC'), (16, 'AC'), (17, 'AC'), (18, 'AC'), (19, 'AC'),
+    (20, 'AC'), (21, 'AC'), (22, 'AC'), (23, 'AC'), (24, 'AC'),
+    (25, 'AC'), (26, 'AC'), (27, 'AC'), (28, 'AC'), (29, 'AC'), (30, 'AC')
+ON CONFLICT (table_id) DO UPDATE SET 
+    section_name = EXCLUDED.section_name,
+    updated_at = CURRENT_TIMESTAMP;
+
+-- Create index for section queries
+CREATE INDEX IF NOT EXISTS idx_sections_section_name ON sections (section_name);
+
+-- ========================================================================
+-- 7. MODIFY SHIFT_SESSIONS TABLE - Remove is_active column
+-- ========================================================================
+
+ALTER TABLE shift_sessions DROP COLUMN IF EXISTS is_active;
+
+-- ========================================================================
+-- 8. MODIFY ITEMS TABLE - Remove unnecessary columns
+-- ========================================================================
+
+-- Remove item_group and is_active columns as requested (item 7)
+ALTER TABLE items DROP COLUMN IF EXISTS item_group;
+ALTER TABLE items DROP COLUMN IF EXISTS is_active;
+
+-- ========================================================================
+-- 9. CREATE HELPER FUNCTIONS FOR ORDERS WORKFLOW
+-- ========================================================================
+
+-- Function to move orders to bill_items when bill is printed
+CREATE OR REPLACE FUNCTION move_orders_to_bill_items(
+    p_track VARCHAR(20),
+    p_clerk_initials VARCHAR(10),
+    p_table_no VARCHAR(20),
+    p_party_no VARCHAR(20),
+    p_bill_number INTEGER
+) RETURNS INTEGER AS $$
+DECLARE
+    moved_count INTEGER := 0;
+    bill_id_val INTEGER;
+BEGIN
+    -- Get the bill_id for the composite key
+    SELECT id INTO bill_id_val
+    FROM bills
+    WHERE track = p_track
+      AND clerk_initials = p_clerk_initials
+      AND table_no = p_table_no
+      AND party_no = p_party_no
+      AND bill_number = p_bill_number;
+
+    -- If bill doesn't exist, return 0
+    IF bill_id_val IS NULL THEN
+        RETURN 0;
+    END IF;
+
+    -- Insert orders into bill_items
+    INSERT INTO bill_items (
+        bill_id, track, clerk_initials, table_no, party_no, bill_number,
+        item_code, numeric_item_code, item_name, quantity, unit_price, line_total
+    )
+    SELECT 
+        bill_id_val, track, clerk_initials, table_no, party_no, bill_number,
+        item_code, numeric_item_code, item_name, quantity, unit_price, line_total
+    FROM orders
+    WHERE track = p_track
+      AND clerk_initials = p_clerk_initials
+      AND table_no = p_table_no
+      AND party_no = p_party_no
+      AND bill_number = p_bill_number;
+
+    GET DIAGNOSTICS moved_count = ROW_COUNT;
+
+    -- Delete the orders after moving to bill_items
+    DELETE FROM orders
+    WHERE track = p_track
+      AND clerk_initials = p_clerk_initials
+      AND table_no = p_table_no
+      AND party_no = p_party_no
+      AND bill_number = p_bill_number;
+
+    RETURN moved_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to check if there are pending orders for a bill
+CREATE OR REPLACE FUNCTION has_pending_orders(
+    p_track VARCHAR(20),
+    p_clerk_initials VARCHAR(10),
+    p_table_no VARCHAR(20),
+    p_party_no VARCHAR(20),
+    p_bill_number INTEGER
+) RETURNS BOOLEAN AS $$
+DECLARE
+    order_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO order_count
+    FROM orders
+    WHERE track = p_track
+      AND clerk_initials = p_clerk_initials
+      AND table_no = p_table_no
+      AND party_no = p_party_no
+      AND bill_number = p_bill_number;
+
+    RETURN order_count > 0;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to get section name by table number
+CREATE OR REPLACE FUNCTION get_section_by_table(p_table_no VARCHAR(20))
+RETURNS VARCHAR AS $$
+DECLARE
+    section_name VARCHAR(100);
+    table_num INTEGER;
+BEGIN
+    -- Convert table_no to integer for lookup
+    BEGIN
+        table_num := p_table_no::INTEGER;
+    EXCEPTION WHEN OTHERS THEN
+        RETURN 'Unknown';
+    END;
+
+    SELECT s.section_name INTO section_name
+    FROM sections s
+    WHERE s.table_id = table_num;
+
+    RETURN COALESCE(section_name, 'Unknown');
+END;
+$$ LANGUAGE plpgsql;
+
+-- ========================================================================
+-- 10. CREATE USEFUL VIEWS
+-- ========================================================================
+
+-- View for pending bills (bills with orders not yet printed)
+CREATE OR REPLACE VIEW pending_bills AS
+SELECT DISTINCT
+    o.track,
+    o.clerk_initials,
+    o.table_no,
+    o.party_no,
+    o.bill_number,
+    get_section_by_table(o.table_no) as section_name,
+    COUNT(o.id) as total_items,
+    SUM(o.line_total) as total_amount,
+    MIN(o.created_at) as order_started_at,
+    MAX(o.updated_at) as last_updated_at
+FROM orders o
+GROUP BY o.track, o.clerk_initials, o.table_no, o.party_no, o.bill_number;
+
+-- View for completed bills (bills that have been printed)
+CREATE OR REPLACE VIEW completed_bills AS
+SELECT DISTINCT
+    bi.track,
+    bi.clerk_initials,
+    bi.table_no,
+    bi.party_no,
+    bi.bill_number,
+    get_section_by_table(bi.table_no) as section_name,
+    COUNT(bi.id) as total_items,
+    SUM(bi.line_total) as items_total,
+    b.grand_total,
+    MIN(bi.created_at) as bill_printed_at
+FROM bill_items bi
+LEFT JOIN bills b ON (
+    bi.track = b.track AND 
+    bi.clerk_initials = b.clerk_initials AND 
+    bi.table_no = b.table_no AND 
+    bi.party_no = b.party_no AND 
+    bi.bill_number = b.bill_number
+)
+GROUP BY bi.track, bi.clerk_initials, bi.table_no, bi.party_no, bi.bill_number, b.grand_total;
+
+-- View for table status
+CREATE OR REPLACE VIEW table_status AS
+SELECT 
+    s.table_id,
+    s.section_name,
+    CASE 
+        WHEN pb.table_no IS NOT NULL THEN 'OCCUPIED'
+        ELSE 'AVAILABLE'
+    END as status,
+    pb.total_items,
+    pb.total_amount,
+    pb.order_started_at
+FROM sections s
+LEFT JOIN pending_bills pb ON s.table_id::VARCHAR = pb.table_no
+ORDER BY s.table_id;
+
+-- ========================================================================
+-- 11. UPDATE INDEXES FOR BETTER PERFORMANCE
+-- ========================================================================
+
+-- Additional indexes for the modified tables
+CREATE INDEX IF NOT EXISTS idx_bill_items_composite_key ON bill_items (track, clerk_initials, table_no, party_no, bill_number);
+CREATE INDEX IF NOT EXISTS idx_bill_items_numeric_code ON bill_items (numeric_item_code);
+CREATE INDEX IF NOT EXISTS idx_bills_table_no ON bills (table_no);
+CREATE INDEX IF NOT EXISTS idx_bill_items_bill_id ON bill_items (bill_id);
+
+-- ========================================================================
+-- 12. UPDATE EXISTING BILL_ITEMS WITH NUMERIC CODES FROM ITEMS
+-- ========================================================================
+
+-- Update numeric_item_code in bill_items based on item names and existing items data
+UPDATE bill_items 
+SET numeric_item_code = i.numeric_code
+FROM items i
+WHERE bill_items.item_name = i.name
+  AND bill_items.numeric_item_code IS NULL;
+
+-- Also update item_code in bill_items if it's missing
+UPDATE bill_items 
+SET item_code = i.alpha_code
+FROM items i
+WHERE bill_items.item_name = i.name
+  AND bill_items.item_code IS NULL;
+
+-- ========================================================================
+-- COMMIT TRANSACTION
+-- ========================================================================
+
+COMMIT;
+
+-- ========================================================================
+-- SUMMARY: Database modifications completed successfully!
+-- ========================================================================
+-- Changes applied:
+-- ✓ Dropped foreign key constraint from bill_items
+-- ✓ Changed bills table primary key to composite key (track, clerk_initials, table_no, party_no, bill_number)
+-- ✓ Added composite key columns and numeric_item_code to bill_items table
+-- ✓ Created orders table for temporary order storage
+-- ✓ Created sections table with table-section mappings (1=Parcel, 2-14=General, 15-30=AC)
+-- ✓ Removed is_active column from shift_sessions table
+-- ✓ Removed item_group and is_active columns from items table
+-- ✓ Added helper functions for order workflow management
+-- ✓ Created views for pending bills, completed bills, and table status
+-- ✓ Updated existing data and added performance indexes
+--
+-- Note: Foreign key constraint between bill_items and bills was removed as requested
+-- to allow duplicates in bill_items. Data integrity is maintained through helper functions.
+-- ========================================================================
