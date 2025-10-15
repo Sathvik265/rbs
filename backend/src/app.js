@@ -1,9 +1,10 @@
+require('dotenv').config(); // at very top
+console.log("DB PASSWORD:", process.env.DB_PASSWORD, typeof process.env.DB_PASSWORD);
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const pool = require("./db");
-require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 8000;

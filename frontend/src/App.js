@@ -2064,37 +2064,6 @@ function SalesReports({ mode }) {
 
           <Card>
             <CardHeader>
-              <CardTitle>Payment Method Summary</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-4 border rounded">
-                  <p className="text-sm text-gray-600">Cash</p>
-                  <p className="text-lg font-bold">
-                    ₹{reportData.paymentSummary.cash.toFixed(2)}
-                  </p>
-                  <p className="text-xs text-gray-500">60% of total</p>
-                </div>
-                <div className="text-center p-4 border rounded">
-                  <p className="text-sm text-gray-600">Card</p>
-                  <p className="text-lg font-bold">
-                    ₹{reportData.paymentSummary.card.toFixed(2)}
-                  </p>
-                  <p className="text-xs text-gray-500">35% of total</p>
-                </div>
-                <div className="text-center p-4 border rounded">
-                  <p className="text-sm text-gray-600">UPI</p>
-                  <p className="text-lg font-bold">
-                    ₹{reportData.paymentSummary.upi.toFixed(2)}
-                  </p>
-                  <p className="text-xs text-gray-500">5% of total</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
               <CardTitle>Items Breakdown</CardTitle>
             </CardHeader>
             <CardContent>
