@@ -2163,7 +2163,7 @@ function Billing({
 
       const res = await axios.post(`${API}/bill`, payload);
       const billData = res.data;
-      const billNumber = billData?.bill_number || "Unknown";
+      const billNumber = billData?.header?.bill_number || "Unknown";
 
       toast.success(`Bill #${billNumber} created`);
 

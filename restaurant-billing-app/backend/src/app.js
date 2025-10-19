@@ -47,7 +47,11 @@ app.use((req, res, next) => {
 // POST /api/auth/login - Updated for shift_sessions table
 app.post("/api/auth/login", async (req, res) => {
   try {
+    console.log("Auth login request body:", req.body);
     const { staff_code: initials, date, track, is_root = false } = req.body;
+
+    // Normalize initials to uppercase for DB consistency
+    const upperStaffCode = initials ? String(initials).toUpperCase() : null;
 
     if (!initials || !date || !track) {
       return res.status(400).json({
@@ -55,7 +59,6 @@ app.post("/api/auth/login", async (req, res) => {
       });
     }
 
-    const upperStaffCode = initials.toUpperCase();
     let mode = "none";
 
     if (upperStaffCode === "CLK") mode = "clerk";
@@ -66,6 +69,7 @@ app.post("/api/auth/login", async (req, res) => {
     // Ensure shift sessions for the date exist before trying to find one
     const shiftsToEnsure = ["`", "``", "RBS1", "RBS2"];
     for (const shiftName of shiftsToEnsure) {
+      // create default system rows only for 'SYS' clerk placeholder if they don't exist
       await pool.query(
         `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status)
                  VALUES ($1, 'SYS', $2, 'OPEN') 
@@ -75,10 +79,13 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     // Find or create a shift session for this clerk and track
+    // Use the normalized uppercase initials when searching/creating clerk sessions
+    const clerkInitialsForDb = upperStaffCode;
+
     let shiftSessionResult = await pool.query(
       `SELECT shift_session_id FROM shift_sessions 
              WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
-      [track, date, initials]
+      [track, date, clerkInitialsForDb]
     );
 
     let shift_session_id;
@@ -87,11 +94,11 @@ app.post("/api/auth/login", async (req, res) => {
       // Create a new shift session for this clerk
       const createResult = await pool.query(
         `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status)
-                 VALUES ($1, $2, $3, 'OPEN') 
-                 ON CONFLICT (shift_name, session_date, clerk_initials) 
-                 DO UPDATE SET status = 'OPEN', start_time = CURRENT_TIMESTAMP
-                 RETURNING shift_session_id`,
-        [track, initials, date]
+     VALUES ($1, $2, $3, 'OPEN') 
+     ON CONFLICT (shift_name, session_date, clerk_initials) 
+     DO UPDATE SET status = 'OPEN', start_time = CURRENT_TIMESTAMP
+     RETURNING shift_session_id`,
+        [track, clerkInitialsForDb, date]
       );
       shift_session_id = createResult.rows[0].shift_session_id;
     } else {

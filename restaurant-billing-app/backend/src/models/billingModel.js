@@ -54,8 +54,8 @@ const BillingModel = {
       // Insert each item into the bill_items table
       for (const item of items) {
         await client.query(
-          `INSERT INTO bill_items (bill_id, item_code, item_name, quantity, unit_price, line_total)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+          `INSERT INTO bill_items (bill_id, item_code, item_name, quantity, unit_price, line_total, track, clerk_initials, table_no, party_no, bill_number)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
             billId,
             item.item_code || item.alpha_code || item.numeric_code,
@@ -63,6 +63,11 @@ const BillingModel = {
             item.quantity,
             item.unit_price || item.price,
             item.line_total,
+            track,
+            clerk_initials,
+            table_no,
+            party_no,
+            bill_number,
           ]
         );
       }
