@@ -248,7 +248,6 @@ exports.getShiftDemo = async (req, res) => {
           start_time: new Date().toISOString(),
           end_time: null,
           closed_by: null,
-          is_active: true,
         },
         {
           shift_session_id: "demo-2-" + requestedDate,
@@ -258,7 +257,6 @@ exports.getShiftDemo = async (req, res) => {
           start_time: new Date().toISOString(),
           end_time: null,
           closed_by: null,
-          is_active: true,
         },
         {
           shift_session_id: "demo-3-" + requestedDate,
@@ -268,7 +266,6 @@ exports.getShiftDemo = async (req, res) => {
           start_time: new Date().toISOString(),
           end_time: null,
           closed_by: null,
-          is_active: true,
         },
         {
           shift_session_id: "demo-4-" + requestedDate,
@@ -278,7 +275,6 @@ exports.getShiftDemo = async (req, res) => {
           start_time: new Date().toISOString(),
           end_time: null,
           closed_by: null,
-          is_active: true,
         },
       ];
     }
@@ -312,7 +308,6 @@ exports.demoToggle = async (req, res) => {
 
     const shiftSession = list[idx];
     shiftSession.status = shiftSession.status === "OPEN" ? "CLOSED" : "OPEN";
-    shiftSession.is_active = shiftSession.status === "OPEN";
 
     if (shiftSession.status === "CLOSED") {
       shiftSession.end_time = new Date().toISOString();

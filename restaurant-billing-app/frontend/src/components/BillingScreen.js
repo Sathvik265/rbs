@@ -150,37 +150,29 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
 
       // Updated payload - removed session_id dependency
       const billPayload = {
-        header: {
-          table_no: billData.table_no,
-          party_no: billData.party_no,
-          section: billData.section,
-          clerk_initials: "CLK",
-          track: track || "`", // Changed from "DINE_IN" to "`" to match shift names
-        },
-        items: items.map((item) => ({
-          code: item.code,
-          name: item.name,
-          qty: item.qty,
-          rate: item.rate,
-          amount: item.amount,
-        })),
+        bill_number: billData.bill_no,
         bill_date: billingDate,
-        grand_total: grandTotal,
-        subtotal: subtotal,
-        sgst: sgst,
-        cgst: cgst,
+        table_no: billData.table_no,
+        party_no: billData.party_no,
+        section: billData.section,
+        track: activeShift?.shift_name || track,
+        clerk_initials: activeShift?.clerk_initials,
+        subtotal,
+        sgst,
+        cgst,
         tax_amount: sgst + cgst,
+        grand_total: grandTotal,
+        items: items.map((item) => ({
+          item_code: item.code,
+          name: item.name,
+          quantity: item.qty,
+          unit_price: item.rate,
+          line_total: item.amount,
+        })),
       };
 
       console.log("Creating bill with payload:", billPayload);
-      const response = await createBill({
-        track: activeShift?.shift_name || track || "`",
-        clerk_initials: activeShift?.clerk_initials || "CLK",
-        table_no: billData.table_no,
-        party_no: billData.party_no,
-        bill_date: billingDate,
-        bill_number: billData.bill_no,
-      });
+      const response = await createBill(billPayload);
       console.log("Bill creation response:", response);
 
       // Updated bill number extraction - handles all possible response formats

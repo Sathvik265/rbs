@@ -89,7 +89,7 @@ app.post("/api/auth/login", async (req, res) => {
         `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status)
                  VALUES ($1, $2, $3, 'OPEN') 
                  ON CONFLICT (shift_name, session_date, clerk_initials) 
-                 DO UPDATE SET status = 'OPEN', start_time = CURRENT_TIMESTAMP, is_active = true
+                 DO UPDATE SET status = 'OPEN', start_time = CURRENT_TIMESTAMP
                  RETURNING shift_session_id`,
         [track, initials, date]
       );
