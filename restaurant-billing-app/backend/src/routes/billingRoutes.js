@@ -2,16 +2,36 @@ const express = require("express");
 const router = express.Router();
 const billingController = require("../controllers/billingController");
 
-// Order routes
-router.post("/order", billingController.createOrder);
+// Bill routes
+router.get("/bills", billingController.getAllBills);
+router.get("/bills/:billId", billingController.getBillById);
 router.get(
-  "/order/pending/:table_no",
-  billingController.getPendingOrdersByTable
+  "/bills/number/:billNumber/date/:billDate",
+  billingController.getBillByNumber
+);
+router.get("/bills/:billId/items", billingController.getBillItems);
+router.get("/bills/last-number/:date", billingController.getLastBillNumber);
+router.post("/bills", billingController.createBill);
+
+router.get(
+  "/bills/date-range/:startDate/:endDate",
+  billingController.getBillsByDateRange
 );
 
-// Bill routes
-router.post("/", billingController.createBill);
-router.get("/next_number", billingController.getNextBillNumber);
-router.get("/all", billingController.getAllBills);
+// Order routes
+router.get("/orders", billingController.getAllPendingOrders);
+router.get("/orders/table/:tableNo", billingController.getOrdersByTable);
+router.get(
+  "/orders/table/:tableNo/party/:partyNo",
+  billingController.getOrdersByTableAndParty
+);
+router.post("/orders", billingController.createOrder);
+router.put("/orders/:orderId", billingController.updateOrder);
+router.delete("/orders/:orderId", billingController.deleteOrder);
+router.delete(
+  "/orders/table/:tableNo/party/:partyNo",
+  billingController.clearOrders
+);
+router.get("/orders/total/:tableNo/:partyNo", billingController.getOrdersTotal);
 
 module.exports = router;

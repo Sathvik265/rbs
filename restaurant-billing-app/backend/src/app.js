@@ -9,8 +9,18 @@ const pool = require("./db");
 require("dotenv").config();
 require("./services/scheduler"); // Initialize shift scheduler (if still needed)
 
+// Create app before using app.use(...)
 const app = express();
 const PORT = process.env.PORT || 8000;
+
+// Add these imports after creating app (single import set)
+const billingRoutes = require("./routes/billingRoutes");
+const shiftRoutes = require("./routes/shiftRoutes");
+const itemRoutes = require("./routes/itemRoutes");
+const tableRoutes = require("./routes/tableRoutes");
+const reportRoutes = require("./routes/reportRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
+const reconciliationRoutes = require("./routes/reconciliationRoutes");
 
 // Security middleware
 app.use(
@@ -42,6 +52,15 @@ app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
+
+// ================ ROUTES (centralized) ================
+app.use("/api/billing", billingRoutes);
+app.use("/api/shifts", shiftRoutes);
+app.use("/api/items", itemRoutes);
+app.use("/api/tables", tableRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/reconciliation", reconciliationRoutes);
 
 // ================ AUTH ROUTES (UPDATED) ================
 // POST /api/auth/login - Updated for shift_sessions table
@@ -256,83 +275,6 @@ app.get("/api/menu/lookup/:code", async (req, res) => {
   } catch (error) {
     console.error("Lookup item error:", error);
     res.status(500).json({ detail: "Failed to lookup item" });
-  }
-});
-
-// ================ IMPORT ROUTE FILES ================
-const billingRoutes = require("./routes/billingRoutes");
-const shiftRoutes = require("./routes/shiftRoutes");
-const reportRoutes = require("./routes/reportRoutes");
-const dashboardRoutes = require("./routes/dashboardRoutes");
-const reconciliationRoutes = require("./routes/reconciliationRoutes");
-
-// ================ REGISTER ROUTES ================
-app.use("/api/bill", billingRoutes);
-app.use("/api/shifts", shiftRoutes);
-app.use("/api/reports", reportRoutes);
-app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/reconciliation", reconciliationRoutes);
-
-// ================ SETTINGS ROUTES (UNCHANGED) ================
-// GET /api/settings
-app.get("/api/settings", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT * FROM settings ORDER BY id LIMIT 1"
-    );
-    const settings = result.rows[0] || {
-      hotel_name: "Restaurant Name",
-      address: "",
-      phone: "",
-      gstin: "",
-    };
-    res.json(settings);
-  } catch (error) {
-    console.error("Get settings error:", error);
-    res.status(500).json({ detail: "Failed to get settings" });
-  }
-});
-
-// PUT /api/settings
-app.put("/api/settings", async (req, res) => {
-  try {
-    const { hotel_name, address, phone, gstin } = req.body;
-    const result = await pool.query(
-      `INSERT INTO settings (hotel_name, address, phone, gstin) 
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (id) 
-             DO UPDATE SET 
-                hotel_name = EXCLUDED.hotel_name,
-                address = EXCLUDED.address,
-                phone = EXCLUDED.phone,
-                gstin = EXCLUDED.gstin
-             RETURNING *`,
-      [hotel_name, address, phone, gstin]
-    );
-
-    if (result.rows.length === 0) {
-      const updateResult = await pool.query(
-        `UPDATE settings SET 
-                    hotel_name = $1, address = $2, phone = $3, gstin = $4
-                 WHERE id = (SELECT id FROM settings ORDER BY id LIMIT 1)
-                 RETURNING *`,
-        [hotel_name, address, phone, gstin]
-      );
-
-      if (updateResult.rows.length === 0) {
-        const insertResult = await pool.query(
-          `INSERT INTO settings (hotel_name, address, phone, gstin) 
-                     VALUES ($1, $2, $3, $4) RETURNING *`,
-          [hotel_name, address, phone, gstin]
-        );
-        return res.json(insertResult.rows[0]);
-      }
-      return res.json(updateResult.rows[0]);
-    }
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error("Update settings error:", error);
-    res.status(500).json({ detail: "Failed to update settings" });
   }
 });
 

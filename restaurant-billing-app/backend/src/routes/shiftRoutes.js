@@ -1,33 +1,129 @@
-// Updated shift routes for the new database schema
-// Works with the merged shift_sessions table
-
 const express = require("express");
 const router = express.Router();
-const shiftController = require("../controllers/shiftController");
+const ShiftModel = require("../models/shiftModel");
 
-// POST /api/shifts/close - For clerks to close their current shift session
-router.post("/close", shiftController.closeShift);
+// Shift routes
+router.get("/shifts", async (req, res) => {
+  try {
+    const shifts = await ShiftModel.getAllShifts();
+    res.json(shifts);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to fetch shifts", details: error.message });
+  }
+});
 
-// POST /api/shifts/manual-toggle - For admins to manually toggle a shift session's status
-router.post("/manual-toggle", shiftController.manualToggle);
+router.get("/shifts/:shiftName", async (req, res) => {
+  try {
+    const shift = await ShiftModel.getShiftByName(req.params.shiftName);
+    if (shift) {
+      res.json(shift);
+    } else {
+      res.status(404).json({ error: "Shift not found" });
+    }
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to fetch shift", details: error.message });
+  }
+});
 
-// GET /api/shifts/status - For admins to get the status of all shift sessions for the current date
-router.get("/status", shiftController.getShiftStatus);
+// Session routes
+router.get("/sessions", async (req, res) => {
+  try {
+    const sessions = await ShiftModel.getAllSessions();
+    res.json(sessions);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to fetch sessions", details: error.message });
+  }
+});
 
-// GET /api/shifts/current - For getting current shift session status (used by frontend)
-router.get("/current", shiftController.getShiftStatus);
+router.get("/sessions/:sessionId", async (req, res) => {
+  try {
+    const session = await ShiftModel.getSessionById(req.params.sessionId);
+    if (session) {
+      res.json(session);
+    } else {
+      res.status(404).json({ error: "Session not found" });
+    }
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to fetch session", details: error.message });
+  }
+});
 
-// POST /api/shifts/create - Create a new shift session for a clerk
-router.post("/create", shiftController.createShiftSession);
+router.post("/sessions", async (req, res) => {
+  try {
+    const session = await ShiftModel.createSession(req.body);
+    res.status(201).json(session);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to create session", details: error.message });
+  }
+});
 
-// GET /api/shifts/clerk/:clerk_initials - Get shift sessions for a specific clerk
-router.get("/clerk/:clerk_initials", shiftController.getClerkShiftSessions);
+router.put("/sessions/:sessionId/close", async (req, res) => {
+  try {
+    const { closedBy } = req.body;
+    const session = await ShiftModel.closeSession(
+      req.params.sessionId,
+      closedBy
+    );
+    res.json(session);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to close session", details: error.message });
+  }
+});
 
-// Demo routes for UI-only demonstrations
-// GET /api/shifts/demo?date=YYYY-MM-DD
-router.get("/demo", shiftController.getShiftDemo);
+router.get("/sessions/open/all", async (req, res) => {
+  try {
+    const sessions = await ShiftModel.getOpenSessions();
+    res.json(sessions);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to fetch open sessions", details: error.message });
+  }
+});
 
-// POST /api/shifts/demo-toggle - Toggle shift session status in demo store
-router.post("/demo-toggle", shiftController.demoToggle);
+router.get("/sessions/date/:date", async (req, res) => {
+  try {
+    const sessions = await ShiftModel.getSessionsByDate(req.params.date);
+    res.json(sessions);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to fetch sessions", details: error.message });
+  }
+});
+
+router.get("/current-shift", async (req, res) => {
+  try {
+    const shiftType = await ShiftModel.getCurrentShiftType();
+    res.json({ shift_type: shiftType });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to get current shift", details: error.message });
+  }
+});
+
+router.post("/sessions/initialize-today", async (req, res) => {
+  try {
+    const sessions = await ShiftModel.initializeTodaySessions();
+    res.json(sessions);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to initialize sessions", details: error.message });
+  }
+});
 
 module.exports = router;

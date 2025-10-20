@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import ReactDOM from "react-dom";
 import axios from "axios";
-import { updateMenuItem, getShiftStatus } from "./services/api";
+import { createOrder, createBill as createBillAPI, getBillById, getLastBillNumber, updateMenuItem, getShiftStatus } from "./services/api";
 import RecentBills from "./components/RecentBills";
 import "./styles/App.css";
 
@@ -186,19 +186,7 @@ const toast = {
   },
 };
 
-const LockKeyhole = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const ChefHat = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const FileText = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const History = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const Printer = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const Plus = ({ size = 16 }) => <span style={{ fontSize: size }}>+</span>;
-const Minus = ({ size = 16 }) => <span style={{ fontSize: size }}>-</span>;
-const Trash2 = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const Save = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const Settings = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const Users = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const Clock = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
-const HelpCircle = ({ size = 16 }) => <span style={{ fontSize: size }}></span>;
+
 const Loader2 = ({ size = 16, className = "" }) => (
   <span
     className={`inline-block animate-spin ${className}`}
@@ -379,8 +367,7 @@ function LoginPanel({ onLogin, onStartAdminVerification }) {
           res.data.mode,
           date,
           track,
-          res.data.session_id,
-          res.data.shift_id
+          res.data.session_id
         );
       }
 
@@ -1211,7 +1198,7 @@ function EnhancedReconciliation({ sessionId, mode }) {
   const [unprintedBills, setUnprintedBills] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const loadUnprintedBills = async () => {
+  const loadUnprintedBills = useCallback(async () => {
     if (!sessionId) return;
 
     setLoading(true);
@@ -1228,13 +1215,13 @@ function EnhancedReconciliation({ sessionId, mode }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionId]);
 
   useEffect(() => {
     if (mode && mode.includes("admin")) {
       loadUnprintedBills();
     }
-  }, [sessionId, mode]);
+  }, [mode, loadUnprintedBills]);
 
   if (!mode || !mode.includes("admin")) {
     return (
@@ -1306,7 +1293,7 @@ function TopItemsDashboard({ sessionId }) {
   const [topItems, setTopItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const loadTopItems = async () => {
+  const loadTopItems = useCallback(async () => {
     if (!sessionId) return;
 
     setLoading(true);
@@ -1323,13 +1310,13 @@ function TopItemsDashboard({ sessionId }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionId]);
 
   useEffect(() => {
     loadTopItems();
     const interval = setInterval(loadTopItems, 300000);
     return () => clearInterval(interval);
-  }, [sessionId]);
+  }, [loadTopItems]);
 
   return (
     <Card>
@@ -1872,6 +1859,7 @@ function Billing({
     await createBill(finalLines);
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const handleGlobalKeyDown = (event) => {
       if (event.key === "End" || event.key === "Home") {
@@ -1888,21 +1876,22 @@ function Billing({
 
   useEffect(() => {
     if (billingDate) {
-      const fetchNextBillNumber = async () => {
+      const fetchLastBillNumber = async () => {
         try {
-          const res = await axios.get(`${API}/bill/next_number`, {
-            params: { bill_date: billingDate },
-          });
-          setNextBillNumber(safeGet(res, "data.bill_number", 1));
+          const res = await getLastBillNumber(billingDate);
+          const lastBillNumber = res.last_bill_number || 0;
+          setNextBillNumber(lastBillNumber + 1);
         } catch (e) {
-          console.error("Failed to fetch bill number:", e);
-          toast.error("Failed to fetch next bill number.");
+          console.error("Failed to fetch last bill number:", e);
+          toast.error("Failed to fetch last bill number.");
           setNextBillNumber(1);
         }
       };
-      fetchNextBillNumber();
+      fetchLastBillNumber();
     }
   }, [billingDate]);
+
+
 
   const onHeaderChange = (patch) => {
     if (!currentTable || !setDrafts) return;
@@ -1941,41 +1930,18 @@ function Billing({
     setSectionByTable(tableNo);
     if (drafts && drafts[tableNo]) return;
 
-    try {
-      const res = await axios.get(`${API}/bill/last`, {
-        params: { table_no: tableNo, bill_date: billingDate },
-      });
-
-      const lastBill = res.data;
-      setDrafts((prev) => ({
-        ...safeObject(prev),
-        [tableNo]: {
-          header: safeObject(lastBill.header, {
-            table_no: tableNo,
-            party_no: "1",
-            section: "G",
-            bill_number: null,
-          }),
-          lines: safeArray(lastBill.items),
-          modified_from_bill_id: lastBill.id,
+    setDrafts((prev) => ({
+      ...safeObject(prev),
+      [tableNo]: {
+        header: {
+          table_no: tableNo,
+          party_no: "1",
+          section: "G",
+          bill_number: null,
         },
-      }));
-      toast.success(`Loaded last bill for table ${tableNo}`);
-    } catch (e) {
-      console.error("Error loading table data:", e);
-      setDrafts((prev) => ({
-        ...safeObject(prev),
-        [tableNo]: {
-          header: {
-            table_no: tableNo,
-            party_no: "1",
-            section: "G",
-            bill_number: null,
-          },
-          lines: [],
-        },
-      }));
-    }
+        lines: [],
+      },
+    }));
   };
 
   const handleTableNoKeyDown = (event) => {
@@ -1992,63 +1958,7 @@ function Billing({
     }
   };
 
-  const addItem = async (focusItemCode = true) => {
-    if (!entryCode || !currentTable) return null;
 
-    try {
-      const res = await axios.get(`${API}/menu/lookup/${entryCode}`);
-      const item = res.data;
-
-      if (!item) {
-        toast.error("Item not found");
-        return null;
-      }
-
-      const section = safeGet(currentDraft, "header.section", "G");
-      let unitPrice;
-
-      switch (section) {
-        case "AC":
-          unitPrice = safeGet(item, "price_ac", 0);
-          break;
-        case "P":
-          unitPrice = safeGet(item, "price_fixed", 0);
-          break;
-        default:
-          unitPrice = safeGet(item, "price_general", 0);
-      }
-
-      const newLine = {
-        code: entryCode.toUpperCase(),
-        name: safeGet(item, "name", "Unknown Item"),
-        quantity: qty || 1,
-        unit_price: Number(unitPrice),
-        line_total: Number((unitPrice * (qty || 1)).toFixed(2)),
-      };
-
-      if (focusItemCode && setDrafts) {
-        const updatedLines = [...safeArray(currentDraft.lines), newLine];
-        setDrafts((prev) => ({
-          ...safeObject(prev),
-          [currentTable]: {
-            ...currentDraft,
-            lines: updatedLines,
-          },
-        }));
-        setEntryCode("");
-        setQty(1);
-        if (itemCodeRef.current) {
-          itemCodeRef.current.focus();
-        }
-      }
-
-      return newLine;
-    } catch (e) {
-      console.error("Add item error:", e);
-      toast.error(safeGet(e, "response.data.detail", "Item not found"));
-      return null;
-    }
-  };
 
   const handleItemCodeKeyDown = (e) => {
     if (e.key === "F1") {
@@ -2136,7 +2046,7 @@ function Billing({
     [subtotal, sgst, cgst]
   );
 
-  const createBill = async (lines) => {
+  const createBill = useCallback(async (lines) => {
     if (!lines || lines.length === 0) {
       toast.error("No items to bill");
       return;
@@ -2147,28 +2057,39 @@ function Billing({
 
     try {
       const payload = {
-        header: {
-          table_no: safeGet(header, "table_no", currentTable),
-          party_no: safeGet(header, "party_no", "1"),
-          section: safeGet(header, "section", "G"),
-          track: activeShift?.shift_name || track || "`",
-          clerk_initials: activeShift?.clerk_initials || "CLK",
-        },
-        item_codes: lines.map((l) => safeGet(l, "code", "")),
-        quantities: lines.map((l) => safeGet(l, "quantity", 1)),
+        bill_number: nextBillNumber,
+        table_no: safeGet(header, "table_no", currentTable),
+        party_no: safeGet(header, "party_no", "1"),
+        section: safeGet(header, "section", "G"),
+        track: activeShift?.shift_name || track || "`",
+        clerk_initials: activeShift?.clerk_initials || "CLK",
+        subtotal: subtotal,
+        sgst: sgst,
+        cgst: cgst,
+        tax_amount: sgst + cgst,
+        grand_total: total,
         bill_date: billingDate,
         modified_from_bill_id: currentDraft.modified_from_bill_id,
         session_id: sessionId,
       };
 
-      const res = await axios.post(`${API}/bill`, payload);
-      const billData = res.data;
-      const billNumber = billData?.header?.bill_number || "Unknown";
+      const createdBill = await createBillAPI(payload);
+      const billId = createdBill?.bill_id;
+      const billNumber = createdBill?.bill_number || "Unknown";
 
       toast.success(`Bill #${billNumber} created`);
 
-      if (typeof window !== "undefined") {
-        window.printBillData = billData;
+      if (billId) {
+        const fullBillData = await getBillById(billId);
+        if (typeof window !== "undefined") {
+          window.printBillData = fullBillData;
+        }
+        setTimeout(() => {
+          window.print();
+          if (tableNoRef.current) {
+            tableNoRef.current.focus();
+          }
+        }, 200);
       }
 
       if (setDrafts) {
@@ -2185,21 +2106,126 @@ function Billing({
 
       setEntryCode("");
       setQty(1);
-      setNextBillNumber(Number(safeGet(billData, "header.bill_number", 0)) + 1);
 
-      setTimeout(() => {
-        window.print();
-        if (tableNoRef.current) {
-          tableNoRef.current.focus();
-        }
-      }, 200);
     } catch (e) {
       console.error("Bill creation error:", e);
       toast.error(safeGet(e, "response.data.detail", "Failed to create bill"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentDraft, nextBillNumber, currentTable, activeShift, track, subtotal, sgst, cgst, total, billingDate, sessionId, setDrafts, setCurrentTable, setEntryCode, setQty, tableNoRef]);
+
+  const addItem = useCallback(async (focusItemCode = true) => {
+    if (!entryCode || !currentTable) return null;
+
+    try {
+      const res = await axios.get(`${API}/menu/lookup/${entryCode}`);
+      const item = res.data;
+
+      if (!item) {
+        toast.error("Item not found");
+        return null;
+      }
+
+      const section = safeGet(currentDraft, "header.section", "G");
+      let unitPrice;
+
+      switch (section) {
+        case "AC":
+          unitPrice = safeGet(item, "price_ac", 0);
+          break;
+        case "P":
+          unitPrice = safeGet(item, "price_fixed", 0);
+          break;
+        default:
+          unitPrice = safeGet(item, "price_general", 0);
+      }
+
+      const newLine = {
+        code: entryCode.toUpperCase(),
+        name: safeGet(item, "name", "Unknown Item"),
+        quantity: qty || 1,
+        unit_price: Number(unitPrice),
+        line_total: Number((unitPrice * (qty || 1)).toFixed(2)),
+        numeric_code: safeGet(item, "numeric_code", ""),
+        alpha_code: safeGet(item, "alpha_code", ""),
+      };
+
+      await createOrder({
+        table_no: currentTable,
+        party_no: safeGet(currentDraft, "header.party_no", "1"),
+        item_name: newLine.name,
+        quantity: newLine.quantity,
+        unit_price: newLine.unit_price,
+        line_total: newLine.line_total,
+        track: activeShift?.shift_name || track || "`",
+        clerk_initials: activeShift?.clerk_initials || "CLK",
+        bill_number: 0,
+        item_code: newLine.alpha_code,
+        numeric_item_code: newLine.numeric_code,
+      });
+
+      if (focusItemCode && setDrafts) {
+        const updatedLines = [...safeArray(currentDraft.lines), newLine];
+        setDrafts((prev) => ({
+          ...safeObject(prev),
+          [currentTable]: {
+            ...currentDraft,
+            lines: updatedLines,
+          },
+        }));
+        setEntryCode("");
+        setQty(1);
+        if (itemCodeRef.current) {
+          itemCodeRef.current.focus();
+        }
+      }
+
+      return newLine;
+    } catch (e) {
+      console.error("Add item error:", e);
+      toast.error(safeGet(e, "response.data.detail", "Item not found"));
+      return null;
+    }
+  }, [entryCode, currentTable, currentDraft, qty, activeShift, track, setDrafts, setEntryCode, setQty, itemCodeRef]);
+
+  const handlePrintBill = useCallback(async () => {
+    if (!currentTable) {
+      toast.error("Please enter a table number before printing.");
+      return;
+    }
+
+    let finalLines = safeArray(currentDraft.lines);
+    if (document.activeElement === qtyRef.current && entryCode) {
+      const newItem = await addItem(false);
+      if (newItem) {
+        finalLines = [...finalLines, newItem];
+      } else {
+        return;
+      }
+    }
+
+    if (finalLines.length === 0) {
+      toast.error("Please add at least one item to the bill.");
+      return;
+    }
+
+    await createBill(finalLines);
+  }, [currentTable, currentDraft, entryCode, qtyRef, addItem, createBill]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event) => {
+      if (event.key === "End" || event.key === "Home") {
+        event.preventDefault();
+        handlePrintBill();
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, [handlePrintBill]);
 
   const displayBillNumber =
     safeGet(currentDraft, "header.bill_number") !== null
@@ -2712,11 +2738,9 @@ function App() {
   const [billingDate, setBillingDate] = useState(null);
   const [track, setTrack] = useState("");
   const [sessionId, setSessionId] = useState(null);
-  const [shiftId, setShiftId] = useState(null);
   const [isVerifyingAdmin, setIsVerifyingAdmin] = useState(false);
 
   const isAdmin = mode && mode.includes("admin");
-  const isClerk = mode === "clerk";
 
   const [drafts, setDrafts] = useState({});
   const [currentTable, setCurrentTable] = useState("");
@@ -2744,12 +2768,11 @@ function App() {
     fetchShiftStatus();
   }, [billingDate, track]);
 
-  const handleLogin = (newMode, date, newTrack, newSessionId, newShiftId) => {
+  const handleLogin = (newMode, date, newTrack, newSessionId) => {
     setMode(newMode);
     setBillingDate(date);
     setTrack(newTrack);
     setSessionId(newSessionId);
-    setShiftId(newShiftId);
     setIsVerifyingAdmin(false);
   };
 
@@ -2770,7 +2793,6 @@ function App() {
     setBillingDate(null);
     setTrack("");
     setSessionId(null);
-    setShiftId(null);
     setDrafts({});
     setCurrentTable("");
     setActiveTab("billing");

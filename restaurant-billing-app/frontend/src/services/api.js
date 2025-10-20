@@ -79,41 +79,41 @@ export const lookupMenuItem = async (code) => {
 
 // ==================== BILLING OPERATIONS ====================
 export const createOrder = async (orderData) => {
-  const response = await api.post("/bill/order", orderData);
+  const response = await api.post("/billing/orders", orderData);
   return response.data;
 };
 
 export const getPendingOrdersByTable = async (table_no) => {
-  const response = await api.get(`/bill/order/pending/${table_no}`);
+  const response = await api.get(`/billing/orders/table/${table_no}`);
   return response.data;
 };
 
-export const getNextBillNumber = async (bill_date) => {
-  const response = await api.get(`/bill/next_number?bill_date=${bill_date}`);
+export const getBillById = async (billId) => {
+  const response = await api.get(`/billing/bills/${billId}`);
   return response.data;
 };
+
+export const getLastBillNumber = async (date) => {
+  const response = await api.get(`/billing/bills/last-number/${date}`);
+  return response.data;
+};
+
+
 
 export const createBill = async (billData) => {
-  const response = await api.post("/bill", billData);
+  const response = await api.post("/billing/bills", billData);
   return response.data;
 };
 
-export const getLastBill = async (table_no, bill_date) => {
-  const response = await api.get(
-    `/bill/last?table_no=${table_no}&bill_date=${bill_date}`
-  );
-  return response.data;
-};
+
 
 export const getBillsByDate = async (bill_date) => {
-  const response = await api.get("/bill/all");
-  const allBills = response.data;
-  return allBills.filter((bill) => bill.bill_date === bill_date);
+  const response = await api.get(`/billing/bills/date-range/${bill_date}/${bill_date}`);
+  return response.data;
 };
 
 export const getShiftStatus = async (date) => {
-  const url = date ? `/shifts/status?date=${date}` : "/shifts/status";
-  const response = await api.get(url);
+  const response = await api.get("/shifts/sessions/open/all");
   return response.data;
 };
 
@@ -131,47 +131,16 @@ export const getCurrentShifts = async (date) => {
     return response.data;
   }
 
-  // If a date is provided, pass it as a query parameter
-  const url = date
-    ? `/shifts/status?date=${encodeURIComponent(date)}`
-    : "/shifts/status";
-  const response = await api.get(url);
+  const response = await api.get("/shifts/sessions/open/all");
   return response.data;
 };
 
 export const closeShift = async (session_id) => {
-  // send both names for compatibility; backend accepts shift_session_id
-  const response = await api.post("/shifts/close", {
-    session_id,
-    shift_session_id: session_id,
-  });
+  const response = await api.put(`/shifts/sessions/${session_id}/close`);
   return response.data;
 };
 
-export const manualToggleShift = async (
-  sessionIdOrShiftId,
-  new_status,
-  date
-) => {
-  // Keep demo and production behavior; use shift_session_id key for backend
-  if (USE_DEMO) {
-    const url = date
-      ? `/shifts/demo-toggle?date=${encodeURIComponent(date)}`
-      : "/shifts/demo-toggle";
-    const response = await api.post(url, {
-      shift_session_id: sessionIdOrShiftId,
-    });
-    return response.data;
-  }
 
-  const response = await api.post("/shifts/manual-toggle", {
-    // send both keys for compatibility
-    shift_session_id: sessionIdOrShiftId,
-    shift_id: sessionIdOrShiftId,
-    new_status,
-  });
-  return response.data;
-};
 
 // ==================== REPORTS ====================
 export const getTimeWiseReport = async (bill_date) => {

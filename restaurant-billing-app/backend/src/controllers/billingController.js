@@ -1,164 +1,290 @@
 const BillingModel = require("../models/billingModel");
 const OrderModel = require("../models/orderModel");
-const pool = require("../db");
 
-const BillingController = {
-  async createOrder(req, res) {
-    try {
-      const newOrder = await OrderModel.createOrder(req.body);
-      res.status(201).json(newOrder);
-    } catch (error) {
-      console.error("Create order error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  },
-
-  async getPendingOrdersByTable(req, res) {
-    try {
-      const { table_no } = req.params;
-      const orders = await OrderModel.getPendingOrdersByTable(table_no);
-      res.status(200).json(orders);
-    } catch (error) {
-      console.error("Get pending orders error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  },
-
-  async createBill(req, res) {
-    try {
-      const {
-        header,
-        item_codes,
-        quantities,
-        bill_date,
-        modified_from_bill_id,
-        session_id,
-      } = req.body;
-
-      if (!header || !item_codes || !quantities || !bill_date) {
-        return res.status(400).json({ error: "Missing required fields" });
-      }
-
-      const { bill_number } = await BillingModel.getNextBillNumber(bill_date);
-
-      let items = [];
-      let subtotal = 0;
-
-      for (let i = 0; i < item_codes.length; i++) {
-        const code = item_codes[i];
-        const quantity = quantities[i];
-
-        const itemRes = await pool.query(
-          "SELECT * FROM items WHERE alpha_code = $1 OR numeric_code = $1",
-          [code]
-        );
-
-        if (itemRes.rows.length === 0) {
-          return res
-            .status(400)
-            .json({ error: `Item with code ${code} not found` });
-        }
-
-        const item = itemRes.rows[0];
-        const section = header.section || "G";
-        let unit_price;
-
-        switch (section) {
-          case "AC":
-            unit_price = item.price_ac;
-            break;
-          case "P":
-            unit_price = item.price_fixed;
-            break;
-          default:
-            unit_price = item.price_general;
-        }
-
-        const line_total = unit_price * quantity;
-        subtotal += line_total;
-
-        items.push({
-          item_code: code,
-          item_name: item.name,
-          quantity: quantity,
-          unit_price: unit_price,
-          line_total: line_total,
-        });
-      }
-
-      const sgst = subtotal * 0.025;
-      const cgst = subtotal * 0.025;
-      const tax_amount = sgst + cgst;
-      const grand_total = subtotal + tax_amount;
-
-      const billData = {
-        bill_number,
-        bill_date,
-        table_no: header.table_no,
-        party_no: header.party_no,
-        section: header.section,
-        track: header.track,
-        clerk_initials: header.clerk_initials,
-        subtotal,
-        sgst,
-        cgst,
-        tax_amount,
-        grand_total,
-        items,
-      };
-
-      const newBill = await BillingModel.createBill(billData);
-
-      // Construct response similar to what frontend expects
-      const responseData = {
-        header: {
-          bill_number: newBill.bill_number,
-          table_no: billData.table_no,
-        },
-        items: items,
-        subtotal: billData.subtotal,
-        sgst: billData.sgst,
-        cgst: billData.cgst,
-        grand_total: billData.grand_total,
-        hotel_name: "Udupi Anand Bhavan",
-        address: "Default Address",
-        phone: "123-456-7890",
-        gstin: "GST123456789",
-        created_at: new Date().toISOString(),
-        bill_id: newBill.bill_id,
-        detail: newBill.detail,
-      };
-
-      res.status(201).json(responseData);
-    } catch (error) {
-      console.error("Create bill error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  },
-
-  async getNextBillNumber(req, res) {
-    try {
-      const { bill_date } = req.query;
-      if (!bill_date) {
-        return res.status(400).json({ error: "bill_date is required" });
-      }
-      const nextBillNumber = await BillingModel.getNextBillNumber(bill_date);
-      res.status(200).json(nextBillNumber);
-    } catch (error) {
-      console.error("Get next bill number error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  },
-
+const billingController = {
+  // Get all bills
   async getAllBills(req, res) {
     try {
       const bills = await BillingModel.getAllBills();
-      res.status(200).json(bills);
+      res.json(bills);
     } catch (error) {
-      console.error("Get all bills error:", error);
-      res.status(500).json({ error: error.message });
+      console.error("Error fetching bills:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to fetch bills", details: error.message });
+    }
+  },
+
+  // Get bill by ID
+  async getBillById(req, res) {
+    try {
+      const { billId } = req.params;
+      const bill = await BillingModel.getBillById(billId);
+      if (bill) {
+        res.json(bill);
+      } else {
+        res.status(404).json({ error: "Bill not found" });
+      }
+    } catch (error) {
+      console.error("Error fetching bill:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to fetch bill", details: error.message });
+    }
+  },
+
+  // Get bill by number and date
+  async getBillByNumber(req, res) {
+    try {
+      const { billNumber, billDate } = req.params;
+      const bill = await BillingModel.getBillByNumber(billNumber, billDate);
+      if (bill) {
+        res.json(bill);
+      } else {
+        res.status(404).json({ error: "Bill not found" });
+      }
+    } catch (error) {
+      console.error("Error fetching bill:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to fetch bill", details: error.message });
+    }
+  },
+
+  // Get bill items from JSON
+  async getBillItems(req, res) {
+    try {
+      const { billId } = req.params;
+      const items = await BillingModel.getBillItems(billId);
+      res.json(items);
+    } catch (error) {
+      console.error("Error fetching bill items:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to fetch bill items", details: error.message });
+    }
+  },
+
+  // Create a new bill
+  async createBill(req, res) {
+    try {
+      const billData = req.body;
+
+      // Validate required fields
+      if (!billData.table_no || !billData.party_no) {
+        return res
+          .status(400)
+          .json({ error: "table_no and party_no are required" });
+      }
+
+      // Get pending orders for this table/party
+      const orders = await OrderModel.getPendingOrdersByTableAndParty(
+        billData.table_no,
+        billData.party_no
+      );
+
+      if (orders.length === 0) {
+        return res
+          .status(400)
+          .json({ error: "No pending orders found for this table/party" });
+      }
+
+      const bill_date = new Date().toISOString().split("T")[0];
+
+      const billDataWithItems = {
+        ...billData,
+        bill_date,
+        items: orders,
+        order_id: `ORD-${billData.table_no}-${billData.party_no}-${Date.now()}`,
+      };
+
+      // Create bill
+      const result = await BillingModel.createBill(billDataWithItems);
+
+      res.status(201).json(result);
+    } catch (error) {
+      console.error("Error creating bill:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to create bill", details: error.message });
+    }
+  },
+
+  async getLastBillNumber(req, res) {
+    try {
+      const { date } = req.params;
+      const result = await BillingModel.getLastBillNumber(date);
+      res.json(result);
+    } catch (error) {
+      console.error("Error getting last bill number:", error);
+      res
+        .status(500)
+        .json({
+          error: "Failed to get last bill number",
+          details: error.message,
+        });
+    }
+  },
+
+
+
+  // Get bills by date range
+  async getBillsByDateRange(req, res) {
+    try {
+      const { startDate, endDate } = req.params;
+      const bills = await BillingModel.getBillsByDateRange(startDate, endDate);
+      res.json(bills);
+    } catch (error) {
+      console.error("Error fetching bills:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to fetch bills", details: error.message });
+    }
+  },
+
+  // === ORDER OPERATIONS ===
+
+  // Get all pending orders
+  async getAllPendingOrders(req, res) {
+    try {
+      const orders = await OrderModel.getAllPendingOrders();
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to fetch orders", details: error.message });
+    }
+  },
+
+  // Get orders by table
+  async getOrdersByTable(req, res) {
+    try {
+      const { tableNo } = req.params;
+      const orders = await OrderModel.getPendingOrdersByTable(tableNo);
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to fetch orders", details: error.message });
+    }
+  },
+
+  // Get orders by table and party
+  async getOrdersByTableAndParty(req, res) {
+    try {
+      const { tableNo, partyNo } = req.params;
+      const orders = await OrderModel.getPendingOrdersByTableAndParty(
+        tableNo,
+        partyNo
+      );
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to fetch orders", details: error.message });
+    }
+  },
+
+  // Create new order
+  async createOrder(req, res) {
+    try {
+      const orderData = req.body;
+
+      // Validate required fields
+      if (!orderData.table_no || !orderData.item_name || !orderData.quantity) {
+        return res.status(400).json({
+          error: "table_no, item_name, and quantity are required",
+        });
+      }
+
+      // Set defaults
+      if (!orderData.party_no) orderData.party_no = "1";
+      if (!orderData.track) orderData.track = "TRACK1";
+      if (!orderData.clerk_initials) orderData.clerk_initials = "SYS";
+      if (!orderData.bill_number) orderData.bill_number = 0;
+
+      const order = await OrderModel.createOrder(orderData);
+      res.status(201).json(order);
+    } catch (error) {
+      console.error("Error creating order:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to create order", details: error.message });
+    }
+  },
+
+  // Update order
+  async updateOrder(req, res) {
+    try {
+      const { orderId } = req.params;
+      const { quantity, unit_price } = req.body;
+
+      if (!quantity || !unit_price) {
+        return res
+          .status(400)
+          .json({ error: "quantity and unit_price are required" });
+      }
+
+      const line_total = quantity * unit_price;
+      const updatedOrder = await OrderModel.updateOrderQuantity(
+        orderId,
+        quantity,
+        line_total
+      );
+
+      res.json(updatedOrder);
+    } catch (error) {
+      console.error("Error updating order:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to update order", details: error.message });
+    }
+  },
+
+  // Delete order
+  async deleteOrder(req, res) {
+    try {
+      const { orderId } = req.params;
+      await OrderModel.deleteOrder(orderId);
+      res.json({ message: "Order deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting order:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to delete order", details: error.message });
+    }
+  },
+
+  // Clear orders for table/party
+  async clearOrders(req, res) {
+    try {
+      const { tableNo, partyNo } = req.params;
+      await OrderModel.clearOrders(tableNo, partyNo);
+      res.json({ message: "Orders cleared successfully" });
+    } catch (error) {
+      console.error("Error clearing orders:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to clear orders", details: error.message });
+    }
+  },
+
+  // Get orders total
+  async getOrdersTotal(req, res) {
+    try {
+      const { tableNo, partyNo } = req.params;
+      const total = await OrderModel.getOrdersTotal(tableNo, partyNo);
+      res.json(total);
+    } catch (error) {
+      console.error("Error getting orders total:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to get orders total", details: error.message });
     }
   },
 };
 
-module.exports = BillingController;
+module.exports = billingController;
