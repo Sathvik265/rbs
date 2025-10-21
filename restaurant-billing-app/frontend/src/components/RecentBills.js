@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { getBillsByDate, getBillById } from "../services/api";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./ui/Table";
+import "../styles/RecentBills.css";
 
 function RecentBills({ billingDate }) {
   const [bills, setBills] = useState([]);
@@ -10,6 +10,8 @@ function RecentBills({ billingDate }) {
   const [selectedBill, setSelectedBill] = useState(null);
   const [focusedBillIndex, setFocusedBillIndex] = useState(-1); // For keyboard navigation
   const [expandedBillId, setExpandedBillId] = useState(null); // For showing/hiding items
+  const [billDetailsCache, setBillDetailsCache] = useState({});
+  const rowRefs = useRef([]);
 
   const fetchBills = React.useCallback(async () => {
     if (!billingDate) {
@@ -36,6 +38,76 @@ function RecentBills({ billingDate }) {
       bill.table_no.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Normalize bill returned by backend to a consistent shape used by UI
+  const normalizeBill = (raw) => {
+    if (!raw) return raw;
+    const bill = { ...raw };
+    let items = [];
+    if (Array.isArray(raw.items) && raw.items.length > 0) {
+      items = raw.items;
+    } else if (raw.items_json) {
+      try {
+        items =
+          typeof raw.items_json === "string"
+            ? JSON.parse(raw.items_json)
+            : raw.items_json;
+      } catch (e) {
+        // fallback: treat as empty
+        items = [];
+      }
+    }
+
+    // Map item keys to UI-friendly keys
+    const mapped = items.map((it) => {
+      return {
+        name: it.item_name || it.name || it.item_name || "",
+        quantity: it.quantity || it.qty || 1,
+        unit_price:
+          it.unit_price || it.fixed_price || it.actual_price || it.price || 0,
+        line_total:
+          it.line_total ||
+          Number((it.quantity || 1) * (it.unit_price || it.fixed_price || 0)),
+      };
+    });
+
+    bill.items = mapped;
+    // ensure grand_total available as number/string
+    bill.grand_total = bill.grand_total || bill.total || 0;
+    return bill;
+  };
+
+  const toggleBillAtIndex = React.useCallback(
+    async (index) => {
+      const bill = filteredBills[index];
+      if (!bill) return;
+
+      // If already expanded, collapse
+      if (expandedBillId === bill.id) {
+        setExpandedBillId(null);
+        setSelectedBill(null);
+        return;
+      }
+
+      // If cached, use cache
+      if (billDetailsCache[bill.id]) {
+        setSelectedBill(billDetailsCache[bill.id]);
+        setExpandedBillId(bill.id);
+        return;
+      }
+
+      try {
+        const raw = await getBillById(bill.id);
+        const fullBill = normalizeBill(raw);
+        setBillDetailsCache((prev) => ({ ...prev, [bill.id]: fullBill }));
+        setSelectedBill(fullBill);
+        setExpandedBillId(bill.id);
+      } catch (err) {
+        console.error("Failed to fetch bill details:", err);
+      }
+    },
+    [filteredBills, billDetailsCache, expandedBillId]
+  );
+
   useEffect(() => {
     fetchBills();
   }, [fetchBills]);
@@ -58,12 +130,19 @@ function RecentBills({ billingDate }) {
           );
           break;
         case "Enter":
+        case " ": // Space
           event.preventDefault();
           if (focusedBillIndex !== -1) {
-            const bill = filteredBills[focusedBillIndex];
-            setSelectedBill(bill);
-            setExpandedBillId((prevId) => (prevId === bill.id ? null : bill.id));
+            toggleBillAtIndex(focusedBillIndex);
           }
+          break;
+        case "Escape":
+          setSearchTerm("");
+          break;
+        case "F3":
+          // focus search box by id
+          const searchEl = document.getElementById("recent-bills-search");
+          if (searchEl) searchEl.focus();
           break;
         default:
           break;
@@ -74,7 +153,33 @@ function RecentBills({ billingDate }) {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [filteredBills, focusedBillIndex]); // Dependencies: filteredBills and focusedBillIndex
+  }, [filteredBills, focusedBillIndex, toggleBillAtIndex]); // include toggleBillAtIndex
+
+  // Focus the DOM node corresponding to focusedBillIndex
+  useEffect(() => {
+    if (
+      focusedBillIndex >= 0 &&
+      rowRefs.current &&
+      rowRefs.current[focusedBillIndex]
+    ) {
+      try {
+        rowRefs.current[focusedBillIndex].focus();
+      } catch (e) {
+        /* ignore focus errors */
+      }
+    }
+  }, [focusedBillIndex, filteredBills]);
+
+  // Clamp focused index when filteredBills change
+  useEffect(() => {
+    if (filteredBills.length === 0) {
+      setFocusedBillIndex(-1);
+    } else if (focusedBillIndex === -1) {
+      setFocusedBillIndex(0);
+    } else if (focusedBillIndex >= filteredBills.length) {
+      setFocusedBillIndex(filteredBills.length - 1);
+    }
+  }, [filteredBills, focusedBillIndex]);
 
   if (loading) {
     return (
@@ -96,220 +201,117 @@ function RecentBills({ billingDate }) {
   }
 
   return (
-    <div className="recent-bills-container">
-      <div className="system-title">Udupi Anand Bhavan — Billing System</div>
-
-      <div className="nav-section">
-        <div className="nav-tabs">
-          <div className="nav-tab">📋 Billing</div>
-          <div className="nav-tab">🍽️ Food Menu</div>
-          <div className="nav-tab active">📄 Recent Bills</div>
-          <div className="nav-tab">⚙️ Admin</div>
+    <div className="recent-bills-wrapper">
+      <div className="recent-bills-header">
+        <h2>Billing for {billingDate}</h2>
+        <div className="search-inline">
+          <input
+            id="recent-bills-search"
+            className="search-input"
+            placeholder="Search bill no or table..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
+        {error && <div className="recent-error">{error}</div>}
       </div>
 
-      <div className="bills-main-content">
-        <div className="bills-left-panel">
-          <div className="bills-header">
-            <h2>Billing for {billingDate}</h2>
+      <div className="cards-container">
+        {filteredBills.length === 0 && (
+          <div className="empty-message">
+            {searchTerm
+              ? `No bills found matching "${searchTerm}"`
+              : `No bills found for ${billingDate}`}
           </div>
+        )}
 
-          <div className="search-section">
-            <div className="search-group">
-              <label>Search Bills</label>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Enter bill number or table..."
-              />
-            </div>
-          </div>
-
-          {error && (
-            <div className="error-message">
-              {error}
-              <button onClick={() => setError(null)}>×</button>
-            </div>
-          )}
-
-          <div className="bills-table">
-            <div className="table-header">
-              <span>Bill No.</span>
-              <span>Table</span>
-              <span>Party</span>
-              <span>Section</span>
-              <span>Amount</span>
-              <span>Time</span>
-            </div>
-
-            {filteredBills.length === 0 ? (
-              <div className="empty-table">
-                <div className="empty-message">
-                  {searchTerm
-                    ? `No bills found matching "${searchTerm}"`
-                    : `No bills found for ${billingDate}`}
-                </div>
-              </div>
-            ) : (
-              filteredBills.map((bill, index) => (
-                <React.Fragment key={bill.id}>
-                  <div
-                    className={`table-row ${
-                      selectedBill?.id === bill.id ? "selected" : ""
-                    } ${focusedBillIndex === index ? "focused" : ""}`}
-                    onClick={async () => {
-                      if (selectedBill?.id === bill.id && expandedBillId === bill.id) {
-                        // Collapse if already selected and expanded
-                        setSelectedBill(null);
-                        setExpandedBillId(null);
-                      } else {
-                        // Expand if not selected or not expanded
-                        const fullBill = await getBillById(bill.id);
-                        setSelectedBill(fullBill);
-                        setExpandedBillId(bill.id);
-                      }
-                      setFocusedBillIndex(index); // Set focus on click
-                    }}
-                  >
-                    <span>#{bill.bill_number}</span>
-                    <span>{bill.table_no}</span>
-                    <span>{bill.party_no}</span>
-                    <span>G</span>
-                    <span>₹{parseFloat(bill.grand_total).toFixed(2)}</span>
-                    <span>
-                      {new Date(bill.created_at).toLocaleTimeString("en-US", {
-                        hour12: false,
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
+        {filteredBills.map((bill, index) => {
+          const isExpanded =
+            expandedBillId === bill.id && selectedBill?.id === bill.id;
+          return (
+            <div
+              key={bill.id}
+              ref={(el) => (rowRefs.current[index] = el)}
+              tabIndex={0}
+              className={`bill-card ${isExpanded ? "expanded" : ""} ${
+                focusedBillIndex === index ? "focused" : ""
+              }`}
+              onClick={async () => {
+                if (isExpanded) {
+                  setSelectedBill(null);
+                  setExpandedBillId(null);
+                } else {
+                  if (billDetailsCache[bill.id]) {
+                    setSelectedBill(billDetailsCache[bill.id]);
+                    setExpandedBillId(bill.id);
+                  } else {
+                    const raw = await getBillById(bill.id);
+                    const fullBill = normalizeBill(raw);
+                    setBillDetailsCache((prev) => ({
+                      ...prev,
+                      [bill.id]: fullBill,
+                    }));
+                    setSelectedBill(fullBill);
+                    setExpandedBillId(bill.id);
+                  }
+                }
+                setFocusedBillIndex(index);
+              }}
+            >
+              <div className="card-top">
+                <div className="card-left">
+                  <div className="bill-title">Bill #{bill.bill_number}</div>
+                  <div className="bill-time">
+                    {new Date(bill.created_at).toLocaleString()}
                   </div>
-                  {expandedBillId === bill.id && selectedBill?.id === bill.id && selectedBill.items && selectedBill.items.length > 0 && (
-                    <div className="bill-items-dropdown">
-                      <h4>Items</h4>
-                      <div className="items-list">
-                        {selectedBill.items.map((item, itemIndex) => (
-                          <div key={itemIndex} className="item-row">
-                            <span className="item-name">{item.name}</span>
-                            <span className="item-details">
-                              {item.quantity} × ₹
-                              {parseFloat(item.unit_price).toFixed(2)} = ₹
-                              {parseFloat(item.line_total).toFixed(2)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </React.Fragment>
-              ))
-            )}
-          </div>
-
-          <div className="bills-summary">
-            <div className="summary-stats">
-              <div className="stat-item">
-                <span>Total Bills:</span>
-                <span>{filteredBills.length}</span>
-              </div>
-              <div className="stat-item">
-                <span>Total Amount:</span>
-                <span>
-                  ₹
-                  {filteredBills
-                    .reduce(
-                      (sum, bill) => sum + parseFloat(bill.grand_total),
-                      0
-                    )
-                    .toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bills-right-panel">
-          <div className="help-section">
-            <div className="help-header">
-              <span>🔍</span> Help
-            </div>
-
-            <div className="help-content">
-              <p>Click on a bill to view details.</p>
-              <p>Use the search box to filter bills by number or table.</p>
-
-              <div className="keyboard-shortcuts">
-                <h4>Keyboard Shortcuts</h4>
-                <ul>
-                  <li>
-                    <strong>F3:</strong> Focus search box
-                  </li>
-                  <li>
-                    <strong>Enter:</strong> Select highlighted bill
-                  </li>
-                  <li>
-                    <strong>Esc:</strong> Clear search
-                  </li>
-                  <li>
-                    <strong>Arrow Keys:</strong> Navigate bills
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {selectedBill && (
-            <div className="bill-details-section">
-              <h3>Bill Details</h3>
-
-              <div className="bill-info">
-                <div className="info-row">
-                  <span>Bill Number:</span>
-                  <span>#{selectedBill.bill_number}</span>
                 </div>
-                <div className="info-row">
-                  <span>Table:</span>
-                  <span>{selectedBill.table_no}</span>
-                </div>
-                <div className="info-row">
-                  <span>Party:</span>
-                  <span>{selectedBill.party_no}</span>
-                </div>
-                <div className="info-row">
-                  <span>Time:</span>
-                  <span>
-                    {new Date(selectedBill.created_at).toLocaleString()}
-                  </span>
-                </div>
-                <div className="info-row">
-                  <span>Amount:</span>
-                  <span>
-                    ₹{parseFloat(selectedBill.grand_total).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-
-              {selectedBill.items && selectedBill.items.length > 0 && (
-                <div className="bill-items">
-                  <h4>Items</h4>
-                  <div className="items-list">
-                    {selectedBill.items.map((item, index) => (
-                      <div key={index} className="item-row">
-                        <span className="item-name">{item.name}</span>
-                        <span className="item-details">
-                          {item.quantity} × ₹
-                          {parseFloat(item.unit_price).toFixed(2)} = ₹
-                          {parseFloat(item.line_total).toFixed(2)}
-                        </span>
-                      </div>
-                    ))}
+                <div className="card-right">
+                  <div className="bill-amount">
+                    ₹{parseFloat(bill.grand_total).toFixed(2)}
                   </div>
+                  <div className="expand-icon">{isExpanded ? "▲" : "▼"}</div>
+                </div>
+              </div>
+
+              {isExpanded && selectedBill && selectedBill.items && (
+                <div className="card-body">
+                  <table className="items-table">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th className="col-qty">Qty</th>
+                        <th className="col-price">Price</th>
+                        <th className="col-total">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedBill.items.map((it, i) => (
+                        <tr key={i}>
+                          <td>{it.name}</td>
+                          <td className="col-qty">{it.quantity}</td>
+                          <td className="col-price">
+                            ₹{parseFloat(it.unit_price).toFixed(2)}
+                          </td>
+                          <td className="col-total">
+                            ₹{parseFloat(it.line_total).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="total-row">
+                        <td colSpan={3} className="total-label">
+                          Total Amount:
+                        </td>
+                        <td className="col-total">
+                          ₹{parseFloat(selectedBill.grand_total).toFixed(2)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
-          )}
-        </div>
+          );
+        })}
       </div>
     </div>
   );

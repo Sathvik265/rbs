@@ -1,0 +1,134 @@
+:root {
+  --card-bg: #ffffff;
+  --card-border: #e6e8ee;
+  --accent: #5a67f2;
+  --muted: #9aa1b2;
+  --success: #20a64a;
+}
+
+.recent-bills-wrapper {
+  padding: 18px 24px;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+.recent-bills-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.recent-bills-header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #333;
+}
+.search-inline {
+  min-width: 260px;
+}
+.search-input {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  width: 260px;
+}
+
+.cards-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bill-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 1px 0 rgba(30, 41, 59, 0.02);
+  outline: none;
+}
+.bill-card:focus {
+  box-shadow: 0 0 0 3px rgba(90, 103, 242, 0.12);
+}
+.bill-card.expanded {
+  border-color: var(--accent);
+  box-shadow: 0 4px 18px rgba(90, 103, 242, 0.06);
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.card-left {
+  display: flex;
+  flex-direction: column;
+}
+.bill-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+.bill-time {
+  color: var(--muted);
+  font-size: 13px;
+}
+.card-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.bill-amount {
+  color: var(--success);
+  font-weight: 700;
+}
+.expand-icon {
+  font-size: 14px;
+  color: #222;
+}
+
+.card-body {
+  margin-top: 12px;
+  padding: 12px;
+  border-top: 1px dashed #e9eef8;
+  background: #fafbfd;
+  border-radius: 6px;
+}
+.items-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.items-table th {
+  text-align: left;
+  padding: 10px;
+  background: #f5f7fb;
+  font-weight: 600;
+}
+.items-table td {
+  padding: 10px;
+  border-bottom: 1px solid #eef2f7;
+}
+.col-qty,
+.col-price,
+.col-total {
+  text-align: right;
+}
+.total-row td {
+  font-weight: 700;
+  border-top: 2px solid #eef2f7;
+}
+
+.empty-message {
+  padding: 28px;
+  color: var(--muted);
+}
+
+.recent-error {
+  margin-left: 12px;
+  color: #b33;
+  font-weight: 600;
+}
+
+.focused {
+  box-shadow: 0 0 0 3px rgba(90, 103, 242, 0.08);
+}
