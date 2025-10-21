@@ -1,329 +1,147 @@
-// Updated shift controller for the new database schema
-// Works with the merged shift_sessions table instead of separate shifts and sessions
+const ShiftModel = require("../models/shiftModel");
 
-const pool = require("../db");
-
-// Simple in-memory demo store keyed by date string -> array of shift session objects
-const demoStore = {};
-
-// For clerks to close their current shift session
-exports.closeShift = async (req, res) => {
-  try {
-    const { shift_session_id, clerk_initials } = req.body;
-
-    if (!shift_session_id && !clerk_initials) {
-      return res.status(400).json({
-        detail: "Either shift_session_id or clerk_initials is required",
-      });
+const shiftController = {
+  // Shift routes
+  async getAllShifts(req, res) {
+    try {
+      const shifts = await ShiftModel.getAllShifts();
+      res.json(shifts);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to fetch shifts", details: error.message });
     }
+  },
 
-    let updateQuery;
-    let updateParams;
-
-    if (shift_session_id) {
-      // Close specific shift session by ID
-      updateQuery = `
-                UPDATE shift_sessions 
-                SET status = 'CLOSED', end_time = CURRENT_TIMESTAMP
-                WHERE shift_session_id = $1 AND status = 'OPEN'
-                RETURNING *`;
-      updateParams = [shift_session_id];
-    } else {
-      // Close current active shift session for the clerk
-      updateQuery = `
-                UPDATE shift_sessions 
-                SET status = 'CLOSED', end_time = CURRENT_TIMESTAMP
-                WHERE clerk_initials = $1 AND session_date = CURRENT_DATE AND status = 'OPEN'
-                RETURNING *`;
-      updateParams = [clerk_initials];
-    }
-
-    const updateResult = await pool.query(updateQuery, updateParams);
-
-    if (updateResult.rows.length === 0) {
-      return res.status(404).json({
-        detail: "Active shift session not found.",
-      });
-    }
-
-    res.json({
-      detail: `Shift session ${updateResult.rows[0].shift_name} closed successfully.`,
-      shift_session: updateResult.rows[0],
-    });
-  } catch (error) {
-    console.error("Close shift error:", error);
-    res.status(500).json({ detail: "Failed to close shift session" });
-  }
-};
-
-// For admins to manually toggle a shift session's status
-exports.manualToggle = async (req, res) => {
-  try {
-    // Enhanced logging to help trace clients sending malformed requests
-    const requesterIp =
-      req.ip || req.headers["x-forwarded-for"] || req.connection?.remoteAddress;
-    console.log("Manual toggle request received from:", requesterIp);
-    console.log("Manual toggle request headers:", req.headers);
-    console.log("Manual toggle request body:", req.body);
-
-    const shiftSessionId =
-      req.body.shift_session_id ||
-      req.body.shiftSessionId ||
-      req.body.shift_id ||
-      req.body.shiftId;
-    let newStatus =
-      req.body.new_status || req.body.newStatus || req.body.status;
-
-    if (typeof newStatus === "string") newStatus = newStatus.toUpperCase();
-
-    if (
-      !shiftSessionId ||
-      !newStatus ||
-      !["OPEN", "CLOSED"].includes(newStatus)
-    ) {
-      return res.status(400).json({
-        detail:
-          "shift_session_id and a valid newStatus (OPEN or CLOSED) are required",
-      });
-    }
-
-    console.log(
-      `Manual toggle: Setting shift session ${shiftSessionId} to ${newStatus}`
-    );
-
-    const updateResult = await pool.query(
-      `UPDATE shift_sessions 
-             SET status = $1::varchar, 
-                 end_time = CASE WHEN $1::varchar = 'CLOSED' THEN CURRENT_TIMESTAMP ELSE NULL END
-             WHERE shift_session_id = $2::uuid 
-             RETURNING *`,
-      [newStatus, shiftSessionId]
-    );
-
-    if (updateResult.rows.length === 0) {
-      return res.status(404).json({ detail: "Shift session not found" });
-    }
-
-    console.log("Shift session updated successfully:", updateResult.rows[0]);
-
-    res.json({
-      detail: `Shift session status updated to ${newStatus}`,
-      shift_session: updateResult.rows[0],
-    });
-  } catch (error) {
-    console.error("Manual toggle shift error:", error);
-    res.status(500).json({ detail: "Failed to toggle shift session status" });
-  }
-};
-
-// For admins to get the status of all shift sessions for a given date
-exports.getShiftStatus = async (req, res) => {
-  try {
-    const requestedDate =
-      req.query?.date || new Date().toISOString().slice(0, 10);
-    console.log("Getting shift session status for date:", requestedDate);
-
-    let result = await pool.query(
-      `SELECT shift_session_id, shift_name, clerk_initials, status, start_time, end_time, closed_by
-             FROM shift_sessions 
-             WHERE session_date = $1 
-             ORDER BY shift_name, start_time DESC`,
-      [requestedDate]
-    );
-
-    // If no shift sessions exist for that date, initialize the four standard shift sessions
-    if (result.rows.length === 0) {
-      console.log(
-        "No shift sessions found for date, initializing default shift sessions for:",
-        requestedDate
-      );
-
-      const standardShifts = ["`", "``", "RBS1", "RBS2"];
-      for (const shiftName of standardShifts) {
-        await pool.query(
-          `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, start_time, status)
-                     VALUES ($1::varchar, 'SYS', $2::date, CURRENT_TIMESTAMP, 'OPEN')
-                     ON CONFLICT (shift_name, session_date, clerk_initials) DO NOTHING`,
-          [shiftName, requestedDate]
-        );
+  async getShiftByName(req, res) {
+    try {
+      const shift = await ShiftModel.getShiftByName(req.params.shiftName);
+      if (shift) {
+        res.json(shift);
+      } else {
+        res.status(404).json({ error: "Shift not found" });
       }
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to fetch shift", details: error.message });
+    }
+  },
 
-      // Re-query to return created shift sessions
-      result = await pool.query(
-        `SELECT shift_session_id, shift_name, clerk_initials, status, start_time, end_time, closed_by
-                 FROM shift_sessions 
-                 WHERE session_date = $1 
-                 ORDER BY shift_name, start_time DESC`,
-        [requestedDate]
+  // Session routes
+  async getAllSessions(req, res) {
+    try {
+      const sessions = await ShiftModel.getAllSessions();
+      res.json(sessions);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to fetch sessions", details: error.message });
+    }
+  },
+
+  async getSessionById(req, res) {
+    try {
+      const session = await ShiftModel.getSessionById(req.params.sessionId);
+      if (session) {
+        res.json(session);
+      } else {
+        res.status(404).json({ error: "Session not found" });
+      }
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to fetch session", details: error.message });
+    }
+  },
+
+  async createSession(req, res) {
+    try {
+      const session = await ShiftModel.createSession(req.body);
+      res.status(201).json(session);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to create session", details: error.message });
+    }
+  },
+
+  async closeSession(req, res) {
+    try {
+      const { closedBy } = req.body;
+      const session = await ShiftModel.closeSession(
+        closedBy, // Correct order: closedBy first
+        req.params.sessionId // Then sessionUuid
       );
+      res.json(session);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to close session", details: error.message });
     }
+  },
 
-    console.log("Shift session status result:", result.rows);
-    res.json(result.rows);
-  } catch (error) {
-    console.error("Get shift session status error:", error);
-    res.status(500).json({ detail: "Failed to fetch shift session statuses" });
-  }
+  async getOpenSessions(req, res) {
+    try {
+      const sessions = await ShiftModel.getOpenSessions();
+      res.json(sessions);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to fetch open sessions", details: error.message });
+    }
+  },
+
+  async getSessionsByDate(req, res) {
+    try {
+      const sessions = await ShiftModel.getSessionsByDate(req.params.date);
+      res.json(sessions);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to fetch sessions", details: error.message });
+    }
+  },
+
+  async getCurrentShiftType(req, res) {
+    try {
+      const shiftType = await ShiftModel.getCurrentShiftType();
+      res.json({ shift_type: shiftType });
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to get current shift", details: error.message });
+    }
+  },
+
+  async ensureAllShiftSessionsExist(req, res) { // Renamed function
+    try {
+      const sessions = await ShiftModel.ensureAllShiftSessionsExist(); // Call new function name
+      res.json(sessions);
+    } catch (error) {
+      res
+        .status(500)
+        .json({ error: "Failed to ensure shift sessions exist", details: error.message });
+    }
+  },
+
+  // New function to reopen a session
+  async reopenSession(req, res) {
+    try {
+      const { sessionId } = req.params;
+      const session = await ShiftModel.reopenSession(sessionId);
+      if (session) {
+        res.json(session);
+      } else {
+        res.status(404).json({ error: "Session not found" });
+      }
+    } catch (error) {
+      console.error("Error reopening session:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to reopen session", details: error.message });
+    }
+  },
 };
 
-// Create a new shift session for a clerk
-exports.createShiftSession = async (req, res) => {
-  try {
-    const { shift_name, clerk_initials, session_date } = req.body;
-
-    if (!shift_name || !clerk_initials) {
-      return res.status(400).json({
-        detail: "shift_name and clerk_initials are required",
-      });
-    }
-
-    const date = session_date || new Date().toISOString().slice(0, 10);
-
-    const result = await pool.query(
-      `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status)
-             VALUES ($1, $2, $3, 'OPEN')
-             ON CONFLICT (shift_name, session_date, clerk_initials) 
-             DO UPDATE SET 
-                status = 'OPEN', 
-                start_time = CURRENT_TIMESTAMP,
-                end_time = NULL
-             RETURNING *`,
-      [shift_name, clerk_initials, date]
-    );
-
-    res.json({
-      detail: "Shift session created successfully",
-      shift_session: result.rows[0],
-    });
-  } catch (error) {
-    console.error("Create shift session error:", error);
-    res.status(500).json({ detail: "Failed to create shift session" });
-  }
-};
-
-// Get shift sessions for a specific clerk
-exports.getClerkShiftSessions = async (req, res) => {
-  try {
-    const { clerk_initials } = req.params;
-    const { date, active_only } = req.query;
-
-    let query = `
-            SELECT * FROM shift_sessions 
-            WHERE clerk_initials = $1`;
-    const params = [clerk_initials];
-
-    if (date) {
-      query += ` AND session_date = $${params.length + 1}`;
-      params.push(date);
-    }
-
-    if (active_only === "true") {
-      query += ` AND status = 'OPEN'`;
-    }
-
-    query += ` ORDER BY session_date DESC, start_time DESC`;
-
-    const result = await pool.query(query, params);
-    res.json(result.rows);
-  } catch (error) {
-    console.error("Get clerk shift sessions error:", error);
-    res.status(500).json({ detail: "Failed to fetch clerk shift sessions" });
-  }
-};
-
-// Demo: return static shift sessions for UI demos (does not persist to DB)
-exports.getShiftDemo = async (req, res) => {
-  try {
-    const requestedDate =
-      req.query?.date || new Date().toISOString().slice(0, 10);
-
-    if (!demoStore[requestedDate]) {
-      // Create 4 demo shift sessions
-      demoStore[requestedDate] = [
-        {
-          shift_session_id: "demo-1-" + requestedDate,
-          shift_name: "`",
-          clerk_initials: "DEMO",
-          status: "OPEN",
-          start_time: new Date().toISOString(),
-          end_time: null,
-          closed_by: null,
-        },
-        {
-          shift_session_id: "demo-2-" + requestedDate,
-          shift_name: "``",
-          clerk_initials: "DEMO",
-          status: "OPEN",
-          start_time: new Date().toISOString(),
-          end_time: null,
-          closed_by: null,
-        },
-        {
-          shift_session_id: "demo-3-" + requestedDate,
-          shift_name: "RBS1",
-          clerk_initials: "DEMO",
-          status: "OPEN",
-          start_time: new Date().toISOString(),
-          end_time: null,
-          closed_by: null,
-        },
-        {
-          shift_session_id: "demo-4-" + requestedDate,
-          shift_name: "RBS2",
-          clerk_initials: "DEMO",
-          status: "OPEN",
-          start_time: new Date().toISOString(),
-          end_time: null,
-          closed_by: null,
-        },
-      ];
-    }
-
-    res.json(demoStore[requestedDate]);
-  } catch (error) {
-    console.error("getShiftDemo error:", error);
-    res.status(500).json({ detail: "Failed to return demo shift sessions" });
-  }
-};
-
-// Demo toggle: toggle the status in demoStore
-exports.demoToggle = async (req, res) => {
-  try {
-    const shiftSessionId = req.body.shift_session_id || req.body.shiftSessionId;
-    const requestedDate =
-      req.query?.date || new Date().toISOString().slice(0, 10);
-
-    if (!shiftSessionId)
-      return res.status(400).json({ detail: "shift_session_id required" });
-
-    const list = demoStore[requestedDate];
-    if (!list)
-      return res
-        .status(404)
-        .json({ detail: "No demo shift sessions for date" });
-
-    const idx = list.findIndex((s) => s.shift_session_id === shiftSessionId);
-    if (idx === -1)
-      return res.status(404).json({ detail: "Shift session not found" });
-
-    const shiftSession = list[idx];
-    shiftSession.status = shiftSession.status === "OPEN" ? "CLOSED" : "OPEN";
-
-    if (shiftSession.status === "CLOSED") {
-      shiftSession.end_time = new Date().toISOString();
-      shiftSession.closed_by = "DEMO";
-    } else {
-      shiftSession.end_time = null;
-      shiftSession.closed_by = null;
-    }
-
-    list[idx] = shiftSession;
-    res.json({
-      detail: "Demo shift session toggled",
-      shift_session: shiftSession,
-    });
-  } catch (error) {
-    console.error("demoToggle error:", error);
-    res.status(500).json({ detail: "Failed to toggle demo shift session" });
-  }
-};
+module.exports = shiftController;

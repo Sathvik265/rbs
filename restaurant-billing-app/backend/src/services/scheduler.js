@@ -1,36 +1,44 @@
 const cron = require('node-cron');
 const pool = require('../db');
+const ShiftModel = require('../models/shiftModel'); // Import ShiftModel
 
 // Schedule a job to run at 12:00 AM every day to open shifts.
 cron.schedule('0 0 * * *', async () => {
   console.log('Running daily shift opening job...');
-  const today = new Date().toISOString().slice(0, 10);
-  const shiftsToOpen = ['`', '``', 'RBS1', 'RBS2'];
-
-  for (const shiftName of shiftsToOpen) {
-    try {
-      await pool.query(
-        "INSERT INTO shifts (shift_name, date, status) VALUES ($1, $2, 'OPEN') ON CONFLICT (shift_name, date) DO NOTHING",
-        [shiftName, today]
-      );
-      console.log(`Shift ${shiftName} for ${today} ensured open.`);
-    } catch (error) {
-      console.error(`Error opening shift ${shiftName} for ${today}:`, error);
+  try {
+    await ShiftModel.ensureAllShiftSessionsExist(); // Ensure all shifts have an entry
+    const shiftsToOpen = ["`", "``", "RBS1", "RBS2"];
+    for (const shiftName of shiftsToOpen) {
+      const session = await ShiftModel.createSession({ // Use createSession to open/update
+        shift_name: shiftName,
+        clerk_initials: "SYS_AUTO",
+        status: "OPEN",
+      });
+      console.log(`Shift ${shiftName} set to OPEN. Session ID: ${session.session_id}`);
     }
+    console.log('All shifts set to OPEN.');
+  } catch (error) {
+    console.error('Error opening shifts:', error);
   }
 });
 
 // Schedule a job to run at 11:59 PM every day to close open shifts.
-// cron.schedule('59 23 * * *', async () => {
-//   console.log('Running daily shift closing job...');
-//   try {
-//     const result = await pool.query(
-//       "UPDATE shifts SET status = 'CLOSED', end_time = CURRENT_TIMESTAMP WHERE status = 'OPEN' AND end_time IS NULL RETURNING *"
-//     );
-//     console.log(`Closed ${result.rowCount} open shifts.`);
-//   } catch (error) {
-//     console.error('Error closing open shifts:', error);
-//   }
-// });
+cron.schedule('59 23 * * *', async () => {
+  console.log('Running daily shift closing job...');
+  try {
+    const shiftsToClose = ["`", "``", "RBS1", "RBS2"];
+    for (const shiftName of shiftsToClose) {
+      // Find the current open session for this shift
+      const currentSession = await ShiftModel.getCurrentOpenSession(shiftName);
+      if (currentSession) {
+        await ShiftModel.closeSession(currentSession.session_id, "SYS_AUTO");
+        console.log(`Shift ${shiftName} set to CLOSED. Session ID: ${currentSession.session_id}`);
+      }
+    }
+    console.log('All shifts set to CLOSED.');
+  } catch (error) {
+    console.error('Error closing shifts:', error);
+  }
+});
 
 console.log('Shift scheduler initialized.');

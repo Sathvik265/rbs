@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { getBillsByDate } from "../services/api";
+import { getBillsByDate, getBillById } from "../services/api";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./ui/Table";
 
 function RecentBills({ billingDate }) {
   const [bills, setBills] = useState([]);
@@ -7,6 +8,8 @@ function RecentBills({ billingDate }) {
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBill, setSelectedBill] = useState(null);
+  const [focusedBillIndex, setFocusedBillIndex] = useState(-1); // For keyboard navigation
+  const [expandedBillId, setExpandedBillId] = useState(null); // For showing/hiding items
 
   const fetchBills = React.useCallback(async () => {
     if (!billingDate) {
@@ -17,6 +20,7 @@ function RecentBills({ billingDate }) {
       setLoading(true);
       const response = await getBillsByDate(billingDate);
       setBills(response || []);
+      setFocusedBillIndex(response && response.length > 0 ? 0 : -1); // Set focus to first bill
       setError(null);
     } catch (err) {
       console.error("Error fetching bills:", err);
@@ -26,15 +30,51 @@ function RecentBills({ billingDate }) {
     }
   }, [billingDate]);
 
-  useEffect(() => {
-    fetchBills();
-  }, [fetchBills]);
-
   const filteredBills = bills.filter(
     (bill) =>
       bill.bill_number.toString().includes(searchTerm) ||
       bill.table_no.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  useEffect(() => {
+    fetchBills();
+  }, [fetchBills]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (filteredBills.length === 0) return;
+
+      switch (event.key) {
+        case "ArrowUp":
+          event.preventDefault();
+          setFocusedBillIndex((prevIndex) =>
+            prevIndex <= 0 ? filteredBills.length - 1 : prevIndex - 1
+          );
+          break;
+        case "ArrowDown":
+          event.preventDefault();
+          setFocusedBillIndex((prevIndex) =>
+            prevIndex >= filteredBills.length - 1 ? 0 : prevIndex + 1
+          );
+          break;
+        case "Enter":
+          event.preventDefault();
+          if (focusedBillIndex !== -1) {
+            const bill = filteredBills[focusedBillIndex];
+            setSelectedBill(bill);
+            setExpandedBillId((prevId) => (prevId === bill.id ? null : bill.id));
+          }
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [filteredBills, focusedBillIndex]); // Dependencies: filteredBills and focusedBillIndex
 
   if (loading) {
     return (
@@ -112,27 +152,57 @@ function RecentBills({ billingDate }) {
                 </div>
               </div>
             ) : (
-              filteredBills.map((bill) => (
-                <div
-                  key={bill.id}
-                  className={`table-row ${
-                    selectedBill?.id === bill.id ? "selected" : ""
-                  }`}
-                  onClick={() => setSelectedBill(bill)}
-                >
-                  <span>#{bill.bill_number}</span>
-                  <span>{bill.table_no}</span>
-                  <span>{bill.party_no}</span>
-                  <span>G</span>
-                  <span>₹{parseFloat(bill.grand_total).toFixed(2)}</span>
-                  <span>
-                    {new Date(bill.created_at).toLocaleTimeString("en-US", {
-                      hour12: false,
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </div>
+              filteredBills.map((bill, index) => (
+                <React.Fragment key={bill.id}>
+                  <div
+                    className={`table-row ${
+                      selectedBill?.id === bill.id ? "selected" : ""
+                    } ${focusedBillIndex === index ? "focused" : ""}`}
+                    onClick={async () => {
+                      if (selectedBill?.id === bill.id && expandedBillId === bill.id) {
+                        // Collapse if already selected and expanded
+                        setSelectedBill(null);
+                        setExpandedBillId(null);
+                      } else {
+                        // Expand if not selected or not expanded
+                        const fullBill = await getBillById(bill.id);
+                        setSelectedBill(fullBill);
+                        setExpandedBillId(bill.id);
+                      }
+                      setFocusedBillIndex(index); // Set focus on click
+                    }}
+                  >
+                    <span>#{bill.bill_number}</span>
+                    <span>{bill.table_no}</span>
+                    <span>{bill.party_no}</span>
+                    <span>G</span>
+                    <span>₹{parseFloat(bill.grand_total).toFixed(2)}</span>
+                    <span>
+                      {new Date(bill.created_at).toLocaleTimeString("en-US", {
+                        hour12: false,
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                  {expandedBillId === bill.id && selectedBill?.id === bill.id && selectedBill.items && selectedBill.items.length > 0 && (
+                    <div className="bill-items-dropdown">
+                      <h4>Items</h4>
+                      <div className="items-list">
+                        {selectedBill.items.map((item, itemIndex) => (
+                          <div key={itemIndex} className="item-row">
+                            <span className="item-name">{item.name}</span>
+                            <span className="item-details">
+                              {item.quantity} × ₹
+                              {parseFloat(item.unit_price).toFixed(2)} = ₹
+                              {parseFloat(item.line_total).toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </React.Fragment>
               ))
             )}
           </div>

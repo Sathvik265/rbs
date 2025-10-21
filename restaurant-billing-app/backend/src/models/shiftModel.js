@@ -45,41 +45,65 @@ const ShiftModel = {
     return result.rows[0];
   },
 
-  // Create a new session
+  // Create a new session or update existing if shift_name already exists
   async createSession(sessionData) {
     const {
       shift_name,
       clerk_initials,
-      session_date,
+      session_date = "1970-01-01", // Default to fixed date
       start_time = null,
       status = "OPEN",
     } = sessionData;
 
-    const result = await pool.query(
-      `INSERT INTO sessions (
-        shift_name, clerk_initials, session_date, start_time, status
-      )
-      VALUES ($1, $2, $3, COALESCE($4, CURRENT_TIMESTAMP), $5)
-      RETURNING *`,
-      [shift_name, clerk_initials, session_date, start_time, status]
+    // Check if a session for this shift_name already exists
+    const existingSession = await pool.query(
+      `SELECT * FROM sessions WHERE shift_name = $1`,
+      [shift_name]
     );
-    return result.rows[0];
+
+    if (existingSession.rows.length > 0) {
+      // If session exists, update its status and other relevant fields
+      const sessionId = existingSession.rows[0].id;
+      const result = await pool.query(
+        `UPDATE sessions
+         SET clerk_initials = $1,
+             session_date = $2,
+             start_time = COALESCE($3, CURRENT_TIMESTAMP),
+             status = $4,
+             end_time = NULL,
+             closed_by = NULL
+         WHERE id = $5
+         RETURNING *`,
+        [clerk_initials, session_date, start_time, status, sessionId]
+      );
+      return result.rows[0];
+    } else {
+      // If no session exists, create a new one
+      const result = await pool.query(
+        `INSERT INTO sessions (
+          shift_name, clerk_initials, session_date, start_time, status
+        )
+        VALUES ($1, $2, $3, COALESCE($4, CURRENT_TIMESTAMP), $5)
+        RETURNING *`,
+        [shift_name, clerk_initials, session_date, start_time, status]
+      );
+      return result.rows[0];
+    }
   },
 
-  // Close a session
-  async closeSession(sessionId, closedBy) {
-    const result = await pool.query(
-      `UPDATE sessions 
-       SET status = 'CLOSED', 
-           end_time = CURRENT_TIMESTAMP,
-           closed_by = $1
-       WHERE id = $2
-       RETURNING *`,
-      [closedBy, sessionId]
-    );
-    return result.rows[0];
-  },
-
+    // Close a session
+    async closeSession(sessionUuid, closedBy) { // Changed sessionId to sessionUuid
+      const result = await pool.query(
+        `UPDATE sessions
+         SET status = 'CLOSED',
+             end_time = CURRENT_TIMESTAMP,
+             closed_by = $1
+         WHERE session_id = $2 // Changed id to session_id
+         RETURNING *`,
+        [closedBy, sessionUuid]
+      );
+      return result.rows[0];
+    },
   // Get open sessions
   async getOpenSessions() {
     const result = await pool.query(
@@ -88,11 +112,10 @@ const ShiftModel = {
     return result.rows;
   },
 
-  // Get sessions by date
-  async getSessionsByDate(sessionDate) {
+  // Get all sessions (sessionDate is irrelevant)
+  async getSessionsByDate(sessionDate) { // sessionDate parameter is now ignored
     const result = await pool.query(
-      "SELECT * FROM sessions WHERE session_date = $1 ORDER BY start_time",
-      [sessionDate]
+      "SELECT * FROM sessions ORDER BY shift_name, start_time", // Order by shift_name
     );
     return result.rows;
   },
@@ -107,19 +130,17 @@ const ShiftModel = {
   },
 
   // Get current open session for a shift
-  async getCurrentOpenSession(shiftName, sessionDate) {
-    const result = await pool.query(
-      `SELECT * FROM sessions 
-       WHERE shift_name = $1 
-         AND session_date = $2 
-         AND status = 'OPEN'
-       ORDER BY start_time DESC
-       LIMIT 1`,
-      [shiftName, sessionDate]
-    );
-    return result.rows[0];
-  },
-
+    async getCurrentOpenSession(shiftName) { // Removed sessionDate
+      const result = await pool.query(
+        `SELECT * FROM sessions
+         WHERE shift_name = $1
+           AND status = 'OPEN'
+         ORDER BY start_time DESC
+         LIMIT 1`,
+        [shiftName]
+      );
+      return result.rows[0];
+    },
   // Get sessions by clerk
   async getSessionsByClerk(clerkInitials) {
     const result = await pool.query(
@@ -188,6 +209,20 @@ const ShiftModel = {
     await pool.query("DELETE FROM sessions WHERE id = $1", [sessionId]);
   },
 
+
+  // Reopen a closed session
+  async reopenSession(sessionUuid) { // Changed sessionId to sessionUuid
+    const result = await pool.query(
+      `UPDATE sessions
+       SET status = 'OPEN',
+           end_time = NULL,
+           closed_by = NULL
+       WHERE session_id = $1 // Changed id to session_id
+       RETURNING *`,
+      [sessionUuid]
+    );
+    return result.rows[0];
+  },
   // ==================== HELPER FUNCTIONS ====================
 
   // Get current shift type based on time
@@ -208,26 +243,34 @@ const ShiftModel = {
     }
   },
 
-  // Initialize today's sessions
-  async initializeTodaySessions() {
-    const today = new Date().toISOString().split("T")[0];
+  // Ensure all shift types have a session entry, creating if not exists
+  async ensureAllShiftSessionsExist() {
     const shifts = ["`", "``", "RBS1", "RBS2"];
+    const fixedDate = "1970-01-01"; // Use a fixed date as session_date is irrelevant
 
     const results = [];
     for (const shift of shifts) {
       try {
-        const existing = await this.getCurrentOpenSession(shift, today);
-        if (!existing) {
+        // Check if a session for this shift_name already exists
+        const existing = await pool.query(
+          `SELECT * FROM sessions WHERE shift_name = $1`,
+          [shift]
+        );
+
+        if (existing.rows.length === 0) {
+          // If no session exists, create a new one
           const session = await this.createSession({
             shift_name: shift,
             clerk_initials: "SYS",
-            session_date: today,
-            status: "OPEN",
+            session_date: fixedDate, // Use fixed date
+            status: "CLOSED", // Start as closed, will be opened by scheduler
           });
           results.push(session);
+        } else {
+          results.push(existing.rows[0]); // Add existing session to results
         }
       } catch (error) {
-        console.error(`Error initializing session for ${shift}:`, error);
+        console.error(`Error ensuring session for ${shift}:`, error);
       }
     }
     return results;

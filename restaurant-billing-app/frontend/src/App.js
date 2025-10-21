@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import ReactDOM from "react-dom";
 import axios from "axios";
-import { createOrder, createBill as createBillAPI, getBillById, getLastBillNumber, updateMenuItem, getShiftStatus } from "./services/api";
+import { createOrder, createBill as createBillAPI, getBillById, getLastBillNumber, updateMenuItem, getShiftStatus, getPendingOrdersByTableAndParty, reopenShift, closeShift } from "./services/api";
 import RecentBills from "./components/RecentBills";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./components/ui/Table";
 import "./styles/App.css";
 
 const BACKEND_URL = "http://127.0.0.1:8000";
@@ -85,37 +86,7 @@ const Label = ({ children, className = "" }) => (
   </label>
 );
 
-const Table = ({ children, className = "" }) => (
-  <div className="overflow-x-auto">
-    <table className={`min-w-full divide-y divide-gray-200 ${className}`}>
-      {children}
-    </table>
-  </div>
-);
 
-const TableHeader = ({ children }) => (
-  <thead className="bg-gray-50">{children}</thead>
-);
-const TableBody = ({ children }) => (
-  <tbody className="bg-white divide-y divide-gray-200">{children}</tbody>
-);
-const TableRow = ({ children, className = "" }) => (
-  <tr className={className}>{children}</tr>
-);
-const TableHead = ({ children, className = "" }) => (
-  <th
-    className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${className}`}
-  >
-    {children}
-  </th>
-);
-const TableCell = ({ children, className = "" }) => (
-  <td
-    className={`px-6 py-4 whitespace-nowrap text-sm text-gray-900 ${className}`}
-  >
-    {children}
-  </td>
-);
 
 const Tabs = ({ children, value, onValueChange }) => (
   <div className="w-full">
@@ -492,14 +463,12 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
 
   // Load shift status for admin
   const loadShiftStatus = React.useCallback(async () => {
-    if (!isAdmin || !currentDate) return;
+    if (!isAdmin) return; // currentDate is no longer relevant
 
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/shifts/status?date=${currentDate}`, {
-        headers: { Authorization: "admin" },
-      });
-      setShifts(safeArray(res.data));
+      const res = await getShiftStatus(); // No date parameter needed
+      setShifts(safeArray(res)); // getShiftStatus now returns an array directly
     } catch (e) {
       console.error("Failed to load shift status:", e);
       toast.error("Failed to load shift status");
@@ -507,7 +476,7 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, currentDate]);
+  }, [isAdmin]); // Removed currentDate from dependencies
 
   useEffect(() => {
     if (isAdmin) {
@@ -541,27 +510,24 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
     setShowCloseConfirm(false);
   };
 
-  // Toggle shift status (for admin)
-  const handleToggleShift = async (shiftId, currentStatus) => {
+  // Handle individual shift actions (for admin)
+  const handleShiftAction = async (shiftId, currentStatus) => {
     if (!isAdmin) return;
 
-    const newStatus = currentStatus === "OPEN" ? "CLOSED" : "OPEN";
-
     try {
-      await axios.post(
-        `${API}/shifts/manual-toggle`,
-        {
-          shift_id: shiftId,
-          new_status: newStatus,
-        },
-        { headers: { Authorization: "admin" } }
-      );
-
-      toast.success(`Shift ${newStatus.toLowerCase()} successfully`);
+      if (currentStatus === "OPEN") {
+        // Close the shift
+        await closeShift(shiftId); // Assuming closeShift takes sessionId
+        toast.success(`Shift closed successfully`);
+      } else {
+        // Reopen the shift
+        await reopenShift(shiftId); // Assuming reopenShift takes sessionId
+        toast.success(`Shift reopened successfully`);
+      }
       loadShiftStatus();
     } catch (e) {
-      console.error("Failed to toggle shift:", e);
-      toast.error(safeGet(e, "response.data.detail", "Failed to toggle shift"));
+      console.error("Failed to perform shift action:", e);
+      toast.error(safeGet(e, "response.data.detail", "Failed to perform shift action"));
     }
   };
 
@@ -610,7 +576,7 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
             </TableHeader>
             <TableBody>
               {shifts.map((shift) => (
-                <TableRow key={shift.shift_session_id}>
+                <TableRow key={shift.session_id}>
                   <TableCell className="font-medium">
                     {shift.shift_name}
                   </TableCell>
@@ -642,7 +608,7 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
                         shift.status === "OPEN" ? "destructive" : "success"
                       }
                       onClick={() =>
-                        handleToggleShift(shift.shift_session_id, shift.status)
+                        handleShiftAction(shift.session_id, shift.status)
                       }
                     >
                       {shift.status === "OPEN" ? "Close" : "Re-open"}
@@ -1835,61 +1801,24 @@ function Billing({
     }
   }, [activeTab]);
 
-  const handlePrintBill = async () => {
-    if (!currentTable) {
-      toast.error("Please enter a table number before printing.");
-      return;
+
+
+  const fetchLastBillNumber = useCallback(async () => {
+    if (!billingDate) return;
+    try {
+      const res = await getLastBillNumber(billingDate);
+      const lastBillNumber = res.last_bill_number || 0;
+      setNextBillNumber(lastBillNumber + 1);
+    } catch (e) {
+      console.error("Failed to fetch last bill number:", e);
+      toast.error("Failed to fetch last bill number.");
+      setNextBillNumber(1);
     }
-
-    let finalLines = safeArray(currentDraft.lines);
-    if (document.activeElement === qtyRef.current && entryCode) {
-      const newItem = await addItem(false);
-      if (newItem) {
-        finalLines = [...finalLines, newItem];
-      } else {
-        return;
-      }
-    }
-
-    if (finalLines.length === 0) {
-      toast.error("Please add at least one item to the bill.");
-      return;
-    }
-
-    await createBill(finalLines);
-  };
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const handleGlobalKeyDown = (event) => {
-      if (event.key === "End" || event.key === "Home") {
-        event.preventDefault();
-        handlePrintBill();
-      }
-    };
-
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
-    };
-  }, [currentTable, entryCode, qty, currentDraft.lines]);
+  }, [billingDate, setNextBillNumber]);
 
   useEffect(() => {
-    if (billingDate) {
-      const fetchLastBillNumber = async () => {
-        try {
-          const res = await getLastBillNumber(billingDate);
-          const lastBillNumber = res.last_bill_number || 0;
-          setNextBillNumber(lastBillNumber + 1);
-        } catch (e) {
-          console.error("Failed to fetch last bill number:", e);
-          toast.error("Failed to fetch last bill number.");
-          setNextBillNumber(1);
-        }
-      };
-      fetchLastBillNumber();
-    }
-  }, [billingDate]);
+    fetchLastBillNumber();
+  }, [fetchLastBillNumber]);
 
 
 
@@ -1928,7 +1857,29 @@ function Billing({
   const loadDataForTable = async (tableNo) => {
     if (!tableNo || !setDrafts) return;
     setSectionByTable(tableNo);
-    if (drafts && drafts[tableNo]) return;
+    if (drafts && drafts[tableNo]) return; // If draft already exists, do nothing
+
+    let initialLines = [];
+    let modifiedFromBillId = null; // Assuming running bills don't come from a modified bill initially
+
+    try {
+      const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, "1"); // Assuming party_no is always "1" for now
+      if (pendingOrders && pendingOrders.length > 0) {
+        initialLines = pendingOrders.map(order => ({
+          code: order.item_code || order.numeric_item_code,
+          name: order.item_name,
+          quantity: order.quantity,
+          unit_price: order.unit_price,
+          line_total: order.line_total,
+          numeric_code: order.numeric_item_code,
+          alpha_code: order.item_code,
+        }));
+        toast.success(`Loaded ${pendingOrders.length} pending items for Table ${tableNo}`);
+      }
+    } catch (error) {
+      console.error("Failed to load pending orders:", error);
+      toast.error("Failed to load pending orders for this table.");
+    }
 
     setDrafts((prev) => ({
       ...safeObject(prev),
@@ -1939,7 +1890,8 @@ function Billing({
           section: "G",
           bill_number: null,
         },
-        lines: [],
+        lines: initialLines,
+        modified_from_bill_id: modifiedFromBillId,
       },
     }));
   };
@@ -2106,6 +2058,7 @@ function Billing({
 
       setEntryCode("");
       setQty(1);
+      fetchLastBillNumber(); // Refresh the next bill number
 
     } catch (e) {
       console.error("Bill creation error:", e);
@@ -2113,7 +2066,7 @@ function Billing({
     } finally {
       setLoading(false);
     }
-  }, [currentDraft, nextBillNumber, currentTable, activeShift, track, subtotal, sgst, cgst, total, billingDate, sessionId, setDrafts, setCurrentTable, setEntryCode, setQty, tableNoRef]);
+  }, [currentDraft, nextBillNumber, currentTable, activeShift, track, subtotal, sgst, cgst, total, billingDate, sessionId, setDrafts, setCurrentTable, setEntryCode, setQty, tableNoRef, fetchLastBillNumber]);
 
   const addItem = useCallback(async (focusItemCode = true) => {
     if (!entryCode || !currentTable) return null;
@@ -2189,6 +2142,7 @@ function Billing({
     }
   }, [entryCode, currentTable, currentDraft, qty, activeShift, track, setDrafts, setEntryCode, setQty, itemCodeRef]);
 
+  // This is a dummy comment to force recompilation
   const handlePrintBill = useCallback(async () => {
     if (!currentTable) {
       toast.error("Please enter a table number before printing.");
