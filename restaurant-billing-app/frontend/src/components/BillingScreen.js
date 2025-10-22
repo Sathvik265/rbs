@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   getNextBillNumber,
   createBill,
@@ -19,10 +19,74 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const quantityInputRefs = useRef([]);
+  const currentQtyRef = useRef(null);
 
   useEffect(() => {
-    fetchNextBillNumber();
-  }, [billingDate]);
+    const handleKeyDown = (e) => {
+      // Alt+Q => focus current add-item quantity input
+      if (e.altKey && e.key.toLowerCase() === "q") {
+        e.preventDefault();
+        if (currentQtyRef.current) currentQtyRef.current.focus();
+        return;
+      }
+
+      // Alt+ArrowDown => focus next item quantity in the items table
+      if (e.altKey && e.key === "ArrowDown") {
+        e.preventDefault();
+        const active = document.activeElement;
+        const idx = quantityInputRefs.current.findIndex((el) => el === active);
+        const next =
+          idx === -1
+            ? 0
+            : Math.min(quantityInputRefs.current.length - 1, idx + 1);
+        if (quantityInputRefs.current[next])
+          quantityInputRefs.current[next].focus();
+        return;
+      }
+
+      // Alt+ArrowUp => focus previous item quantity
+      if (e.altKey && e.key === "ArrowUp") {
+        e.preventDefault();
+        const active = document.activeElement;
+        const idx = quantityInputRefs.current.findIndex((el) => el === active);
+        const prev =
+          idx === -1
+            ? quantityInputRefs.current.length - 1
+            : Math.max(0, idx - 1);
+        if (quantityInputRefs.current[prev])
+          quantityInputRefs.current[prev].focus();
+        return;
+      }
+
+      // PageDown => focus item code textbox
+      if (e.key === "PageDown") {
+        e.preventDefault();
+        const itemCodeEl = document.getElementById("item-code");
+        if (itemCodeEl) itemCodeEl.focus();
+        return;
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  const handleQuantityKeyDown = (e, index) => {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (index > 0) {
+        quantityInputRefs.current[index - 1].focus();
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (index < items.length - 1) {
+        quantityInputRefs.current[index + 1].focus();
+      }
+    }
+  };
 
   useEffect(() => {
     const loadPendingOrders = async () => {
@@ -122,6 +186,20 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleQuantityChange = (index, delta) => {
+    setItems((prev) =>
+      prev.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              qty: Math.max(1, item.qty + delta),
+              amount: Math.max(1, item.qty + delta) * item.rate,
+            }
+          : item
+      )
+    );
+  };
+
   const calculateTotals = () => {
     const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
     const sgst = subtotal * 0.025; // 2.5%
@@ -148,7 +226,6 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
       setError(null);
       setSuccess(null);
 
-      // Updated payload - removed session_id dependency
       const billPayload = {
         bill_number: billData.bill_no,
         bill_date: billingDate,
@@ -175,7 +252,6 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
       const response = await createBill(billPayload);
       console.log("Bill creation response:", response);
 
-      // Updated bill number extraction - handles all possible response formats
       const billNumber =
         response?.bill_number ||
         response?.header?.bill_number ||
@@ -190,7 +266,6 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
         setSuccess("Bill created successfully!");
       }
 
-      // Reset form
       setItems([]);
       setBillData((prev) => ({ ...prev, table_no: "", party_no: "1" }));
       await fetchNextBillNumber();
@@ -296,18 +371,44 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
 
           <div className="form-group">
             <label>Quantity</label>
-            <input
-              type="number"
-              min="1"
-              value={currentItem.quantity}
-              onChange={(e) =>
-                setCurrentItem((prev) => ({
-                  ...prev,
-                  quantity: e.target.value,
-                }))
-              }
-              onKeyPress={(e) => handleKeyPress(e, "addItem")}
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentItem((p) => ({
+                    ...p,
+                    quantity: Math.max(1, (parseInt(p.quantity, 10) || 1) - 1),
+                  }))
+                }
+              >
+                -
+              </button>
+              <input
+                ref={currentQtyRef}
+                type="number"
+                min="1"
+                value={currentItem.quantity}
+                onChange={(e) =>
+                  setCurrentItem((prev) => ({
+                    ...prev,
+                    quantity: e.target.value,
+                  }))
+                }
+                onKeyPress={(e) => handleKeyPress(e, "addItem")}
+                style={{ width: 70, textAlign: "center" }}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentItem((p) => ({
+                    ...p,
+                    quantity: (parseInt(p.quantity, 10) || 1) + 1,
+                  }))
+                }
+              >
+                +
+              </button>
+            </div>
           </div>
 
           <div className="form-group">
@@ -318,7 +419,6 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
         </div>
       </div>
 
-      {/* Success Message */}
       {success && (
         <div
           className="success-message"
@@ -335,7 +435,6 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
         </div>
       )}
 
-      {/* Error Message */}
       {error && (
         <div
           className="error-message"
@@ -352,7 +451,6 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
         </div>
       )}
 
-      {/* Items Table */}
       <table
         className="items-table"
         style={{ width: "100%", borderCollapse: "collapse", marginTop: "20px" }}
@@ -371,9 +469,8 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
             <tr
               key={index}
               className="table-row"
-              onClick={() => handleRemoveItem(index)}
-              title="Click to remove item"
-              style={{ cursor: "pointer" }}
+              title="Double-click to remove item"
+              onDoubleClick={() => handleRemoveItem(index)}
             >
               <td style={{ border: "1px solid #ccc", padding: "8px" }}>
                 {item.no}
@@ -381,8 +478,41 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
               <td style={{ border: "1px solid #ccc", padding: "8px" }}>
                 {item.name}
               </td>
-              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                {item.qty}
+              <td
+                style={{
+                  border: "1px solid #ccc",
+                  padding: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <button onClick={() => handleQuantityChange(index, -1)}>
+                  -
+                </button>
+                <input
+                  ref={(el) => (quantityInputRefs.current[index] = el)}
+                  type="number"
+                  value={item.qty}
+                  onChange={(e) => {
+                    const newQty = parseInt(e.target.value, 10);
+                    setItems((prev) =>
+                      prev.map((prevItem, i) =>
+                        i === index
+                          ? {
+                              ...prevItem,
+                              qty: newQty,
+                              amount: newQty * prevItem.rate,
+                            }
+                          : prevItem
+                      )
+                    );
+                  }}
+                  onKeyDown={(e) => handleQuantityKeyDown(e, index)}
+                  style={{ width: "50px", textAlign: "center" }}
+                />
+                <button onClick={() => handleQuantityChange(index, 1)}>
+                  +
+                </button>
               </td>
               <td style={{ border: "1px solid #ccc", padding: "8px" }}>
                 ₹{item.rate.toFixed(2)}
@@ -456,7 +586,6 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
         </div>
       </div>
 
-      {/* Bill Totals */}
       <div
         className="bill-totals"
         style={{

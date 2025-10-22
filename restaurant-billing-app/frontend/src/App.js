@@ -1,9 +1,32 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import ReactDOM from "react-dom";
 import axios from "axios";
-import { createOrder, createBill as createBillAPI, getBillById, getLastBillNumber, updateMenuItem, getShiftStatus, getPendingOrdersByTableAndParty, reopenShift, closeShift } from "./services/api";
+import {
+  createOrder,
+  createBill as createBillAPI,
+  getBillById,
+  getLastBillNumber,
+  updateMenuItem,
+  getShiftStatus,
+  getPendingOrdersByTableAndParty,
+  reopenShift,
+  closeShift,
+} from "./services/api";
 import RecentBills from "./components/RecentBills";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "./components/ui/Table";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "./components/ui/Table";
 import "./styles/App.css";
 
 const BACKEND_URL = "http://127.0.0.1:8000";
@@ -86,8 +109,6 @@ const Label = ({ children, className = "" }) => (
   </label>
 );
 
-
-
 const Tabs = ({ children, value, onValueChange }) => (
   <div className="w-full">
     {React.Children.map(
@@ -156,7 +177,6 @@ const toast = {
     alert(message);
   },
 };
-
 
 const Loader2 = ({ size = 16, className = "" }) => (
   <span
@@ -298,6 +318,13 @@ function LoginPanel({ onLogin, onStartAdminVerification }) {
   const [credential, setCredential] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [track, setTrack] = useState("");
+  const credentialInputRef = useRef(null);
+
+  useEffect(() => {
+    if (credentialInputRef.current) {
+      credentialInputRef.current.focus();
+    }
+  }, []);
 
   const handleKeyDown = (event) => {
     if (event.key === "Enter") {
@@ -334,12 +361,7 @@ function LoginPanel({ onLogin, onStartAdminVerification }) {
       });
 
       if (onLogin) {
-        onLogin(
-          res.data.mode,
-          date,
-          track,
-          res.data.session_id
-        );
+        onLogin(res.data.mode, date, track, res.data.session_id);
       }
 
       toast.success(
@@ -366,6 +388,7 @@ function LoginPanel({ onLogin, onStartAdminVerification }) {
             <div className="grid grid-cols-3 gap-4 items-center">
               <Label>Credential</Label>
               <Input
+                ref={credentialInputRef}
                 placeholder="Enter credential"
                 className="col-span-2"
                 value={credential}
@@ -527,7 +550,9 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
       loadShiftStatus();
     } catch (e) {
       console.error("Failed to perform shift action:", e);
-      toast.error(safeGet(e, "response.data.detail", "Failed to perform shift action"));
+      toast.error(
+        safeGet(e, "response.data.detail", "Failed to perform shift action")
+      );
     }
   };
 
@@ -1801,8 +1826,6 @@ function Billing({
     }
   }, [activeTab]);
 
-
-
   const fetchLastBillNumber = useCallback(async () => {
     if (!billingDate) return;
     try {
@@ -1819,8 +1842,6 @@ function Billing({
   useEffect(() => {
     fetchLastBillNumber();
   }, [fetchLastBillNumber]);
-
-
 
   const onHeaderChange = (patch) => {
     if (!currentTable || !setDrafts) return;
@@ -1865,7 +1886,7 @@ function Billing({
     try {
       const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, "1"); // Assuming party_no is always "1" for now
       if (pendingOrders && pendingOrders.length > 0) {
-        initialLines = pendingOrders.map(order => ({
+        initialLines = pendingOrders.map((order) => ({
           code: order.item_code || order.numeric_item_code,
           name: order.item_name,
           quantity: order.quantity,
@@ -1874,7 +1895,9 @@ function Billing({
           numeric_code: order.numeric_item_code,
           alpha_code: order.item_code,
         }));
-        toast.success(`Loaded ${pendingOrders.length} pending items for Table ${tableNo}`);
+        toast.success(
+          `Loaded ${pendingOrders.length} pending items for Table ${tableNo}`
+        );
       }
     } catch (error) {
       console.error("Failed to load pending orders:", error);
@@ -1909,8 +1932,6 @@ function Billing({
       loadDataForTable(newTableNo);
     }
   };
-
-
 
   const handleItemCodeKeyDown = (e) => {
     if (e.key === "F1") {
@@ -1998,149 +2019,185 @@ function Billing({
     [subtotal, sgst, cgst]
   );
 
-  const createBill = useCallback(async (lines) => {
-    if (!lines || lines.length === 0) {
-      toast.error("No items to bill");
-      return;
-    }
+  const createBill = useCallback(
+    async (lines) => {
+      if (!lines || lines.length === 0) {
+        toast.error("No items to bill");
+        return;
+      }
 
-    setLoading(true);
-    const header = safeObject(currentDraft.header);
+      setLoading(true);
+      const header = safeObject(currentDraft.header);
 
-    try {
-      const payload = {
-        bill_number: nextBillNumber,
-        table_no: safeGet(header, "table_no", currentTable),
-        party_no: safeGet(header, "party_no", "1"),
-        section: safeGet(header, "section", "G"),
-        track: activeShift?.shift_name || track || "`",
-        clerk_initials: activeShift?.clerk_initials || "CLK",
-        subtotal: subtotal,
-        sgst: sgst,
-        cgst: cgst,
-        tax_amount: sgst + cgst,
-        grand_total: total,
-        bill_date: billingDate,
-        modified_from_bill_id: currentDraft.modified_from_bill_id,
-        session_id: sessionId,
-      };
+      try {
+        const payload = {
+          bill_number: nextBillNumber,
+          table_no: safeGet(header, "table_no", currentTable),
+          party_no: safeGet(header, "party_no", "1"),
+          section: safeGet(header, "section", "G"),
+          track: activeShift?.shift_name || track || "`",
+          clerk_initials: activeShift?.clerk_initials || "CLK",
+          subtotal: subtotal,
+          sgst: sgst,
+          cgst: cgst,
+          tax_amount: sgst + cgst,
+          grand_total: total,
+          bill_date: billingDate,
+          modified_from_bill_id: currentDraft.modified_from_bill_id,
+          session_id: sessionId,
+        };
 
-      const createdBill = await createBillAPI(payload);
-      const billId = createdBill?.bill_id;
-      const billNumber = createdBill?.bill_number || "Unknown";
+        const createdBill = await createBillAPI(payload);
+        const billId = createdBill?.bill_id;
+        const billNumber = createdBill?.bill_number || "Unknown";
 
-      toast.success(`Bill #${billNumber} created`);
+        toast.success(`Bill #${billNumber} created`);
 
-      if (billId) {
-        const fullBillData = await getBillById(billId);
-        if (typeof window !== "undefined") {
-          window.printBillData = fullBillData;
-        }
-        setTimeout(() => {
-          window.print();
-          if (tableNoRef.current) {
-            tableNoRef.current.focus();
+        if (billId) {
+          const fullBillData = await getBillById(billId);
+          if (typeof window !== "undefined") {
+            window.printBillData = fullBillData;
           }
-        }, 200);
-      }
+          setTimeout(() => {
+            window.print();
+            if (tableNoRef.current) {
+              tableNoRef.current.focus();
+            }
+          }, 200);
+        }
 
-      if (setDrafts) {
-        setDrafts((prev) => {
-          const newDrafts = { ...safeObject(prev) };
-          delete newDrafts[currentTable];
-          return newDrafts;
-        });
-      }
+        if (setDrafts) {
+          setDrafts((prev) => {
+            const newDrafts = { ...safeObject(prev) };
+            delete newDrafts[currentTable];
+            return newDrafts;
+          });
+        }
 
-      if (setCurrentTable) {
-        setCurrentTable("");
-      }
+        if (setCurrentTable) {
+          setCurrentTable("");
+        }
 
-      setEntryCode("");
-      setQty(1);
-      fetchLastBillNumber(); // Refresh the next bill number
-
-    } catch (e) {
-      console.error("Bill creation error:", e);
-      toast.error(safeGet(e, "response.data.detail", "Failed to create bill"));
-    } finally {
-      setLoading(false);
-    }
-  }, [currentDraft, nextBillNumber, currentTable, activeShift, track, subtotal, sgst, cgst, total, billingDate, sessionId, setDrafts, setCurrentTable, setEntryCode, setQty, tableNoRef, fetchLastBillNumber]);
-
-  const addItem = useCallback(async (focusItemCode = true) => {
-    if (!entryCode || !currentTable) return null;
-
-    try {
-      const res = await axios.get(`${API}/menu/lookup/${entryCode}`);
-      const item = res.data;
-
-      if (!item) {
-        toast.error("Item not found");
-        return null;
-      }
-
-      const section = safeGet(currentDraft, "header.section", "G");
-      let unitPrice;
-
-      switch (section) {
-        case "AC":
-          unitPrice = safeGet(item, "price_ac", 0);
-          break;
-        case "P":
-          unitPrice = safeGet(item, "price_fixed", 0);
-          break;
-        default:
-          unitPrice = safeGet(item, "price_general", 0);
-      }
-
-      const newLine = {
-        code: entryCode.toUpperCase(),
-        name: safeGet(item, "name", "Unknown Item"),
-        quantity: qty || 1,
-        unit_price: Number(unitPrice),
-        line_total: Number((unitPrice * (qty || 1)).toFixed(2)),
-        numeric_code: safeGet(item, "numeric_code", ""),
-        alpha_code: safeGet(item, "alpha_code", ""),
-      };
-
-      await createOrder({
-        table_no: currentTable,
-        party_no: safeGet(currentDraft, "header.party_no", "1"),
-        item_name: newLine.name,
-        quantity: newLine.quantity,
-        unit_price: newLine.unit_price,
-        line_total: newLine.line_total,
-        track: activeShift?.shift_name || track || "`",
-        clerk_initials: activeShift?.clerk_initials || "CLK",
-        bill_number: 0,
-        item_code: newLine.alpha_code,
-        numeric_item_code: newLine.numeric_code,
-      });
-
-      if (focusItemCode && setDrafts) {
-        const updatedLines = [...safeArray(currentDraft.lines), newLine];
-        setDrafts((prev) => ({
-          ...safeObject(prev),
-          [currentTable]: {
-            ...currentDraft,
-            lines: updatedLines,
-          },
-        }));
         setEntryCode("");
         setQty(1);
-        if (itemCodeRef.current) {
-          itemCodeRef.current.focus();
-        }
+        fetchLastBillNumber(); // Refresh the next bill number
+      } catch (e) {
+        console.error("Bill creation error:", e);
+        toast.error(
+          safeGet(e, "response.data.detail", "Failed to create bill")
+        );
+      } finally {
+        setLoading(false);
       }
+    },
+    [
+      currentDraft,
+      nextBillNumber,
+      currentTable,
+      activeShift,
+      track,
+      subtotal,
+      sgst,
+      cgst,
+      total,
+      billingDate,
+      sessionId,
+      setDrafts,
+      setCurrentTable,
+      setEntryCode,
+      setQty,
+      tableNoRef,
+      fetchLastBillNumber,
+    ]
+  );
 
-      return newLine;
-    } catch (e) {
-      console.error("Add item error:", e);
-      toast.error(safeGet(e, "response.data.detail", "Item not found"));
-      return null;
-    }
-  }, [entryCode, currentTable, currentDraft, qty, activeShift, track, setDrafts, setEntryCode, setQty, itemCodeRef]);
+  const addItem = useCallback(
+    async (focusItemCode = true) => {
+      if (!entryCode || !currentTable) return null;
+
+      try {
+        const res = await axios.get(`${API}/menu/lookup/${entryCode}`);
+        const item = res.data;
+
+        if (!item) {
+          toast.error("Item not found");
+          return null;
+        }
+
+        const section = safeGet(currentDraft, "header.section", "G");
+        let unitPrice;
+
+        switch (section) {
+          case "AC":
+            unitPrice = safeGet(item, "price_ac", 0);
+            break;
+          case "P":
+            unitPrice = safeGet(item, "price_fixed", 0);
+            break;
+          default:
+            unitPrice = safeGet(item, "price_general", 0);
+        }
+
+        const newLine = {
+          code: entryCode.toUpperCase(),
+          name: safeGet(item, "name", "Unknown Item"),
+          quantity: qty || 1,
+          unit_price: Number(unitPrice),
+          line_total: Number((unitPrice * (qty || 1)).toFixed(2)),
+          numeric_code: safeGet(item, "numeric_code", ""),
+          alpha_code: safeGet(item, "alpha_code", ""),
+        };
+
+        await createOrder({
+          table_no: currentTable,
+          party_no: safeGet(currentDraft, "header.party_no", "1"),
+          item_name: newLine.name,
+          quantity: newLine.quantity,
+          unit_price: newLine.unit_price,
+          line_total: newLine.line_total,
+          track: activeShift?.shift_name || track || "`",
+          clerk_initials: activeShift?.clerk_initials || "CLK",
+          bill_number: 0,
+          item_code: newLine.alpha_code,
+          numeric_item_code: newLine.numeric_code,
+        });
+
+        if (focusItemCode && setDrafts) {
+          const updatedLines = [...safeArray(currentDraft.lines), newLine];
+          setDrafts((prev) => ({
+            ...safeObject(prev),
+            [currentTable]: {
+              ...currentDraft,
+              lines: updatedLines,
+            },
+          }));
+          setEntryCode("");
+          setQty(1);
+          if (itemCodeRef.current) {
+            itemCodeRef.current.focus();
+          }
+        }
+
+        return newLine;
+      } catch (e) {
+        console.error("Add item error:", e);
+        toast.error(safeGet(e, "response.data.detail", "Item not found"));
+        return null;
+      }
+    },
+    [
+      entryCode,
+      currentTable,
+      currentDraft,
+      qty,
+      activeShift,
+      track,
+      setDrafts,
+      setEntryCode,
+      setQty,
+      itemCodeRef,
+    ]
+  );
 
   // This is a dummy comment to force recompilation
   const handlePrintBill = useCallback(async () => {
