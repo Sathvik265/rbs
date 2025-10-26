@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import ReactDOM from "react-dom";
 import axios from "axios";
-import {
+import api, {
   createOrder,
   createBill as createBillAPI,
   getBillById,
@@ -1188,31 +1188,34 @@ function ItemReport({ sessionId }) {
 function EnhancedReconciliation({ sessionId, mode }) {
   const [unprintedBills, setUnprintedBills] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [expandedKey, setExpandedKey] = useState(null);
+  const [detailsCache, setDetailsCache] = useState({});
 
-  const loadUnprintedBills = useCallback(async () => {
-    if (!sessionId) return;
-
+  const loadRunningBills = useCallback(async () => {
+    // sessionId is not required to list running (pending) orders for reconciliation
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/reconciliation/unprinted`, {
+      // call new running endpoint which groups pending orders by table/party
+      const res = await api.get(`/reconciliation/running`, {
         headers: { Authorization: "admin" },
       });
+      console.log("Reconciliation running response:", res.data);
 
       setUnprintedBills(safeArray(res.data));
     } catch (e) {
-      console.error("Failed to load unprinted bills:", e);
-      toast.error("Failed to load unprinted bills");
+      console.error("Failed to load running bills:", e);
+      toast.error("Failed to load running bills");
       setUnprintedBills([]);
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, []);
 
   useEffect(() => {
     if (mode && mode.includes("admin")) {
-      loadUnprintedBills();
+      loadRunningBills();
     }
-  }, [mode, loadUnprintedBills]);
+  }, [mode, loadRunningBills]);
 
   if (!mode || !mode.includes("admin")) {
     return (
@@ -1231,7 +1234,7 @@ function EnhancedReconciliation({ sessionId, mode }) {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          <Button onClick={loadUnprintedBills} variant="outline" size="sm">
+          <Button onClick={loadRunningBills} variant="outline" size="sm">
             Refresh List
           </Button>
 
@@ -1241,34 +1244,113 @@ function EnhancedReconciliation({ sessionId, mode }) {
               <p>Loading unprinted bills...</p>
             </div>
           ) : unprintedBills.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Bill No</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Table</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Created in Shift</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {unprintedBills.map((bill) => (
-                  <TableRow key={bill.id}>
-                    <TableCell>{bill.bill_number}</TableCell>
-                    <TableCell>
-                      {new Date(bill.bill_date).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>{bill.table_no}</TableCell>
-                    <TableCell>{Number(bill.grand_total).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
-                        {bill.shift_name}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="space-y-2">
+              {unprintedBills.map((row) => {
+                const key = `${row.table_no}-${row.party_no}`;
+                const isExpanded = expandedKey === key;
+                const details = detailsCache[key];
+                return (
+                  <div
+                    key={key}
+                    className="p-3 border rounded-md bg-white shadow-sm"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="font-medium">
+                          Table {row.table_no} - Party {row.party_no}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          Created: {new Date(row.created_at).toLocaleString()}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="text-sm text-gray-600">
+                            Items: {row.items_count}
+                          </div>
+                          <div className="font-bold">
+                            ₹{Number(row.total_amount || 0).toFixed(2)}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            if (isExpanded) {
+                              setExpandedKey(null);
+                              return;
+                            }
+                            setExpandedKey(key);
+                            // fetch details if not cached
+                            if (!details) {
+                              try {
+                                const res = await api.get(
+                                  `/billing/orders/table/${row.table_no}/party/${row.party_no}`
+                                );
+                                setDetailsCache((prev) => ({
+                                  ...prev,
+                                  [key]: safeArray(res.data),
+                                }));
+                              } catch (err) {
+                                console.error(
+                                  "Failed to load orders for",
+                                  key,
+                                  err
+                                );
+                                toast.error("Failed to load bill details");
+                                setDetailsCache((prev) => ({
+                                  ...prev,
+                                  [key]: [],
+                                }));
+                              }
+                            }
+                          }}
+                        >
+                          {isExpanded ? "Hide" : "Details"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="mt-3">
+                        {!details ? (
+                          <div className="text-sm text-gray-500">
+                            Loading...
+                          </div>
+                        ) : details.length === 0 ? (
+                          <div className="text-sm text-gray-500">No items</div>
+                        ) : (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Item</TableHead>
+                                <TableHead>Qty</TableHead>
+                                <TableHead>Rate</TableHead>
+                                <TableHead>Amount</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {details.map((d, idx) => (
+                                <TableRow key={idx}>
+                                  <TableCell>{d.item_name}</TableCell>
+                                  <TableCell>{d.quantity}</TableCell>
+                                  <TableCell>
+                                    {Number(d.unit_price || 0).toFixed(2)}
+                                  </TableCell>
+                                  <TableCell>
+                                    {Number(d.line_total || 0).toFixed(2)}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
               No unprinted bills found

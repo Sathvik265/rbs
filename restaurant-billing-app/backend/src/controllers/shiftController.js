@@ -69,9 +69,10 @@ const shiftController = {
   async closeSession(req, res) {
     try {
       const { closedBy } = req.body;
+      // ShiftModel.closeSession(sessionUuid, closedBy)
       const session = await ShiftModel.closeSession(
-        closedBy, // Correct order: closedBy first
-        req.params.sessionId // Then sessionUuid
+        req.params.sessionId,
+        closedBy
       );
       res.json(session);
     } catch (error) {
@@ -88,7 +89,10 @@ const shiftController = {
     } catch (error) {
       res
         .status(500)
-        .json({ error: "Failed to fetch open sessions", details: error.message });
+        .json({
+          error: "Failed to fetch open sessions",
+          details: error.message,
+        });
     }
   },
 
@@ -114,14 +118,18 @@ const shiftController = {
     }
   },
 
-  async ensureAllShiftSessionsExist(req, res) { // Renamed function
+  async ensureAllShiftSessionsExist(req, res) {
+    // Renamed function
     try {
       const sessions = await ShiftModel.ensureAllShiftSessionsExist(); // Call new function name
       res.json(sessions);
     } catch (error) {
       res
         .status(500)
-        .json({ error: "Failed to ensure shift sessions exist", details: error.message });
+        .json({
+          error: "Failed to ensure shift sessions exist",
+          details: error.message,
+        });
     }
   },
 

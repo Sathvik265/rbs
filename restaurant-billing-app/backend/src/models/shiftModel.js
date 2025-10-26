@@ -91,19 +91,72 @@ const ShiftModel = {
     }
   },
 
-    // Close a session
-    async closeSession(sessionUuid, closedBy) { // Changed sessionId to sessionUuid
-      const result = await pool.query(
-        `UPDATE sessions
+  // Close a session
+  async closeSession(sessionUuid, closedBy) {
+    // Try to update the new `shift_sessions` table first (uses shift_session_id)
+    try {
+      const shiftResult = await pool.query(
+        `UPDATE shift_sessions
+           SET status = 'CLOSED',
+               end_time = CURRENT_TIMESTAMP,
+               closed_by = $1
+           WHERE shift_session_id = $2
+           RETURNING *`,
+        [closedBy, sessionUuid]
+      );
+
+      if (shiftResult.rows.length > 0) {
+        console.log(
+          `shiftModel.closeSession: updated shift_sessions by shift_session_id=${sessionUuid}`
+        );
+        return shiftResult.rows[0];
+      }
+    } catch (err) {
+      // ignore and try legacy table
+      console.error(
+        "Error updating shift_sessions (continuing with legacy sessions):",
+        err.message
+      );
+    }
+
+    // Fallback to legacy `sessions` table (uses session_id)
+    const result = await pool.query(
+      `UPDATE sessions
          SET status = 'CLOSED',
              end_time = CURRENT_TIMESTAMP,
              closed_by = $1
-         WHERE session_id = $2 // Changed id to session_id
+         WHERE session_id = $2
          RETURNING *`,
-        [closedBy, sessionUuid]
+      [closedBy, sessionUuid]
+    );
+
+    const updatedSession = result.rows[0];
+    if (!updatedSession) return null;
+
+    // Also attempt to close the corresponding shift_sessions row (match by shift_name and session_date)
+    try {
+      const syncResult = await pool.query(
+        `UPDATE shift_sessions
+           SET status = 'CLOSED',
+               end_time = CURRENT_TIMESTAMP,
+               closed_by = $1
+           WHERE shift_name = $2 AND session_date = $3
+           RETURNING *`,
+        [closedBy, updatedSession.shift_name, updatedSession.session_date]
       );
-      return result.rows[0];
-    },
+
+      if (syncResult.rows.length > 0) {
+        console.log(
+          `shiftModel.closeSession: synced close to shift_sessions for shift=${updatedSession.shift_name} date=${updatedSession.session_date}`
+        );
+        return syncResult.rows[0];
+      }
+    } catch (err) {
+      console.error("Error syncing close to shift_sessions:", err.message);
+    }
+
+    return updatedSession;
+  },
   // Get open sessions
   async getOpenSessions() {
     const result = await pool.query(
@@ -113,9 +166,10 @@ const ShiftModel = {
   },
 
   // Get all sessions (sessionDate is irrelevant)
-  async getSessionsByDate(sessionDate) { // sessionDate parameter is now ignored
+  async getSessionsByDate(sessionDate) {
+    // sessionDate parameter is now ignored
     const result = await pool.query(
-      "SELECT * FROM sessions ORDER BY shift_name, start_time", // Order by shift_name
+      "SELECT * FROM sessions ORDER BY shift_name, start_time" // Order by shift_name
     );
     return result.rows;
   },
@@ -130,17 +184,18 @@ const ShiftModel = {
   },
 
   // Get current open session for a shift
-    async getCurrentOpenSession(shiftName) { // Removed sessionDate
-      const result = await pool.query(
-        `SELECT * FROM sessions
+  async getCurrentOpenSession(shiftName) {
+    // Removed sessionDate
+    const result = await pool.query(
+      `SELECT * FROM sessions
          WHERE shift_name = $1
            AND status = 'OPEN'
          ORDER BY start_time DESC
          LIMIT 1`,
-        [shiftName]
-      );
-      return result.rows[0];
-    },
+      [shiftName]
+    );
+    return result.rows[0];
+  },
   // Get sessions by clerk
   async getSessionsByClerk(clerkInitials) {
     const result = await pool.query(
@@ -209,19 +264,45 @@ const ShiftModel = {
     await pool.query("DELETE FROM sessions WHERE id = $1", [sessionId]);
   },
 
-
   // Reopen a closed session
-  async reopenSession(sessionUuid) { // Changed sessionId to sessionUuid
+  async reopenSession(sessionUuid) {
     const result = await pool.query(
       `UPDATE sessions
        SET status = 'OPEN',
            end_time = NULL,
            closed_by = NULL
-       WHERE session_id = $1 // Changed id to session_id
+       WHERE session_id = $1
        RETURNING *`,
       [sessionUuid]
     );
-    return result.rows[0];
+
+    const updatedSession = result.rows[0];
+    if (!updatedSession) return null;
+
+    // Also attempt to reopen the corresponding shift_sessions row (match by shift_name and session_date)
+    try {
+      const syncResult = await pool.query(
+        `UPDATE shift_sessions
+         SET status = 'OPEN',
+             end_time = NULL,
+             closed_by = NULL,
+             start_time = COALESCE(start_time, CURRENT_TIMESTAMP)
+         WHERE shift_name = $1 AND session_date = $2
+         RETURNING *`,
+        [updatedSession.shift_name, updatedSession.session_date]
+      );
+
+      if (syncResult.rows.length > 0) {
+        console.log(
+          `shiftModel.reopenSession: synced reopen to shift_sessions for shift=${updatedSession.shift_name} date=${updatedSession.session_date}`
+        );
+        return syncResult.rows[0];
+      }
+    } catch (err) {
+      console.error("Error syncing reopen to shift_sessions:", err.message);
+    }
+
+    return updatedSession;
   },
   // ==================== HELPER FUNCTIONS ====================
 

@@ -249,6 +249,60 @@ exports.getUnprintedBills = async (req, res) => {
   }
 };
 
+// GET /api/reconciliation/running
+exports.getRunningBills = async (req, res) => {
+  try {
+    // Group pending orders by table_no and party_no and include created_at from the latest order
+    const result = await pool.query(
+      `
+      SELECT
+        o.table_no,
+        o.party_no,
+        MAX(o.created_at) as created_at,
+        SUM(o.line_total) as total_amount,
+        COUNT(o.id) as items_count
+      FROM orders o
+      GROUP BY o.table_no, o.party_no
+      ORDER BY MAX(o.created_at) DESC
+      `
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Running bills error:", error);
+    res.status(500).json({ detail: "Failed to fetch running bills" });
+  }
+};
+
+// Simple settings storage in-memory for quick compatibility
+let _settings_store = {
+  hotel_name: "",
+  phone: "",
+  gstin: "",
+  address: "",
+};
+
+// GET /api/settings
+exports.getSettings = async (req, res) => {
+  try {
+    res.json(_settings_store);
+  } catch (err) {
+    console.error("Get settings error:", err);
+    res.status(500).json({ detail: "Failed to get settings" });
+  }
+};
+
+// PUT /api/settings
+exports.updateSettings = async (req, res) => {
+  try {
+    _settings_store = { ..._settings_store, ...req.body };
+    res.json(_settings_store);
+  } catch (err) {
+    console.error("Update settings error:", err);
+    res.status(500).json({ detail: "Failed to update settings" });
+  }
+};
+
 // GET /api/dashboard/top-items
 exports.getTopItems = async (req, res) => {
   try {

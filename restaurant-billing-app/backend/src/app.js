@@ -21,6 +21,7 @@ const tableRoutes = require("./routes/tableRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const reconciliationRoutes = require("./routes/reconciliationRoutes");
+const reportController = require("./controllers/reportController");
 
 // Security middleware
 app.use(
@@ -62,6 +63,10 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reconciliation", reconciliationRoutes);
 
+// Simple settings endpoints for admin UI
+app.get("/api/settings", reportController.getSettings);
+app.put("/api/settings", reportController.updateSettings);
+
 // ================ AUTH ROUTES (UPDATED) ================
 // POST /api/auth/login - Updated for shift_sessions table
 app.post("/api/auth/login", async (req, res) => {
@@ -97,10 +102,23 @@ app.post("/api/auth/login", async (req, res) => {
       );
     }
 
-    // Find or create a shift session for this clerk and track
     // Use the normalized uppercase initials when searching/creating clerk sessions
     const clerkInitialsForDb = upperStaffCode;
 
+    // IMPORTANT: If the requested track/shift for the given date is CLOSED,
+    // do not allow login for any user on that track.
+    const closedCheck = await pool.query(
+      `SELECT 1 FROM shift_sessions WHERE shift_name = $1 AND session_date = $2::date AND UPPER(status) = 'CLOSED' LIMIT 1`,
+      [track, date]
+    );
+
+    if (closedCheck.rows.length > 0) {
+      return res
+        .status(403)
+        .json({ detail: "Shift is closed for this track/date" });
+    }
+
+    // Find an existing open session for this clerk
     let shiftSessionResult = await pool.query(
       `SELECT shift_session_id FROM shift_sessions 
              WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
@@ -110,16 +128,31 @@ app.post("/api/auth/login", async (req, res) => {
     let shift_session_id;
 
     if (shiftSessionResult.rows.length === 0) {
-      // Create a new shift session for this clerk
+      // Create a new shift session for this clerk (do NOT force-open existing closed sessions)
       const createResult = await pool.query(
-        `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status)
-     VALUES ($1, $2, $3, 'OPEN') 
-     ON CONFLICT (shift_name, session_date, clerk_initials) 
-     DO UPDATE SET status = 'OPEN', start_time = CURRENT_TIMESTAMP
+        `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status, start_time)
+     VALUES ($1, $2, $3, 'OPEN', CURRENT_TIMESTAMP)
+     ON CONFLICT (shift_name, session_date, clerk_initials)
+     DO NOTHING
      RETURNING shift_session_id`,
         [track, clerkInitialsForDb, date]
       );
-      shift_session_id = createResult.rows[0].shift_session_id;
+
+      if (createResult.rows.length > 0) {
+        shift_session_id = createResult.rows[0].shift_session_id;
+      } else {
+        // Conflict happened but no row returned (existing row present). Try to fetch it again.
+        const retry = await pool.query(
+          `SELECT shift_session_id FROM shift_sessions WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
+          [track, date, clerkInitialsForDb]
+        );
+        if (retry.rows.length > 0)
+          shift_session_id = retry.rows[0].shift_session_id;
+        else
+          return res
+            .status(409)
+            .json({ detail: "Unable to create/open session for clerk" });
+      }
     } else {
       shift_session_id = shiftSessionResult.rows[0].shift_session_id;
     }
@@ -364,12 +397,27 @@ pool
   .then(() => console.log("✅ Database connected successfully"))
   .catch((err) => console.error("❌ Database connection failed:", err));
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Restaurant Billing Server running on port ${PORT}`);
   console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`📊 API Base URL: http://127.0.0.1:${PORT}/api`);
   console.log(`📋 Schema: Updated with merged shift_sessions table`);
+});
+
+server.on("error", (err) => {
+  if (err && err.code === "EADDRINUSE") {
+    console.error(
+      `❌ Port ${PORT} is already in use. Stop the process using this port or set a different PORT environment variable.`
+    );
+    console.error(
+      `You can free the port (PowerShell): netstat -ano | findstr :${PORT} ; taskkill /PID <pid> /F  OR Stop-Process -Id <pid> -Force`
+    );
+    process.exit(1);
+  } else {
+    console.error("Server error:", err);
+    process.exit(1);
+  }
 });
 
 module.exports = app;
