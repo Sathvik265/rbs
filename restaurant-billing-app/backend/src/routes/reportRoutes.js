@@ -19,4 +19,7 @@ router.get("/item-wise", reportController.getItemWiseReport);
 // Advanced item report with shift breakdown
 router.get("/by-item", reportController.getItemReport);
 
+// Category totals report
+router.get("/category-totals", reportController.getCategoryTotals);
+
 module.exports = router;

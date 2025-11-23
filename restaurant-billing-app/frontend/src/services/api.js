@@ -83,13 +83,20 @@ export const createOrder = async (orderData) => {
   return response.data;
 };
 
+export const getAllPendingOrders = async () => {
+  const response = await api.get("/billing/orders");
+  return response.data;
+};
+
 export const getPendingOrdersByTable = async (table_no) => {
   const response = await api.get(`/billing/orders/table/${table_no}`);
   return response.data;
 };
 
 export const getPendingOrdersByTableAndParty = async (tableNo, partyNo) => {
-  const response = await api.get(`/billing/orders/table/${tableNo}/party/${partyNo}`);
+  const response = await api.get(
+    `/billing/orders/table/${tableNo}/party/${partyNo}`
+  );
   return response.data;
 };
 
@@ -103,21 +110,20 @@ export const getLastBillNumber = async (date) => {
   return response.data;
 };
 
-
-
 export const createBill = async (billData) => {
   const response = await api.post("/billing/bills", billData);
   return response.data;
 };
 
-
-
 export const getBillsByDate = async (bill_date) => {
-  const response = await api.get(`/billing/bills/date-range/${bill_date}/${bill_date}`);
+  const response = await api.get(
+    `/billing/bills/date-range/${bill_date}/${bill_date}`
+  );
   return response.data;
 };
 
-export const getShiftStatus = async () => { // No date parameter
+export const getShiftStatus = async () => {
+  // No date parameter
   const response = await api.get(`/shifts/sessions`); // Call route to get all sessions
   return response.data;
 };
@@ -149,8 +155,6 @@ export const reopenShift = async (session_id) => {
   const response = await api.put(`/shifts/sessions/${session_id}/reopen`);
   return response.data;
 };
-
-
 
 // ==================== REPORTS ====================
 export const getTimeWiseReport = async (bill_date) => {

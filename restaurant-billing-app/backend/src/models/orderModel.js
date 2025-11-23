@@ -9,6 +9,7 @@ const OrderModel = {
       table_no,
       party_no = "1",
       bill_number,
+      bill_date, // Added bill_date
       item_code,
       numeric_item_code,
       item_name,
@@ -17,12 +18,15 @@ const OrderModel = {
       line_total,
     } = orderData;
 
+    // Default bill_date to current date if not provided
+    const finalBillDate = bill_date || new Date().toISOString().split("T")[0];
+
     const result = await pool.query(
       `INSERT INTO orders (
-        track, clerk_initials, table_no, party_no, bill_number,
+        track, clerk_initials, table_no, party_no, bill_number, bill_date,
         item_code, numeric_item_code, item_name, quantity, unit_price, line_total
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
         track,
@@ -30,6 +34,7 @@ const OrderModel = {
         table_no,
         party_no,
         bill_number,
+        finalBillDate,
         item_code,
         numeric_item_code,
         item_name,

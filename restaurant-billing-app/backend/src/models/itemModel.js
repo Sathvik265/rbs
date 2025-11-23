@@ -3,9 +3,7 @@ const pool = require("../db");
 const ItemModel = {
   // Get all items
   async getAllItems() {
-    const result = await pool.query(
-      "SELECT * FROM items ORDER BY category, name"
-    );
+    const result = await pool.query("SELECT * FROM items ORDER BY name");
     return result.rows;
   },
 
@@ -36,6 +34,9 @@ const ItemModel = {
       category,
       is_separate = false,
     } = itemData;
+
+    // Ensure category is a valid JSON array or object string if passed as string
+    // If it's already an object/array, pg will handle it for JSONB
 
     const result = await pool.query(
       `INSERT INTO items (
@@ -98,11 +99,18 @@ const ItemModel = {
     await pool.query("DELETE FROM items WHERE id = $1", [id]);
   },
 
-  // Get items by category
+  // Get items by category - DEPRECATED/MODIFIED behavior
+  // Since category is now JSON, exact match might not work as before.
+  // This function might need to be updated to search within the JSON if needed.
+  // For now, we'll keep it but it might return empty if passed a simple string that doesn't match the JSON structure.
   async getItemsByCategory(category) {
+    // Assuming we might want to find items that contain a specific category name in the JSON array
+    // Example JSON: [{"name": "Idli", "qty": 1}]
     const result = await pool.query(
-      "SELECT * FROM items WHERE category = $1 ORDER BY name",
-      [category]
+      "SELECT * FROM items WHERE category @> $1::jsonb ORDER BY name",
+      [JSON.stringify([{ name: category }])]
+      // This assumes we are looking for an exact match of an object in the array
+      // A better approach might be needed depending on frontend usage
     );
     return result.rows;
   },
@@ -118,7 +126,7 @@ const ItemModel = {
   // Get regular items
   async getRegularItems() {
     const result = await pool.query(
-      "SELECT * FROM items WHERE is_separate = false ORDER BY category, name"
+      "SELECT * FROM items WHERE is_separate = false ORDER BY name"
     );
     return result.rows;
   },
@@ -130,7 +138,6 @@ const ItemModel = {
        WHERE name ILIKE $1 
           OR alpha_code ILIKE $1 
           OR numeric_code ILIKE $1
-          OR category ILIKE $1
        ORDER BY name`,
       [`%${searchTerm}%`]
     );

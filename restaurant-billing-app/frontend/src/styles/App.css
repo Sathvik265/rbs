@@ -958,3 +958,154 @@ textarea:hover:not(:disabled):not([readonly]) {
   opacity: 0.7;
   pointer-events: none;
 }
+
+/* Help Panel Styles */
+.help-panel {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.help-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.help-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.help-tab-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.help-tab-btn:hover {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.help-tab-btn.active {
+  background: white;
+  color: #2563eb;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  font-weight: 600;
+}
+
+.close-help {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.close-help:hover {
+  color: #ef4444;
+}
+
+.help-content {
+  padding: 1rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.help-hint {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-bottom: 1rem;
+}
+
+.shortcut-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.shortcut-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+.shortcut-list li:last-child {
+  border-bottom: none;
+}
+
+kbd {
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #111827;
+}
+
+/* Active Bills Styles */
+.active-bills-list {
+  min-height: 200px;
+}
+
+.no-active-bills {
+  text-align: center;
+  color: #9ca3af;
+  padding: 2rem 0;
+}
+
+.active-bills-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.active-bills-table th {
+  text-align: left;
+  padding: 0.5rem;
+  color: #6b7280;
+  font-weight: 500;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.active-bills-table td {
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #111827;
+}
+
+.time-running {
+  color: #2563eb;
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.time-ago {
+  color: #ef4444;
+  font-size: 0.75rem;
+}
+
+.search-results-table {
+  margin-top: 0.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  overflow: hidden;
+}

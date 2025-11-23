@@ -328,3 +328,23 @@ exports.getTopItems = async (req, res) => {
     res.status(500).json({ detail: "Failed to fetch top items" });
   }
 };
+
+// GET /api/reports/category-totals
+exports.getCategoryTotals = async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) {
+      return res.status(400).json({ detail: "date is required" });
+    }
+
+    const result = await pool.query(
+      "SELECT * FROM get_category_totals_for_date($1)",
+      [date]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Category totals error:", error);
+    res.status(500).json({ detail: "Failed to fetch category totals" });
+  }
+};
