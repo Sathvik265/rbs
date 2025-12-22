@@ -22,6 +22,7 @@ const reportRoutes = require("./routes/reportRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const reconciliationRoutes = require("./routes/reconciliationRoutes");
 const reportController = require("./controllers/reportController");
+const SettingsModel = require("./models/settingsModel");
 
 // Security middleware
 app.use(
@@ -64,6 +65,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reconciliation", reconciliationRoutes);
 
 // Simple settings endpoints for admin UI
+app.get("/api/settings/clerks", reportController.getClerks);
 app.get("/api/settings", reportController.getSettings);
 app.put("/api/settings", reportController.updateSettings);
 
@@ -90,27 +92,14 @@ app.post("/api/auth/login", async (req, res) => {
       mode = is_root ? "admin-full" : "admin-limited";
     else return res.status(401).json({ detail: "Invalid credentials" });
 
-    // Ensure shift sessions for the date exist before trying to find one
-    const shiftsToEnsure = ["`", "``", "RBS1", "RBS2"];
-    for (const shiftName of shiftsToEnsure) {
-      // create default system rows only for 'SYS' clerk placeholder if they don't exist
-      await pool.query(
-        `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status)
-                 VALUES ($1, 'SYS', $2, 'OPEN') 
-                 ON CONFLICT (shift_name, session_date, clerk_initials) DO NOTHING`,
-        [shiftName, date]
-      );
-    }
-
-    // Use the normalized uppercase initials when searching/creating clerk sessions
-    const clerkInitialsForDb = upperStaffCode;
-
     // IMPORTANT: If the requested track/shift for the given date is CLOSED,
     // do not allow login for any user on that track.
+    console.log(`Checking closed status for Track: ${track}, Date: ${date}`);
     const closedCheck = await pool.query(
-      `SELECT 1 FROM shift_sessions WHERE shift_name = $1 AND session_date = $2::date AND UPPER(status) = 'CLOSED' LIMIT 1`,
+      `SELECT 1 FROM sessions WHERE shift_name = $1 AND session_date = $2::date AND UPPER(status) = 'CLOSED' LIMIT 1`,
       [track, date]
     );
+    console.log(`Closed Check Result:`, closedCheck.rows);
 
     if (closedCheck.rows.length > 0) {
       return res
@@ -120,7 +109,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     // Find an existing open session for this clerk
     let shiftSessionResult = await pool.query(
-      `SELECT shift_session_id FROM shift_sessions 
+      `SELECT session_id FROM sessions 
              WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
       [track, date, clerkInitialsForDb]
     );
@@ -130,32 +119,34 @@ app.post("/api/auth/login", async (req, res) => {
     if (shiftSessionResult.rows.length === 0) {
       // Create a new shift session for this clerk (do NOT force-open existing closed sessions)
       const createResult = await pool.query(
-        `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status, start_time)
+        `INSERT INTO sessions (shift_name, clerk_initials, session_date, status, start_time)
      VALUES ($1, $2, $3, 'OPEN', CURRENT_TIMESTAMP)
      ON CONFLICT (shift_name, session_date, clerk_initials)
      DO NOTHING
-     RETURNING shift_session_id`,
+     RETURNING session_id`,
         [track, clerkInitialsForDb, date]
       );
 
       if (createResult.rows.length > 0) {
-        shift_session_id = createResult.rows[0].shift_session_id;
+        shift_session_id = createResult.rows[0].session_id;
       } else {
         // Conflict happened but no row returned (existing row present). Try to fetch it again.
         const retry = await pool.query(
-          `SELECT shift_session_id FROM shift_sessions WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
+          `SELECT session_id FROM sessions WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
           [track, date, clerkInitialsForDb]
         );
-        if (retry.rows.length > 0)
-          shift_session_id = retry.rows[0].shift_session_id;
+        if (retry.rows.length > 0) shift_session_id = retry.rows[0].session_id;
         else
           return res
             .status(409)
             .json({ detail: "Unable to create/open session for clerk" });
       }
     } else {
-      shift_session_id = shiftSessionResult.rows[0].shift_session_id;
+      shift_session_id = shiftSessionResult.rows[0].session_id;
     }
+
+    // Ensure settings exist for this clerk (Auto-provisioning)
+    await SettingsModel.ensureSettings(clerkInitialsForDb);
 
     res.json({
       mode,

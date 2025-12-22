@@ -274,29 +274,57 @@ exports.getRunningBills = async (req, res) => {
   }
 };
 
-// Simple settings storage in-memory for quick compatibility
-let _settings_store = {
-  hotel_name: "",
-  phone: "",
-  gstin: "",
-  address: "",
-};
+// Settings using SettingsModel
+const SettingsModel = require("../models/settingsModel");
 
 // GET /api/settings
 exports.getSettings = async (req, res) => {
   try {
-    res.json(_settings_store);
+    const { clerk } = req.query;
+    // If clerk is passed, get for that clerk. Else default to 'CLK' or whoever is calling if we had auth middleware here.
+    // For now, default to 'CLK' if no clerk specified (preserving admin UI behavior)
+    // The frontend should ideally pass the logged-in clerk initials.
+    const settings = await SettingsModel.getSettings(clerk || "CLK");
+
+    // Fallback if null (shouldn't happen with ensureSettings, but safe check)
+    if (!settings) {
+      return res.json({
+        hotel_name: "",
+        phone: "",
+        gstin: "",
+        address: "",
+        clerk_initials: clerk || "CLK",
+      });
+    }
+
+    res.json(settings);
   } catch (err) {
     console.error("Get settings error:", err);
     res.status(500).json({ detail: "Failed to get settings" });
   }
 };
 
+// GET /api/settings/clerks
+exports.getClerks = async (req, res) => {
+  try {
+    const clerks = await SettingsModel.getAllClerks();
+    res.json(clerks);
+  } catch (err) {
+    console.error("Get clerks error:", err);
+    res.status(500).json({ detail: "Failed to get clerks list" });
+  }
+};
+
 // PUT /api/settings
 exports.updateSettings = async (req, res) => {
   try {
-    _settings_store = { ..._settings_store, ...req.body };
-    res.json(_settings_store);
+    const { clerk } = req.query;
+    // Update for specific clerk or 'CLK'
+    const settings = await SettingsModel.updateSettings(
+      clerk || "CLK",
+      req.body
+    );
+    res.json(settings);
   } catch (err) {
     console.error("Update settings error:", err);
     res.status(500).json({ detail: "Failed to update settings" });

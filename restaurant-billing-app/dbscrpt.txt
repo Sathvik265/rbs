@@ -598,3 +598,10 @@ ORDER BY tc.table_name, tc.constraint_name;
 
 -- Example: Test category totals function
 -- SELECT * FROM get_category_totals_for_date(CURRENT_DATE);
+
+
+
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS clerk_initials VARCHAR(50);
+UPDATE settings SET clerk_initials = 'CLK' WHERE clerk_initials IS NULL;
+ALTER TABLE settings DROP CONSTRAINT IF EXISTS settings_clerk_initials_key;
+ALTER TABLE settings ADD CONSTRAINT settings_clerk_initials_key UNIQUE (clerk_initials);

@@ -515,11 +515,9 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
     if (!sessionId) return;
 
     try {
-      const res = await axios.post(`${API}/shifts/close`, {
-        session_id: sessionId,
-      });
+      const res = await closeShift(sessionId); // Use the imported service function
 
-      toast.success(`Shift ${res.data.shift_name} closed successfully`);
+      toast.success(`Shift ${res.shift_name} closed successfully`);
 
       // Log out user
       setTimeout(() => {
@@ -1285,23 +1283,18 @@ function EnhancedReconciliation({ sessionId, mode }) {
                             if (!details) {
                               try {
                                 const res = await api.get(
-                                  `/billing/orders/table/${row.table_no}/party/${row.party_no}`
+                                  `/reconciliation/running/${row.table_no}/${row.party_no}`,
+                                  {
+                                    headers: { Authorization: "admin" },
+                                  }
                                 );
                                 setDetailsCache((prev) => ({
                                   ...prev,
-                                  [key]: safeArray(res.data),
+                                  [key]: res.data,
                                 }));
-                              } catch (err) {
-                                console.error(
-                                  "Failed to load orders for",
-                                  key,
-                                  err
-                                );
-                                toast.error("Failed to load bill details");
-                                setDetailsCache((prev) => ({
-                                  ...prev,
-                                  [key]: [],
-                                }));
+                              } catch (e) {
+                                console.error("Failed to load details:", e);
+                                toast.error("Failed to load details");
                               }
                             }
                           }}
@@ -1310,41 +1303,28 @@ function EnhancedReconciliation({ sessionId, mode }) {
                         </Button>
                       </div>
                     </div>
-
-                    {isExpanded && (
-                      <div className="mt-3">
-                        {!details ? (
-                          <div className="text-sm text-gray-500">
-                            Loading...
-                          </div>
-                        ) : details.length === 0 ? (
-                          <div className="text-sm text-gray-500">No items</div>
-                        ) : (
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Item</TableHead>
-                                <TableHead>Qty</TableHead>
-                                <TableHead>Rate</TableHead>
-                                <TableHead>Amount</TableHead>
+                    {isExpanded && details && (
+                      <div className="mt-2 pl-4 border-l-2 border-gray-200">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Item</TableHead>
+                              <TableHead>Qty</TableHead>
+                              <TableHead>Price</TableHead>
+                              <TableHead>Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {details.map((d, i) => (
+                              <TableRow key={i}>
+                                <TableCell>{d.item_name}</TableCell>
+                                <TableCell>{d.quantity}</TableCell>
+                                <TableCell>{d.rate}</TableCell>
+                                <TableCell>{d.amount}</TableCell>
                               </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {details.map((d, idx) => (
-                                <TableRow key={idx}>
-                                  <TableCell>{d.item_name}</TableCell>
-                                  <TableCell>{d.quantity}</TableCell>
-                                  <TableCell>
-                                    {Number(d.unit_price || 0).toFixed(2)}
-                                  </TableCell>
-                                  <TableCell>
-                                    {Number(d.line_total || 0).toFixed(2)}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        )}
+                            ))}
+                          </TableBody>
+                        </Table>
                       </div>
                     )}
                   </div>
@@ -1766,7 +1746,14 @@ function FoodMenu({ mode }) {
                   <TableCell>
                     {Number(safeGet(item, "price_ac", 0)).toFixed(2)}
                   </TableCell>
-                  <TableCell>{safeGet(item, "category", "-")}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const cat = safeGet(item, "category", "-");
+                      return typeof cat === "object"
+                        ? JSON.stringify(cat)
+                        : cat;
+                    })()}
+                  </TableCell>
                   {mode === "admin-full" && (
                     <TableCell>
                       <div style={{ display: "flex", gap: 8 }}>
@@ -1854,6 +1841,34 @@ function Billing({
   const [filteredItems, setFilteredItems] = useState([]);
   const [selectedHelpIndex, setSelectedHelpIndex] = useState(0);
   const searchInputRef = useRef(null);
+
+  // Navigation state
+  const [focusedRowIndex, setFocusedRowIndex] = useState(-1);
+  const rowRefs = useRef([]);
+
+  // Global F1 Handler
+  useEffect(() => {
+    const handleGlobalF1 = (event) => {
+      if (event.key === "F1" || event.keyCode === 112) {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log("Custom F1 action");
+        setShowHelp(true);
+      }
+    };
+    document.addEventListener("keydown", handleGlobalF1);
+    return () => {
+      document.removeEventListener("keydown", handleGlobalF1);
+    };
+  }, []);
+
+  // Focus row when index changes
+  useEffect(() => {
+    if (focusedRowIndex >= 0 && rowRefs.current[focusedRowIndex]) {
+      rowRefs.current[focusedRowIndex].focus();
+      rowRefs.current[focusedRowIndex].scrollIntoView({ block: "nearest" });
+    }
+  }, [focusedRowIndex]);
 
   const currentDraft = useMemo(() => {
     const defaultDraft = {
@@ -2007,6 +2022,8 @@ function Billing({
     if (e.key === "F1") {
       e.preventDefault();
       setShowHelp(true);
+      // Prevent default browser help
+      return;
     } else if (e.key === "Escape") {
       e.preventDefault();
       setShowHelp(false);
@@ -2366,6 +2383,19 @@ function Billing({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [helpTab]);
 
+  // F5 Refresh Shortcut for Active Bills
+  useEffect(() => {
+    const handleRefreshShortcut = (e) => {
+      if (showHelp && helpTab === "active" && e.key === "F5") {
+        e.preventDefault();
+        setNow(new Date());
+        fetchActiveTables();
+      }
+    };
+    window.addEventListener("keydown", handleRefreshShortcut);
+    return () => window.removeEventListener("keydown", handleRefreshShortcut);
+  }, [showHelp, helpTab, fetchActiveTables]);
+
   const formatDuration = (ms) => {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -2517,9 +2547,16 @@ function Billing({
               </div>
             </div>
 
-            <div className="mb-4">
+            <div
+              className="mb-4 table-container"
+              style={{
+                maxHeight: "400px",
+                overflowY: "auto",
+                border: "1px solid #ccc",
+              }}
+            >
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
                   <TableRow>
                     <TableHead>No.</TableHead>
                     <TableHead>Item</TableHead>
@@ -2530,7 +2567,37 @@ function Billing({
                 </TableHeader>
                 <TableBody>
                   {safeArray(currentDraft.lines).map((l, idx) => (
-                    <TableRow key={idx}>
+                    <TableRow
+                      key={idx}
+                      ref={(el) => (rowRefs.current[idx] = el)}
+                      tabIndex={0}
+                      className={`cursor-pointer focus:bg-blue-50 whitespace-nowrap ${
+                        focusedRowIndex === idx ? "bg-blue-50" : ""
+                      }`}
+                      onClick={() => setFocusedRowIndex(idx)}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          setFocusedRowIndex((prev) =>
+                            prev < (currentDraft.lines || []).length - 1
+                              ? prev + 1
+                              : prev
+                          );
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          setFocusedRowIndex((prev) =>
+                            prev > 0 ? prev - 1 : prev
+                          );
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          const input = e.currentTarget.querySelector("input");
+                          if (input) {
+                            input.focus();
+                            input.select();
+                          }
+                        }
+                      }}
+                    >
                       <TableCell>{idx + 1}</TableCell>
                       <TableCell>
                         {safeGet(l, "name", "Unknown Item")}
@@ -2542,6 +2609,19 @@ function Billing({
                         >
                           -
                         </Button>
+                        <Button
+                          variant="success"
+                          size="sm"
+                          className="ml-2"
+                          onClick={() =>
+                            updateQty(
+                              idx,
+                              (Number(safeGet(l, "quantity", 0)) || 0) + 1
+                            )
+                          }
+                        >
+                          +
+                        </Button>
                       </TableCell>
                       <TableCell>
                         <Input
@@ -2552,6 +2632,27 @@ function Billing({
                           onChange={(e) =>
                             updateQty(idx, Number(e.target.value) || 1)
                           }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (rowRefs.current[idx]) {
+                                rowRefs.current[idx].focus();
+                              }
+                            } else if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              setFocusedRowIndex((prev) =>
+                                prev < (currentDraft.lines || []).length - 1
+                                  ? prev + 1
+                                  : prev
+                              );
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              setFocusedRowIndex((prev) =>
+                                prev > 0 ? prev - 1 : prev
+                              );
+                            }
+                          }}
                         />
                       </TableCell>
                       <TableCell>
@@ -2695,6 +2796,19 @@ function Billing({
               </>
             ) : (
               <div className="active-bills-list">
+                <div className="flex justify-end mb-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setNow(new Date());
+                      fetchActiveTables();
+                    }}
+                    title="Refresh (F5)"
+                  >
+                    Refresh
+                  </Button>
+                </div>
                 {activeTables.length === 0 ? (
                   <div className="no-active-bills">No active bills</div>
                 ) : (
@@ -2784,19 +2898,92 @@ function Billing({
 function SettingsEditor({ settings, onChange }) {
   const [form, setForm] = useState(safeObject(settings));
   const [loading, setLoading] = useState(false);
+  const [clerks, setClerks] = useState([]);
+  const [selectedClerk, setSelectedClerk] = useState(
+    settings?.clerk_initials || "CLK"
+  );
+  const [newClerkName, setNewClerkName] = useState("");
+  const [isAddingClerk, setIsAddingClerk] = useState(false);
+
+  // Load clerks list
+  const loadClerks = async () => {
+    try {
+      const res = await axios.get(`${API}/settings/clerks`);
+      setClerks(safeArray(res.data));
+    } catch (e) {
+      console.error("Failed to load clerks", e);
+    }
+  };
+
+  useEffect(() => {
+    loadClerks();
+  }, []);
 
   useEffect(() => {
     setForm(safeObject(settings));
+    if (settings?.clerk_initials) {
+      setSelectedClerk(settings.clerk_initials);
+    }
   }, [settings]);
+
+  // When clerk selection changes, fetch settings for that clerk
+  const handleClerkChange = async (e) => {
+    const newClerk = e.target.value;
+    setSelectedClerk(newClerk);
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/settings`, {
+        params: { clerk: newClerk },
+      });
+      setForm(safeObject(res.data));
+      if (onChange) {
+        onChange(res.data);
+      }
+    } catch (e) {
+      toast.error("Failed to load settings for " + newClerk);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateClerk = async () => {
+    if (!newClerkName) return;
+    const code = newClerkName.toUpperCase();
+    setLoading(true);
+    try {
+      // Verify/Create by fetching settings (backend ensures existence)
+      const res = await axios.get(`${API}/settings`, {
+        params: { clerk: code },
+      });
+      setClerks((prev) => [
+        ...prev.filter((c) => c.clerk_initials !== code),
+        { clerk_initials: code },
+      ]);
+      setSelectedClerk(code);
+      setForm(safeObject(res.data));
+      if (onChange) {
+        onChange(res.data);
+      }
+      setNewClerkName("");
+      setIsAddingClerk(false);
+      toast.success("Clerk added: " + code);
+    } catch (e) {
+      toast.error("Failed to add clerk");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const save = async () => {
     setLoading(true);
     try {
-      const res = await axios.put(`${API}/settings`, form);
+      const res = await axios.put(`${API}/settings`, form, {
+        params: { clerk: selectedClerk },
+      });
       if (onChange) {
         onChange(res.data);
       }
-      toast.success("Settings saved");
+      toast.success("Settings saved for " + selectedClerk);
     } catch (e) {
       console.error("Settings save error:", e);
       toast.error(
@@ -2810,7 +2997,59 @@ function SettingsEditor({ settings, onChange }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Receipt Settings</CardTitle>
+        <div className="flex justify-between items-center">
+          <CardTitle>Receipt Settings</CardTitle>
+          <div className="flex gap-2 items-center">
+            {isAddingClerk ? (
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Initials (e.g. ABC)"
+                  value={newClerkName}
+                  onChange={(e) =>
+                    setNewClerkName(e.target.value.toUpperCase())
+                  }
+                  className="w-32"
+                  maxLength={5}
+                />
+                <Button size="sm" onClick={handleCreateClerk}>
+                  Add
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsAddingClerk(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <>
+                <select
+                  className="border rounded p-1 bg-white"
+                  value={selectedClerk}
+                  onChange={handleClerkChange}
+                >
+                  {clerks.map((c) => (
+                    <option key={c.clerk_initials} value={c.clerk_initials}>
+                      {c.clerk_initials}
+                    </option>
+                  ))}
+                  {/* Fallback if list empty or current not in list */}
+                  {!clerks.find((c) => c.clerk_initials === selectedClerk) && (
+                    <option value={selectedClerk}>{selectedClerk}</option>
+                  )}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsAddingClerk(true)}
+                >
+                  + New Clerk
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         <Table>
@@ -2860,7 +3099,11 @@ function SettingsEditor({ settings, onChange }) {
         </Table>
         <div className="mt-4">
           <Button onClick={save} disabled={loading} className="w-full">
-            {loading ? <Loader2 size={16} className="mr-2" /> : "Save Settings"}
+            {loading ? (
+              <Loader2 size={16} className="mr-2" />
+            ) : (
+              `Save Settings for ${selectedClerk}`
+            )}
           </Button>
         </div>
       </CardContent>
