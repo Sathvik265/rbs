@@ -1,5 +1,6 @@
 const BillingModel = require("../models/billingModel");
 const OrderModel = require("../models/orderModel");
+const pool = require("../db");
 
 const billingController = {
   // Get all bills
@@ -80,7 +81,31 @@ const billingController = {
       // We need to know which bill to finalize.
       // The frontend might not send created_at, so we rely on finding the ACTIVE provisional bill.
 
-      const { table_no, party_no, track, clerk_initials } = billData;
+      let { table_no, party_no, track, clerk_initials } = billData;
+
+      // IMPORTANT FIX: If orders exist for this table/party, use THEIR track/clerk values
+      // because that's what the provisional bill was created with
+      const existingOrders = await OrderModel.getPendingOrdersByTableAndParty(
+        table_no,
+        party_no
+      );
+
+      if (existingOrders && existingOrders.length > 0) {
+        // Use the track and clerk_initials from the first order
+        track = existingOrders[0].track;
+        clerk_initials = existingOrders[0].clerk_initials;
+        console.log(
+          `Using track="${track}" and clerk="${clerk_initials}" from existing orders`
+        );
+      }
+
+      // DEBUG: Log the lookup parameters
+      console.log(`Looking for provisional bill with:`, {
+        table_no: parseInt(table_no),
+        party_no,
+        track,
+        clerk_initials,
+      });
 
       // Look up the active provisional bill to get the linking 'created_at'
       const provisionalBill = await BillingModel.getProvisionalBill(
@@ -90,10 +115,33 @@ const billingController = {
         clerk_initials
       );
 
+      console.log(`Provisional bill found:`, provisionalBill);
+
       if (!provisionalBill) {
-        return res
-          .status(404)
-          .json({ error: "No active provisional bill found to finalize." });
+        // ENHANCED ERROR: Query all provisional bills to see what exists
+        const allProvisionalBills = await pool.query(
+          `SELECT * FROM bills WHERE bill_number = 0 ORDER BY created_at DESC LIMIT 10`
+        );
+        console.log(
+          `All provisional bills in database:`,
+          allProvisionalBills.rows
+        );
+
+        return res.status(404).json({
+          error: "No active provisional bill found to finalize.",
+          searched_for: {
+            table_no: parseInt(table_no),
+            party_no,
+            track,
+            clerk_initials,
+          },
+          available_provisional_bills: allProvisionalBills.rows.map((b) => ({
+            table_no: b.table_no,
+            party_no: b.party_no,
+            track: b.track,
+            clerk_initials: b.clerk_initials,
+          })),
+        });
       }
 
       const bill_date = new Date().toISOString().split("T")[0];
@@ -101,6 +149,8 @@ const billingController = {
       const finalizeData = {
         ...billData,
         bill_date,
+        track, // Use the corrected track value
+        clerk_initials, // Use the corrected clerk_initials
         created_at: provisionalBill.created_at, // Vital: Pass the key to matching
         order_id: `ORD-${billData.table_no}-${billData.party_no}-${Date.now()}`,
       };
@@ -214,6 +264,13 @@ const billingController = {
         orderData.bill_date = new Date().toISOString().split("T")[0];
       }
 
+      console.log(`Creating order with data:`, {
+        table_no: orderData.table_no,
+        party_no: orderData.party_no,
+        track: orderData.track,
+        clerk_initials: orderData.clerk_initials,
+      });
+
       // 1. Find or Create Provisional Bill
       let provisionalBill = await BillingModel.getProvisionalBill(
         orderData.table_no,
@@ -222,9 +279,11 @@ const billingController = {
         orderData.clerk_initials
       );
 
+      console.log(`Existing provisional bill:`, provisionalBill);
+
       if (!provisionalBill) {
         const now = new Date();
-        provisionalBill = await BillingModel.createProvisionalBill({
+        const provisionalBillData = {
           bill_date: orderData.bill_date,
           table_no: orderData.table_no,
           party_no: orderData.party_no,
@@ -232,7 +291,15 @@ const billingController = {
           track: orderData.track,
           clerk_initials: orderData.clerk_initials,
           created_at: now,
-        });
+        };
+
+        console.log(`Creating new provisional bill with:`, provisionalBillData);
+
+        provisionalBill = await BillingModel.createProvisionalBill(
+          provisionalBillData
+        );
+
+        console.log(`Created provisional bill:`, provisionalBill);
       }
 
       // 2. Attach the Bill's 'created_at' to the Order so FK mapping works

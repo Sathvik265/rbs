@@ -143,6 +143,38 @@ const ItemModel = {
     );
     return result.rows;
   },
+
+  // Get all unique item names for dropdown
+  async getAllItemNames() {
+    const result = await pool.query(
+      `SELECT DISTINCT name FROM items ORDER BY name`
+    );
+    return result.rows.map((row) => row.name);
+  },
+
+  // Get all unique categories for dropdown
+  async getAllCategories() {
+    const result = await pool.query(
+      `SELECT DISTINCT category::text as category 
+       FROM items 
+       WHERE category IS NOT NULL AND category::text != 'null'
+       ORDER BY category`
+    );
+    // Extract category names from JSON if needed
+    const categories = result.rows.map((row) => {
+      try {
+        const parsed = JSON.parse(row.category);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].name) {
+          return parsed[0].name;
+        }
+        return row.category;
+      } catch {
+        return row.category;
+      }
+    });
+    // Return unique values
+    return [...new Set(categories)];
+  },
 };
 
 module.exports = ItemModel;

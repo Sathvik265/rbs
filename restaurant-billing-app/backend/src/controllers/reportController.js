@@ -15,10 +15,9 @@ exports.getTimeRangeReport = async (req, res) => {
 
     const result = await pool.query(
       `
-      SELECT b.*, s.shift_name
+      SELECT b.*, b.track as shift_name
       FROM bills b
-      LEFT JOIN shifts s ON b.shift_id = s.shift_id
-      WHERE b.created_at >= $1 AND b.created_at <= $2
+      WHERE b.created_at >= $1 AND b.created_at <= $2 AND b.bill_number > 0
       ORDER BY b.created_at`,
       [startTimestamp, endTimestamp]
     );
@@ -42,10 +41,9 @@ exports.getDateRangeReport = async (req, res) => {
 
     const result = await pool.query(
       `
-      SELECT b.*, s.shift_name
+      SELECT b.*, b.track as shift_name
       FROM bills b
-      LEFT JOIN shifts s ON b.shift_id = s.shift_id
-      WHERE b.bill_date >= $1 AND b.bill_date <= $2
+      WHERE b.bill_date >= $1 AND b.bill_date <= $2 AND b.bill_number > 0
       ORDER BY b.bill_date, b.bill_number`,
       [startDate, endDate]
     );
@@ -71,8 +69,7 @@ exports.getShiftReport = async (req, res) => {
       `
       SELECT b.*
       FROM bills b
-      JOIN shifts s ON b.shift_id = s.shift_id
-      WHERE s.date = $1 AND s.shift_name = $2
+      WHERE b.bill_date = $1 AND b.track = $2 AND b.bill_number > 0
       ORDER BY b.bill_number`,
       [date, shiftName]
     );
@@ -97,14 +94,13 @@ exports.getShiftWiseReport = async (req, res) => {
     const result = await pool.query(
       `
       SELECT   
-        s.shift_name,   
-        COUNT(b.id) as bill_count,
-        SUM(b.grand_total) as total_amount
-      FROM bills b
-      JOIN shifts s ON b.shift_id = s.shift_id
-      WHERE b.bill_date = $1
-      GROUP BY s.shift_name
-      ORDER BY s.shift_name`,
+        track as shift_name,   
+        COUNT(id) as bill_count,
+        SUM(grand_total) as total_amount
+      FROM bills
+      WHERE bill_date = $1 AND bill_number > 0
+      GROUP BY track
+      ORDER BY track`,
       [bill_date]
     );
 
@@ -133,7 +129,7 @@ exports.getTimeWiseReport = async (req, res) => {
         COUNT(id) as bill_count,
         SUM(grand_total) as total_amount
       FROM bills
-      WHERE bill_date = $1
+      WHERE bill_date = $1 AND bill_number > 0
       GROUP BY time_slot
       ORDER BY time_slot`,
       [bill_date]
@@ -160,13 +156,13 @@ exports.getItemWiseReport = async (req, res) => {
     const result = await pool.query(
       `
       SELECT   
-        bi.item_name,   
-        SUM(bi.quantity) as total_quantity,
-        SUM(bi.line_total) as total_amount
-      FROM bill_items bi
-      JOIN bills b ON bi.bill_id = b.id
-      WHERE b.bill_date = $1
-      GROUP BY bi.item_name
+        item->>'item_name' as item_name,   
+        SUM((item->>'quantity')::integer) as total_quantity,
+        SUM((item->>'line_total')::decimal) as total_amount
+      FROM bills b,
+      jsonb_array_elements(b.items_json) as item
+      WHERE b.bill_date = $1 AND b.bill_number > 0
+      GROUP BY item->>'item_name'
       ORDER BY total_quantity DESC`,
       [bill_date]
     );
@@ -179,46 +175,61 @@ exports.getItemWiseReport = async (req, res) => {
   }
 };
 
-// GET /api/reports/by-item (advanced item report with shift breakdown)
+// GET /api/reports/by-item (advanced item report with optional filters)
 exports.getItemReport = async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, item_name, category } = req.query;
     if (!startDate || !endDate) {
       return res
         .status(400)
         .json({ detail: "startDate and endDate are required" });
     }
 
+    // Build dynamic WHERE clause for optional filters
+    let whereConditions = [
+      "b.bill_date >= $1",
+      "b.bill_date <= $2",
+      "b.bill_number > 0",
+    ];
+    let params = [startDate, endDate];
+    let paramIndex = 3;
+
+    if (item_name) {
+      whereConditions.push(`item->>'item_name' ILIKE $${paramIndex}`);
+      params.push(`%${item_name}%`);
+      paramIndex++;
+    }
+
+    if (category) {
+      whereConditions.push(`item->>'category' ILIKE $${paramIndex}`);
+      params.push(`%${category}%`);
+      paramIndex++;
+    }
+
+    const whereClause = whereConditions.join(" AND ");
+
     const result = await pool.query(
       `
       SELECT   
-        bi.item_name,   
-        SUM(bi.quantity) as total_quantity,
-        json_object_agg(s.shift_name, COALESCE(shift_quantities.quantity, 0)) as sold_in_shifts
-      FROM bill_items bi
-      JOIN bills b ON bi.bill_id = b.id
-      LEFT JOIN shifts s ON b.shift_id = s.shift_id
-      LEFT JOIN (
-        SELECT 
-          bi2.item_name,
-          s2.shift_name,
-          SUM(bi2.quantity) as quantity
-        FROM bill_items bi2
-        JOIN bills b2 ON bi2.bill_id = b2.id
-        JOIN shifts s2 ON b2.shift_id = s2.shift_id
-        WHERE b2.bill_date >= $1 AND b2.bill_date <= $2
-        GROUP BY bi2.item_name, s2.shift_name
-      ) shift_quantities ON bi.item_name = shift_quantities.item_name AND s.shift_name = shift_quantities.shift_name
-      WHERE b.bill_date >= $1 AND b.bill_date <= $2
-      GROUP BY bi.item_name
+        item->>'item_name' as item_name,
+        item->>'category' as category,
+        SUM((item->>'quantity')::integer) as total_quantity,
+        SUM((item->>'line_total')::decimal) as total_amount,
+        b.track as shift_name
+      FROM bills b,
+      jsonb_array_elements(b.items_json) as item
+      WHERE ${whereClause}
+      GROUP BY item->>'item_name', item->>'category', b.track
       ORDER BY total_quantity DESC`,
-      [startDate, endDate]
+      params
     );
 
     const formattedResult = result.rows.map((row) => ({
       itemName: row.item_name,
+      category: row.category,
       totalQuantity: parseInt(row.total_quantity),
-      soldInShifts: row.sold_in_shifts || {},
+      totalAmount: parseFloat(row.total_amount),
+      shiftName: row.shift_name,
     }));
 
     res.json(formattedResult);

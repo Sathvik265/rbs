@@ -111,7 +111,7 @@ app.post("/api/auth/login", async (req, res) => {
     let shiftSessionResult = await pool.query(
       `SELECT session_id FROM sessions 
              WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
-      [track, date, clerkInitialsForDb]
+      [track, date, upperStaffCode]
     );
 
     let shift_session_id;
@@ -124,7 +124,7 @@ app.post("/api/auth/login", async (req, res) => {
      ON CONFLICT (shift_name, session_date, clerk_initials)
      DO NOTHING
      RETURNING session_id`,
-        [track, clerkInitialsForDb, date]
+        [track, upperStaffCode, date]
       );
 
       if (createResult.rows.length > 0) {
@@ -133,7 +133,7 @@ app.post("/api/auth/login", async (req, res) => {
         // Conflict happened but no row returned (existing row present). Try to fetch it again.
         const retry = await pool.query(
           `SELECT session_id FROM sessions WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
-          [track, date, clerkInitialsForDb]
+          [track, date, upperStaffCode]
         );
         if (retry.rows.length > 0) shift_session_id = retry.rows[0].session_id;
         else
@@ -146,7 +146,7 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     // Ensure settings exist for this clerk (Auto-provisioning)
-    await SettingsModel.ensureSettings(clerkInitialsForDb);
+    await SettingsModel.ensureSettings(upperStaffCode);
 
     res.json({
       mode,
