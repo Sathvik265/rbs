@@ -11,7 +11,7 @@ settings - System configuration
 
 items - Menu items catalog
 
-shift_sessions - Shift and session management
+sessions - Shift and session management
 
 bill_sequences - Bill numbering sequence
 
@@ -76,8 +76,8 @@ FLOW 2: SHIFT SESSION MANAGEMENT
 └──────────────────┬──────────────────────────────────────────┘
 ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 2. INSERT INTO shift_sessions │
-│ - Generate UUID (shift_session_id) │
+│ 2. INSERT INTO sessions │
+│ - Generate UUID (session_id) │
 │ - Set start_time = CURRENT_TIMESTAMP │
 │ - Set status = 'OPEN' │
 │ - Unique constraint: (shift_name, session_date, clerk) │
@@ -86,7 +86,7 @@ FLOW 2: SHIFT SESSION MANAGEMENT
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. Log to audit_log │
 │ - action_type: 'SHIFT_START' │
-│ - shift_session_id: UUID reference │
+│ - session_id: UUID reference │
 │ - payload: JSON with shift details │
 └──────────────────┬──────────────────────────────────────────┘
 ▼
@@ -97,7 +97,7 @@ FLOW 2: SHIFT SESSION MANAGEMENT
 ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 5. CLERK ENDS SHIFT │
-│ - UPDATE shift_sessions │
+│ - UPDATE sessions │
 │ - SET end_time = CURRENT_TIMESTAMP │
 │ - SET status = 'CLOSED' │
 │ - SET closed_by = clerk_name │
@@ -116,7 +116,7 @@ FLOW 3: ORDER CREATION & BILL PRINTING (COMPLETE WORKFLOW)
 ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ STEP 2: DETERMINE CURRENT SHIFT │
-│ Call: get_current_shift_session_id() │
+│ Call: get_current_session_id() │
 │ - Returns UUID based on current time │
 │ - Example: shift_name='`' for morning (6AM-12PM) │
 └──────────────────┬──────────────────────────────────────────┘
@@ -287,7 +287,7 @@ FLOW 3: ORDER CREATION & BILL PRINTING (COMPLETE WORKFLOW)
 │ - action_type = 'BILL_CREATED' │
 │ - resource_type = 'BILL' │
 │ - resource_id = '14' │
-│ - shift_session_id = <current shift UUID> │
+│ - session_id = <current shift UUID> │
 │ - payload = {bill details in JSON} │
 └─────────────────────────────────────────────────────────────┘
 
@@ -325,7 +325,7 @@ FLOW 4: QUERYING & REPORTING
 │ SELECT ss.shift_name, ss.clerk_initials, │
 │ COUNT(b.id) as total_bills, │
 │ SUM(b.grand_total) as total_revenue │
-│ FROM shift_sessions ss │
+│ FROM sessions ss │
 │ JOIN bills b ON (ss.shift_name = substring(b.track, ...)) │
 │ WHERE ss.session_date = CURRENT_DATE │
 │ GROUP BY ss.shift_name, ss.clerk_initials; │
@@ -394,7 +394,7 @@ Flexibility for data modifications
 Integrity maintained via helper functions
 
 5. Shift Auto-Detection
-   Function: get_current_shift_session_id()
+   Function: get_current_session_id()
 
 Time-based shifts:
 
@@ -419,7 +419,7 @@ User actions
 
 System events
 
-Linked to shift_session_id
+Linked to session_id
 
 SAMPLE DATA SCENARIOS
 Scenario 1: Busy Restaurant Day
@@ -512,7 +512,7 @@ Case 3: Shift Not Closed Properly
 Detection:
 
 sql
-SELECT \* FROM shift_sessions
+SELECT \* FROM sessions
 WHERE session_date < CURRENT_DATE
 AND status = 'OPEN';
 Resolution:
@@ -538,7 +538,7 @@ idx_bills_clerk - Clerk performance reports
 
 idx_items_codes - Quick item search
 
-idx_shift_sessions_active - Active shift queries
+idx_sessions_active - Active shift queries
 
 idx_orders_composite_key - Pending order lookups
 
@@ -561,7 +561,7 @@ bills - Core transaction data
 
 bill_items - Transaction details
 
-shift_sessions - Shift tracking
+sessions - Shift tracking
 
 items - Menu configuration
 

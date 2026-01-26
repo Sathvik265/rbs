@@ -252,15 +252,15 @@ function ShiftManagement({ billingDate, mode = "clerk" }) {
                       <button
                         onClick={() =>
                           // only call when we have a valid session id
-                          shift.shift_session_id &&
+                          shift.session_id &&
                           handleToggleShift(
-                            shift.shift_session_id,
+                            shift.session_id,
                             shift.status || "CLOSED"
                           )
                         }
                         disabled={
-                          !shift.shift_session_id ||
-                          actionLoading === shift.shift_session_id
+                          !shift.session_id ||
+                          actionLoading === shift.session_id
                         }
                         style={{
                           padding: "6px 10px",
@@ -270,13 +270,13 @@ function ShiftManagement({ billingDate, mode = "clerk" }) {
                             shift.status === "OPEN" ? "#f44336" : "#4CAF50",
                           color: "white",
                           cursor:
-                            !shift.shift_session_id ||
-                            actionLoading === shift.shift_session_id
+                            !shift.session_id ||
+                            actionLoading === shift.session_id
                               ? "not-allowed"
                               : "pointer",
                         }}
                       >
-                        {actionLoading === shift.shift_session_id
+                        {actionLoading === shift.session_id
                           ? "Processing..."
                           : shift.status === "OPEN"
                           ? "Close"
@@ -300,7 +300,7 @@ function ShiftManagement({ billingDate, mode = "clerk" }) {
         >
           {shifts.map((shift) => (
             <div
-              key={shift.shift_session_id}
+              key={shift.session_id}
               className={`shift-card ${String(
                 shift.status || ""
               ).toLowerCase()}`}
@@ -364,10 +364,10 @@ function ShiftManagement({ billingDate, mode = "clerk" }) {
                 <button
                   onClick={() =>
                     // ensure we have a valid session id
-                    shift.shift_session_id &&
-                    handleToggleShift(shift.shift_session_id, shift.status)
+                    shift.session_id &&
+                    handleToggleShift(shift.session_id, shift.status)
                   }
-                  disabled={actionLoading === shift.shift_session_id}
+                  disabled={actionLoading === shift.session_id}
                   style={{
                     width: "100%",
                     padding: "10px 16px",
@@ -377,13 +377,13 @@ function ShiftManagement({ billingDate, mode = "clerk" }) {
                       shift.status === "OPEN" ? "#f44336" : "#4CAF50",
                     color: "white",
                     cursor:
-                      actionLoading === shift.shift_session_id
+                      actionLoading === shift.session_id
                         ? "not-allowed"
                         : "pointer",
                     fontWeight: "bold",
                   }}
                 >
-                  {actionLoading === shift.shift_session_id
+                  {actionLoading === shift.session_id
                     ? shift.status === "OPEN"
                       ? "Closing..."
                       : "Reopening..."

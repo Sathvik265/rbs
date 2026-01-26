@@ -16,7 +16,7 @@ DROP VIEW IF EXISTS pending_bills CASCADE;
 DROP VIEW IF EXISTS completed_bills CASCADE;
 
 -- Step 2: Drop all functions that might be used by views or other objects.
-DROP FUNCTION IF EXISTS get_current_shift_session_id(VARCHAR, DATE, VARCHAR) CASCADE;
+DROP FUNCTION IF EXISTS get_current_session_id(VARCHAR, DATE, VARCHAR) CASCADE;
 DROP FUNCTION IF EXISTS get_current_session_id(VARCHAR, DATE, VARCHAR) CASCADE;
 DROP FUNCTION IF EXISTS move_orders_to_bill_json(INTEGER, VARCHAR, VARCHAR) CASCADE;
 DROP FUNCTION IF EXISTS get_section_by_table(VARCHAR) CASCADE;
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     action_type VARCHAR(50),
     resource_type VARCHAR(50),
     resource_id VARCHAR(50),
-    shift_session_id UUID REFERENCES sessions(session_id), -- References new sessions table
+    session_id UUID REFERENCES sessions(session_id), -- References new sessions table
     ip_address INET,
     payload JSONB,
     correlation_id UUID

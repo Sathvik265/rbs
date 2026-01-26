@@ -1,5 +1,5 @@
 // Updated app.js for the new database schema
-// Modified authentication and related functionality to work with shift_sessions table
+// Modified authentication and related functionality to work with sessions table
 
 const express = require("express");
 const cors = require("cors");
@@ -68,7 +68,7 @@ app.get("/api/settings", reportController.getSettings);
 app.put("/api/settings", reportController.updateSettings);
 
 // ================ AUTH ROUTES (UPDATED) ================
-// POST /api/auth/login - Updated for shift_sessions table
+// POST /api/auth/login - Updated for sessions table
 app.post("/api/auth/login", async (req, res) => {
   try {
     console.log("Auth login request body:", req.body);
@@ -95,7 +95,7 @@ app.post("/api/auth/login", async (req, res) => {
     for (const shiftName of shiftsToEnsure) {
       // create default system rows only for 'SYS' clerk placeholder if they don't exist
       await pool.query(
-        `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status)
+        `INSERT INTO sessions (shift_name, clerk_initials, session_date, status)
                  VALUES ($1, 'SYS', $2, 'OPEN') 
                  ON CONFLICT (shift_name, session_date, clerk_initials) DO NOTHING`,
         [shiftName, date]
@@ -108,7 +108,7 @@ app.post("/api/auth/login", async (req, res) => {
     // IMPORTANT: If the requested track/shift for the given date is CLOSED,
     // do not allow login for any user on that track.
     const closedCheck = await pool.query(
-      `SELECT 1 FROM shift_sessions WHERE shift_name = $1 AND session_date = $2::date AND UPPER(status) = 'CLOSED' LIMIT 1`,
+      `SELECT 1 FROM sessions WHERE shift_name = $1 AND session_date = $2::date AND UPPER(status) = 'CLOSED' LIMIT 1`,
       [track, date]
     );
 
@@ -120,47 +120,47 @@ app.post("/api/auth/login", async (req, res) => {
 
     // Find an existing open session for this clerk
     let shiftSessionResult = await pool.query(
-      `SELECT shift_session_id FROM shift_sessions 
+      `SELECT session_id FROM sessions 
              WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
       [track, date, clerkInitialsForDb]
     );
 
-    let shift_session_id;
+    let session_id;
 
     if (shiftSessionResult.rows.length === 0) {
       // Create a new shift session for this clerk (do NOT force-open existing closed sessions)
       const createResult = await pool.query(
-        `INSERT INTO shift_sessions (shift_name, clerk_initials, session_date, status, start_time)
+        `INSERT INTO sessions (shift_name, clerk_initials, session_date, status, start_time)
      VALUES ($1, $2, $3, 'OPEN', CURRENT_TIMESTAMP)
      ON CONFLICT (shift_name, session_date, clerk_initials)
      DO NOTHING
-     RETURNING shift_session_id`,
+     RETURNING session_id`,
         [track, clerkInitialsForDb, date]
       );
 
       if (createResult.rows.length > 0) {
-        shift_session_id = createResult.rows[0].shift_session_id;
+        session_id = createResult.rows[0].session_id;
       } else {
         // Conflict happened but no row returned (existing row present). Try to fetch it again.
         const retry = await pool.query(
-          `SELECT shift_session_id FROM shift_sessions WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
+          `SELECT session_id FROM sessions WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
           [track, date, clerkInitialsForDb]
         );
         if (retry.rows.length > 0)
-          shift_session_id = retry.rows[0].shift_session_id;
+          session_id = retry.rows[0].session_id;
         else
           return res
             .status(409)
             .json({ detail: "Unable to create/open session for clerk" });
       }
     } else {
-      shift_session_id = shiftSessionResult.rows[0].shift_session_id;
+      session_id = shiftSessionResult.rows[0].session_id;
     }
 
     res.json({
       mode,
-      shift_session_id,
-      session_id: shift_session_id, // For backward compatibility
+      session_id,
+      session_id: session_id, // For backward compatibility
     });
   } catch (error) {
     console.error("Auth login error:", error);
@@ -370,7 +370,7 @@ app.get("/api/health", (req, res) => {
     timestamp: new Date().toISOString(),
     service: "Restaurant Billing Backend",
     version: "2.1.0",
-    schema_version: "Updated with merged shift_sessions table",
+    schema_version: "Updated with merged sessions table",
   });
 });
 
@@ -402,7 +402,7 @@ const server = app.listen(PORT, () => {
   console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`📊 API Base URL: http://127.0.0.1:${PORT}/api`);
-  console.log(`📋 Schema: Updated with merged shift_sessions table`);
+  console.log(`📋 Schema: Updated with merged sessions table`);
 });
 
 server.on("error", (err) => {

@@ -93,28 +93,28 @@ const ShiftModel = {
 
   // Close a session
   async closeSession(sessionUuid, closedBy) {
-    // Try to update the new `shift_sessions` table first (uses shift_session_id)
+    // Try to update the new `sessions` table first (uses session_id)
     try {
       const shiftResult = await pool.query(
-        `UPDATE shift_sessions
+        `UPDATE sessions
            SET status = 'CLOSED',
                end_time = CURRENT_TIMESTAMP,
                closed_by = $1
-           WHERE shift_session_id = $2
+           WHERE session_id = $2
            RETURNING *`,
         [closedBy, sessionUuid]
       );
 
       if (shiftResult.rows.length > 0) {
         console.log(
-          `shiftModel.closeSession: updated shift_sessions by shift_session_id=${sessionUuid}`
+          `shiftModel.closeSession: updated sessions by session_id=${sessionUuid}`
         );
         return shiftResult.rows[0];
       }
     } catch (err) {
       // ignore and try legacy table
       console.error(
-        "Error updating shift_sessions (continuing with legacy sessions):",
+        "Error updating sessions (continuing with legacy sessions):",
         err.message
       );
     }
@@ -133,10 +133,10 @@ const ShiftModel = {
     const updatedSession = result.rows[0];
     if (!updatedSession) return null;
 
-    // Also attempt to close the corresponding shift_sessions row (match by shift_name and session_date)
+    // Also attempt to close the corresponding sessions row (match by shift_name and session_date)
     try {
       const syncResult = await pool.query(
-        `UPDATE shift_sessions
+        `UPDATE sessions
            SET status = 'CLOSED',
                end_time = CURRENT_TIMESTAMP,
                closed_by = $1
@@ -147,12 +147,12 @@ const ShiftModel = {
 
       if (syncResult.rows.length > 0) {
         console.log(
-          `shiftModel.closeSession: synced close to shift_sessions for shift=${updatedSession.shift_name} date=${updatedSession.session_date}`
+          `shiftModel.closeSession: synced close to sessions for shift=${updatedSession.shift_name} date=${updatedSession.session_date}`
         );
         return syncResult.rows[0];
       }
     } catch (err) {
-      console.error("Error syncing close to shift_sessions:", err.message);
+      console.error("Error syncing close to sessions:", err.message);
     }
 
     return updatedSession;
@@ -279,10 +279,10 @@ const ShiftModel = {
     const updatedSession = result.rows[0];
     if (!updatedSession) return null;
 
-    // Also attempt to reopen the corresponding shift_sessions row (match by shift_name and session_date)
+    // Also attempt to reopen the corresponding sessions row (match by shift_name and session_date)
     try {
       const syncResult = await pool.query(
-        `UPDATE shift_sessions
+        `UPDATE sessions
          SET status = 'OPEN',
              end_time = NULL,
              closed_by = NULL,
@@ -294,12 +294,12 @@ const ShiftModel = {
 
       if (syncResult.rows.length > 0) {
         console.log(
-          `shiftModel.reopenSession: synced reopen to shift_sessions for shift=${updatedSession.shift_name} date=${updatedSession.session_date}`
+          `shiftModel.reopenSession: synced reopen to sessions for shift=${updatedSession.shift_name} date=${updatedSession.session_date}`
         );
         return syncResult.rows[0];
       }
     } catch (err) {
-      console.error("Error syncing reopen to shift_sessions:", err.message);
+      console.error("Error syncing reopen to sessions:", err.message);
     }
 
     return updatedSession;

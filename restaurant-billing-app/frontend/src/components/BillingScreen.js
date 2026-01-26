@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from "react";
 import {
   getNextBillNumber,
@@ -19,19 +20,44 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+
+  // --- REFS FOR NAVIGATION ---
+  const tableNoRef = useRef(null);
+  const partyNoRef = useRef(null);
+  const sectionRef = useRef(null);
+  const itemCodeRef = useRef(null);
+  
   const quantityInputRefs = useRef([]);
   const currentQtyRef = useRef(null);
 
+  // --- GLOBAL SHORTCUTS (Esc, Arrows, etc) ---
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Alt+Q => focus current add-item quantity input
+      // ESCAPE -> Focus Table No and Select Text
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (tableNoRef.current) {
+          tableNoRef.current.focus();
+          tableNoRef.current.select();
+        }
+        return;
+      }
+
+      // PageDown -> Focus Item Code
+      if (e.key === "PageDown") {
+        e.preventDefault();
+        if (itemCodeRef.current) itemCodeRef.current.focus();
+        return;
+      }
+
+      // Alt+Q -> Focus Add-Item Quantity
       if (e.altKey && e.key.toLowerCase() === "q") {
         e.preventDefault();
         if (currentQtyRef.current) currentQtyRef.current.focus();
         return;
       }
 
-      // Alt+ArrowDown => focus next item quantity in the items table
+      // Alt+ArrowDown -> Navigate Items Table (Next)
       if (e.altKey && e.key === "ArrowDown") {
         e.preventDefault();
         const active = document.activeElement;
@@ -45,7 +71,7 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
         return;
       }
 
-      // Alt+ArrowUp => focus previous item quantity
+      // Alt+ArrowUp -> Navigate Items Table (Previous)
       if (e.altKey && e.key === "ArrowUp") {
         e.preventDefault();
         const active = document.activeElement;
@@ -58,22 +84,15 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
           quantityInputRefs.current[prev].focus();
         return;
       }
-
-      // PageDown => focus item code textbox
-      if (e.key === "PageDown") {
-        e.preventDefault();
-        const itemCodeEl = document.getElementById("item-code");
-        if (itemCodeEl) itemCodeEl.focus();
-        return;
-      }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+  }, [items]); // Added items dependency to keep table nav fresh
 
+  // --- TABLE QUANTITY NAV ---
   const handleQuantityKeyDown = (e, index) => {
     if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -168,6 +187,10 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
       setItems((prev) => [...prev, newItem]);
       setCurrentItem({ code: "", quantity: 1 });
       setError(null);
+      
+      // Keep focus on Item Code for rapid entry
+      if (itemCodeRef.current) itemCodeRef.current.focus();
+
     } catch (err) {
       console.error("Error adding item:", err);
       setError(`Item "${currentItem.code}" not found`);
@@ -213,11 +236,13 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
   const handlePrintBill = async () => {
     if (!billData.table_no.trim()) {
       setError("Please enter Table No.");
+      if (tableNoRef.current) tableNoRef.current.focus();
       return;
     }
 
     if (items.length === 0) {
       setError("Please add items to the bill");
+      if (itemCodeRef.current) itemCodeRef.current.focus();
       return;
     }
 
@@ -248,9 +273,7 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
         })),
       };
 
-      console.log("Creating bill with payload:", billPayload);
       const response = await createBill(billPayload);
-      console.log("Bill creation response:", response);
 
       const billNumber =
         response?.bill_number ||
@@ -269,6 +292,10 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
       setItems([]);
       setBillData((prev) => ({ ...prev, table_no: "", party_no: "1" }));
       await fetchNextBillNumber();
+      
+      // Reset focus to Table No for next bill
+      if (tableNoRef.current) tableNoRef.current.focus();
+
     } catch (err) {
       console.error("Error creating bill:", err);
       const errorMessage =
@@ -276,17 +303,6 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
       setError("Failed to create bill: " + errorMessage);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleKeyPress = (e, action) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (action === "addItem") {
-        handleAddItem();
-      } else if (action === "printBill") {
-        handlePrintBill();
-      }
     }
   };
 
@@ -302,46 +318,58 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
           <div className="form-group">
             <label>Table No.</label>
             <input
+              ref={tableNoRef}
               type="text"
               value={billData.table_no}
               onChange={(e) =>
                 setBillData((prev) => ({ ...prev, table_no: e.target.value }))
               }
               placeholder="Type & Enter"
-              onKeyPress={(e) =>
-                e.key === "Enter" && document.getElementById("party-no").focus()
-              }
+              // ENTER -> Focus Party No
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  partyNoRef.current?.focus();
+                }
+              }}
             />
           </div>
 
           <div className="form-group">
             <label>Party No.</label>
             <input
-              id="party-no"
+              ref={partyNoRef}
               type="text"
               value={billData.party_no}
               onChange={(e) =>
                 setBillData((prev) => ({ ...prev, party_no: e.target.value }))
               }
-              onKeyPress={(e) =>
-                e.key === "Enter" && document.getElementById("section").focus()
-              }
+              // ENTER -> Focus Section
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  sectionRef.current?.focus();
+                }
+              }}
             />
           </div>
 
           <div className="form-group">
             <label>Section</label>
             <input
-              id="section"
+              ref={sectionRef}
               type="text"
               value={billData.section}
               onChange={(e) =>
                 setBillData((prev) => ({ ...prev, section: e.target.value }))
               }
-              onKeyPress={(e) =>
-                e.key === "Enter" &&
-                document.getElementById("item-code").focus()
-              }
+              // ENTER -> Focus Item Code
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  itemCodeRef.current?.focus();
+                }
+              }}
             />
           </div>
 
@@ -355,7 +383,7 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
           <div className="form-group">
             <label>Item Code (F1 for Help)</label>
             <input
-              id="item-code"
+              ref={itemCodeRef}
               type="text"
               value={currentItem.code}
               onChange={(e) =>
@@ -365,7 +393,13 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
                 }))
               }
               placeholder="Enter Item Code"
-              onKeyPress={(e) => handleKeyPress(e, "addItem")}
+              // ENTER -> Add Item
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleAddItem();
+                }
+              }}
             />
           </div>
 
@@ -394,7 +428,13 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
                     quantity: e.target.value,
                   }))
                 }
-                onKeyPress={(e) => handleKeyPress(e, "addItem")}
+                // ENTER -> Add Item
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddItem();
+                  }
+                }}
                 style={{ width: 70, textAlign: "center" }}
               />
               <button
@@ -564,10 +604,10 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
             <h4>Keyboard Shortcuts</h4>
             <ul style={{ margin: "5px 0", paddingLeft: "20px" }}>
               <li>
-                <strong>F1:</strong> Open Item search in Help Panel
+                <strong>Esc:</strong> Go to Table No.
               </li>
               <li>
-                <strong>Esc:</strong> Clear Item search in Help Panel
+                <strong>F1:</strong> Open Item search in Help Panel
               </li>
               <li>
                 <strong>Enter:</strong> Move between fields / Add Item
@@ -642,7 +682,12 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
           className="print-bill-btn"
           onClick={handlePrintBill}
           disabled={loading || items.length === 0}
-          onKeyPress={(e) => handleKeyPress(e, "printBill")}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handlePrintBill();
+            }
+          }}
           style={{
             width: "100%",
             padding: "12px",

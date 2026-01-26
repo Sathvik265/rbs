@@ -32,7 +32,8 @@ import "./styles/App.css";
 const BACKEND_URL = "http://127.0.0.1:8000";
 const API = `${BACKEND_URL}/api`;
 
-// Basic UI Components (unchanged)
+// ================== UI COMPONENTS ==================
+
 const Card = ({ children, className = "" }) => (
   <div
     className={`bg-white shadow-md rounded-lg border border-gray-200 ${className}`}
@@ -91,7 +92,7 @@ const Button = ({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`${baseClasses} ${variants[variant]} ${sizes[size]} {
+      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${
         disabled ? "opacity-50 cursor-not-allowed" : ""
       } transition-colors ${className}`}
       {...props}
@@ -183,11 +184,11 @@ const Loader2 = ({ size = 16, className = "" }) => (
     className={`inline-block animate-spin ${className}`}
     style={{ fontSize: size }}
   >
-    l
+    ↻
   </span>
 );
 
-// Safe utility functions (unchanged)
+// Safe utility functions
 const safeGet = (obj, path, defaultValue = null) => {
   try {
     const keys = path.split(".");
@@ -213,7 +214,8 @@ const safeObject = (obj, defaultValue = {}) => {
     : defaultValue;
 };
 
-// ULTRA SAFE BillPrint Component (unchanged)
+// ================== SUB-COMPONENTS ==================
+
 function BillPrint({ billData = null }) {
   const data =
     billData || (typeof window !== "undefined" && window.printBillData) || null;
@@ -341,7 +343,9 @@ function LoginPanel({ onLogin, onStartAdminVerification }) {
 
     const validTracks = ["`", "``", "RBS1", "RBS2"];
     if (!validTracks.includes(track)) {
-      toast.error("Invalid track. Valid tracks are '`', '``', 'RBS1', 'RBS2'.");
+      toast.error(
+        "Invalid track. Valid tracks are '`', '``', 'RBS1', 'RBS2'."
+      );
       return;
     }
 
@@ -432,6 +436,7 @@ function LoginPanel({ onLogin, onStartAdminVerification }) {
     </div>
   );
 }
+
 function AdminVerificationScreen({ onVerificationComplete }) {
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -474,7 +479,8 @@ function AdminVerificationScreen({ onVerificationComplete }) {
     </div>
   );
 }
-// ================== NEW SHIFT MANAGEMENT TAB ==================
+
+// ================== SHIFT MANAGEMENT ==================
 
 function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
   const [shifts, setShifts] = useState([]);
@@ -484,14 +490,13 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
   const isAdmin = mode && mode.includes("admin");
   const isClerk = mode === "clerk";
 
-  // Load shift status for admin
   const loadShiftStatus = React.useCallback(async () => {
-    if (!isAdmin) return; // currentDate is no longer relevant
+    if (!isAdmin) return;
 
     setLoading(true);
     try {
-      const res = await getShiftStatus(); // No date parameter needed
-      setShifts(safeArray(res)); // getShiftStatus now returns an array directly
+      const res = await getShiftStatus();
+      setShifts(safeArray(res));
     } catch (e) {
       console.error("Failed to load shift status:", e);
       toast.error("Failed to load shift status");
@@ -499,18 +504,16 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin]); // Removed currentDate from dependencies
+  }, [isAdmin]);
 
   useEffect(() => {
     if (isAdmin) {
       loadShiftStatus();
-      // Refresh every 30 seconds
       const interval = setInterval(loadShiftStatus, 30000);
       return () => clearInterval(interval);
     }
   }, [isAdmin, loadShiftStatus]);
 
-  // Close shift
   const handleCloseShift = async () => {
     if (!sessionId) return;
 
@@ -520,8 +523,6 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
       });
 
       toast.success(`Shift ${res.data.shift_name} closed successfully`);
-
-      // Log out user
       setTimeout(() => {
         window.location.reload();
       }, 1500);
@@ -533,18 +534,15 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
     setShowCloseConfirm(false);
   };
 
-  // Handle individual shift actions (for admin)
   const handleShiftAction = async (shiftId, currentStatus) => {
     if (!isAdmin) return;
 
     try {
       if (currentStatus === "OPEN") {
-        // Close the shift
-        await closeShift(shiftId); // Assuming closeShift takes sessionId
+        await closeShift(shiftId);
         toast.success(`Shift closed successfully`);
       } else {
-        // Reopen the shift
-        await reopenShift(shiftId); // Assuming reopenShift takes sessionId
+        await reopenShift(shiftId);
         toast.success(`Shift reopened successfully`);
       }
       loadShiftStatus();
@@ -717,7 +715,7 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
   );
 }
 
-// ================== FIXED REPORTING COMPONENTS ==================
+// ================== REPORT COMPONENTS ==================
 
 function TimeRangeReport({ sessionId }) {
   const [report, setReport] = useState(null);
@@ -729,11 +727,6 @@ function TimeRangeReport({ sessionId }) {
   });
 
   const generateReport = async () => {
-    if (!sessionId) {
-      toast.error("Session expired. Please login again.");
-      return;
-    }
-
     setLoading(true);
     try {
       const res = await axios.get(`${API}/reports/time-range`, {
@@ -852,11 +845,6 @@ function DateRangeReport({ sessionId }) {
   });
 
   const generateReport = async () => {
-    if (!sessionId) {
-      toast.error("Session expired. Please login again.");
-      return;
-    }
-
     setLoading(true);
     try {
       const res = await axios.get(`${API}/reports/date-range`, {
@@ -964,11 +952,6 @@ function ShiftReport({ sessionId }) {
   });
 
   const generateReport = async () => {
-    if (!sessionId) {
-      toast.error("Session expired. Please login again.");
-      return;
-    }
-
     setLoading(true);
     try {
       const res = await axios.get(`${API}/reports/by-shift`, {
@@ -1077,11 +1060,6 @@ function ItemReport({ sessionId }) {
   });
 
   const generateReport = async () => {
-    if (!sessionId) {
-      toast.error("Session expired. Please login again.");
-      return;
-    }
-
     setLoading(true);
     try {
       const res = await axios.get(`${API}/reports/by-item`, {
@@ -1192,10 +1170,8 @@ function EnhancedReconciliation({ sessionId, mode }) {
   const [detailsCache, setDetailsCache] = useState({});
 
   const loadRunningBills = useCallback(async () => {
-    // sessionId is not required to list running (pending) orders for reconciliation
     setLoading(true);
     try {
-      // call new running endpoint which groups pending orders by table/party
       const res = await api.get(`/reconciliation/running`, {
         headers: { Authorization: "admin" },
       });
@@ -1281,7 +1257,6 @@ function EnhancedReconciliation({ sessionId, mode }) {
                               return;
                             }
                             setExpandedKey(key);
-                            // fetch details if not cached
                             if (!details) {
                               try {
                                 const res = await api.get(
@@ -1459,7 +1434,6 @@ function FoodMenu({ mode }) {
     load();
   }, []);
 
-  // Edit modal state & handlers (admin only)
   const [editingItem, setEditingItem] = useState(null);
   const saveEditedItem = async () => {
     if (!editingItem) return;
@@ -1476,12 +1450,9 @@ function FoodMenu({ mode }) {
       await updateMenuItem(editingItem.id, payload);
       toast.success("Item updated");
       setEditingItem(null);
-      // reload items
       load();
     } catch (e) {
-      // Detailed error logging to help diagnose why the PUT did not reach/accept
       console.error("Failed to update item:", e);
-      console.error("Error response:", e?.response);
       let userMessage = "Failed to update item";
       if (e?.response) {
         try {
@@ -1502,7 +1473,6 @@ function FoodMenu({ mode }) {
   };
 
   const renderEditModal = () => {
-    console.log("renderEditModal called", editingItem);
     if (!editingItem) return null;
 
     const overlayStyle = {
@@ -1592,6 +1562,28 @@ function FoodMenu({ mode }) {
                   }
                 />
               </div>
+              <div>
+                <Label>AC Price</Label>
+                <Input
+                  type="number"
+                  value={editingItem.price_ac}
+                  onChange={(e) =>
+                    setEditingItem({
+                      ...editingItem,
+                      price_ac: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Category</Label>
+                <Input
+                  value={editingItem.category}
+                  onChange={(e) =>
+                    setEditingItem({ ...editingItem, category: e.target.value })
+                  }
+                />
+              </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Button onClick={saveEditedItem}>Save</Button>
                 <Button variant="outline" onClick={() => setEditingItem(null)}>
@@ -1604,7 +1596,6 @@ function FoodMenu({ mode }) {
       </div>
     );
 
-    // Render into document.body to avoid clipping/overflow issues and ensure it's on top
     return ReactDOM.createPortal(modal, document.body);
   };
 
@@ -1774,15 +1765,17 @@ function FoodMenu({ mode }) {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            // open edit modal
-                            console.log("Edit clicked", safeGet(item, "id"));
                             setEditingItem({
                               id: safeGet(item, "id"),
                               name: safeGet(item, "name", ""),
                               alpha_code: safeGet(item, "alpha_code", ""),
                               numeric_code: safeGet(item, "numeric_code", ""),
                               price_fixed: safeGet(item, "price_fixed", 0),
-                              price_general: safeGet(item, "price_general", 0),
+                              price_general: safeGet(
+                                item,
+                                "price_general",
+                                0
+                              ),
                               price_ac: safeGet(item, "price_ac", 0),
                               category: safeGet(item, "category", ""),
                             });
@@ -1806,27 +1799,12 @@ function FoodMenu({ mode }) {
           </Table>
         )}
         {renderEditModal()}
-        {/* DEBUG: Visible badge to show editingItem is set (temporary) */}
-        {editingItem && (
-          <div
-            style={{
-              position: "fixed",
-              right: 12,
-              bottom: 12,
-              background: "rgba(220,38,38,0.9)",
-              color: "white",
-              padding: "8px 12px",
-              borderRadius: 6,
-              zIndex: 99999,
-            }}
-          >
-            DEBUG: editingItem {editingItem.id}
-          </div>
-        )}
       </CardContent>
     </Card>
   );
 }
+
+// ================== BILLING COMPONENT ==================
 
 function Billing({
   drafts = {},
@@ -1844,16 +1822,22 @@ function Billing({
   const [qty, setQty] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  // --- REFS FOR NAVIGATION ---
   const tableNoRef = useRef(null);
+  const partyNoRef = useRef(null);
+  const sectionRef = useRef(null);
   const itemCodeRef = useRef(null);
   const qtyRef = useRef(null);
+  const searchInputRef = useRef(null);
+  
+  // Array ref for item quantity inputs
+  const itemQtyRefs = useRef([]);
 
   const [showHelp, setShowHelp] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [menuItems, setMenuItems] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
   const [selectedHelpIndex, setSelectedHelpIndex] = useState(0);
-  const searchInputRef = useRef(null);
 
   const currentDraft = useMemo(() => {
     const defaultDraft = {
@@ -1907,12 +1891,6 @@ function Billing({
     }
   }, [activeTab]);
 
-  useEffect(() => {
-    if (activeTab === "billing" && tableNoRef.current) {
-      tableNoRef.current.focus();
-    }
-  }, [activeTab]);
-
   const onHeaderChange = (patch) => {
     if (!currentTable || !setDrafts) return;
 
@@ -1948,13 +1926,13 @@ function Billing({
   const loadDataForTable = async (tableNo) => {
     if (!tableNo || !setDrafts) return;
     setSectionByTable(tableNo);
-    if (drafts && drafts[tableNo]) return; // If draft already exists, do nothing
+    if (drafts && drafts[tableNo]) return;
 
     let initialLines = [];
-    let modifiedFromBillId = null; // Assuming running bills don't come from a modified bill initially
+    let modifiedFromBillId = null;
 
     try {
-      const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, "1"); // Assuming party_no is always "1" for now
+      const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, "1");
       if (pendingOrders && pendingOrders.length > 0) {
         initialLines = pendingOrders.map((order) => ({
           code: order.item_code || order.numeric_item_code,
@@ -1989,17 +1967,36 @@ function Billing({
     }));
   };
 
+  // --- NAVIGATION HANDLERS ---
   const handleTableNoKeyDown = (event) => {
     if (event.key === "PageDown") {
-      if (itemCodeRef.current) {
-        itemCodeRef.current.focus();
-      }
+      event.preventDefault();
+      if (itemCodeRef.current) itemCodeRef.current.focus();
     } else if (event.key === "Enter") {
+      event.preventDefault();
       const newTableNo = event.target.value;
       if (setCurrentTable) {
         setCurrentTable(newTableNo);
       }
       loadDataForTable(newTableNo);
+      // Focus Party No
+      if (partyNoRef.current) partyNoRef.current.focus();
+    }
+  };
+
+  const handlePartyNoKeyDown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      // Focus Section
+      if (sectionRef.current) sectionRef.current.focus();
+    }
+  };
+
+  const handleSectionKeyDown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      // Focus Item Code
+      if (itemCodeRef.current) itemCodeRef.current.focus();
     }
   };
 
@@ -2038,11 +2035,38 @@ function Billing({
     }
   };
 
-  const updateQty = (index, newQty) => {
+  // New handler for navigating item quantities
+  const handleTableQtyKeyDown = (e, index) => {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (index >= 0) {
+        itemQtyRefs.current[index - 1]?.focus();
+        itemQtyRefs.current[index - 1]?.select();
+      } else {
+        // Go back to Add Item Qty input
+        qtyRef.current?.focus();
+        qtyRef.current?.select();
+      }
+    } else if (e.key === "ArrowDown" || e.key === "Enter") {
+      e.preventDefault();
+      if (index < safeArray(currentDraft.lines).length - 1) {
+        itemQtyRefs.current[index + 1]?.focus();
+        itemQtyRefs.current[index + 1]?.select();
+      }
+    }
+  };
+
+  const updateQty = (index, val) => {
     if (!setDrafts || !currentTable) return;
-    if (newQty <= 0) {
-      removeLine(index);
-      return;
+    
+    // Parse value, allow empty string
+    let newQty = val;
+    if (val !== "") {
+        newQty = Number(val);
+        if (newQty <= 0) {
+            removeLine(index);
+            return;
+        }
     }
 
     const lines = safeArray(currentDraft.lines);
@@ -2051,7 +2075,7 @@ function Billing({
       return {
         ...l,
         quantity: newQty,
-        line_total: Number((safeGet(l, "unit_price", 0) * newQty).toFixed(2)),
+        line_total: Number((safeGet(l, "unit_price", 0) * (Number(newQty) || 0)).toFixed(2)),
       };
     });
 
@@ -2100,7 +2124,6 @@ function Billing({
 
       try {
         const payload = {
-          // bill_number is generated by backend
           table_no: safeGet(header, "table_no", currentTable),
           party_no: safeGet(header, "party_no", "1"),
           section: safeGet(header, "section", "G"),
@@ -2265,7 +2288,6 @@ function Billing({
     ]
   );
 
-  // This is a dummy comment to force recompilation
   const handlePrintBill = useCallback(async () => {
     if (!currentTable) {
       toast.error("Please enter a table number before printing.");
@@ -2291,14 +2313,13 @@ function Billing({
   }, [currentTable, currentDraft, entryCode, qtyRef, addItem, createBill]);
 
   // --- Active Bills Logic ---
-  const [helpTab, setHelpTab] = useState("shortcuts"); // 'shortcuts' or 'active'
+  const [helpTab, setHelpTab] = useState("shortcuts");
   const [activeTables, setActiveTables] = useState([]);
   const [now, setNow] = useState(new Date());
 
   const fetchActiveTables = useCallback(async () => {
     try {
       const orders = await getAllPendingOrders();
-      // Group by table_no + party_no
       const groups = {};
       orders.forEach((o) => {
         const key = `${o.table_no}-${o.party_no}`;
@@ -2317,7 +2338,6 @@ function Billing({
         if (orderTime < g.first_order_at) g.first_order_at = orderTime;
         if (orderTime > g.last_order_at) g.last_order_at = orderTime;
 
-        // Check updated_at if available for last activity
         if (o.updated_at) {
           const updateTime = new Date(o.updated_at);
           if (updateTime > g.last_order_at) g.last_order_at = updateTime;
@@ -2338,14 +2358,12 @@ function Billing({
       fetchActiveTables();
       interval = setInterval(() => {
         setNow(new Date());
-        // Optional: poll for new data every minute
         if (new Date().getSeconds() === 0) fetchActiveTables();
       }, 1000);
     }
     return () => clearInterval(interval);
   }, [showHelp, fetchActiveTables]);
 
-  // F2 Shortcut
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "F2") {
@@ -2355,7 +2373,6 @@ function Billing({
             setHelpTab("active");
             return true;
           }
-          // If already open and on active, close. If on shortcuts, switch to active.
           if (helpTab === "active") return false;
           setHelpTab("active");
           return true;
@@ -2376,7 +2393,14 @@ function Billing({
 
   useEffect(() => {
     const handleGlobalKeyDown = (event) => {
-      if (event.key === "End" || event.key === "Home") {
+      // ESCAPE -> Focus Table No
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (tableNoRef.current) {
+          tableNoRef.current.focus();
+          tableNoRef.current.select();
+        }
+      } else if (event.key === "End" || event.key === "Home") {
         event.preventDefault();
         handlePrintBill();
       }
@@ -2414,7 +2438,9 @@ function Billing({
         safeGet(item, "numeric_code", "")
           .toLowerCase()
           .includes(lowercasedQuery) ||
-        safeGet(item, "alpha_code", "").toLowerCase().includes(lowercasedQuery)
+        safeGet(item, "alpha_code", "")
+          .toLowerCase()
+          .includes(lowercasedQuery)
     );
     setFilteredItems(filtered);
     setSelectedHelpIndex(0);
@@ -2475,15 +2501,21 @@ function Billing({
               <div>
                 <Label>Party No.</Label>
                 <Input
+                  ref={partyNoRef}
                   value={safeGet(currentDraft, "header.party_no", "")}
-                  onChange={(e) => onHeaderChange({ party_no: e.target.value })}
+                  onChange={(e) =>
+                    onHeaderChange({ party_no: e.target.value })
+                  }
+                  onKeyDown={handlePartyNoKeyDown}
                 />
               </div>
               <div>
                 <Label>Section</Label>
                 <Input
+                  ref={sectionRef}
                   value={safeGet(currentDraft, "header.section", "G")}
                   readOnly
+                  onKeyDown={handleSectionKeyDown}
                 />
               </div>
               <div>
@@ -2492,13 +2524,14 @@ function Billing({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-3 gap-4 mb-4">
               <div>
                 <Label>Item Code (F1 for Help)</Label>
                 <Input
                   ref={itemCodeRef}
                   type="text"
                   placeholder="Enter Item Code"
+
                   value={entryCode}
                   onChange={(e) => setEntryCode(e.target.value)}
                   onKeyDown={handleItemCodeKeyDown}
@@ -2545,13 +2578,16 @@ function Billing({
                       </TableCell>
                       <TableCell>
                         <Input
+                          ref={(el) => (itemQtyRefs.current[idx] = el)}
                           type="number"
                           min="1"
                           className="w-16"
-                          value={safeGet(l, "quantity", 0)}
-                          onChange={(e) =>
-                            updateQty(idx, Number(e.target.value) || 1)
-                          }
+                          value={safeGet(l, "quantity", "")} 
+                          // Defaulting to "" allows empty input, but logical default is handled in updateQty if needed
+                          // If l.quantity is missing, show 1 by default:
+                          // value={l.quantity !== undefined ? l.quantity : 1}
+                          onChange={(e) => updateQty(idx, e.target.value)}
+                          onKeyDown={(e) => handleTableQtyKeyDown(e, idx)}
                         />
                       </TableCell>
                       <TableCell>
@@ -2677,7 +2713,7 @@ function Billing({
                     <kbd>F2</kbd>: Toggle Active Bills
                   </li>
                   <li>
-                    <kbd>Esc</kbd>: Close item search in Help Panel
+                    <kbd>Esc</kbd>: Go to Table No.
                   </li>
                   <li>
                     <kbd>Enter</kbd>: Move between fields / Add item
@@ -2831,7 +2867,9 @@ function SettingsEditor({ settings, onChange }) {
               <TableCell>
                 <Input
                   value={safeGet(form, "phone", "")}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, phone: e.target.value })
+                  }
                 />
               </TableCell>
             </TableRow>
@@ -2840,7 +2878,9 @@ function SettingsEditor({ settings, onChange }) {
               <TableCell>
                 <Input
                   value={safeGet(form, "gstin", "")}
-                  onChange={(e) => setForm({ ...form, gstin: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, gstin: e.target.value })
+                  }
                 />
               </TableCell>
             </TableRow>
@@ -2872,7 +2912,6 @@ function EnhancedAdminPanel({ mode, sessionId }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [adminActiveTab, setAdminActiveTab] = useState("dashboard");
-  // local state for the nested Reports tabs so clicking triggers switches properly
   const [reportsInnerTab, setReportsInnerTab] = useState("time-range");
 
   const loadSettings = async () => {
@@ -2966,10 +3005,18 @@ function EnhancedAdminPanel({ mode, sessionId }) {
 }
 
 function App() {
-  const [mode, setMode] = useState("none");
-  const [billingDate, setBillingDate] = useState(null);
-  const [track, setTrack] = useState("");
-  const [sessionId, setSessionId] = useState(null);
+  const [mode, setMode] = useState(
+    () => localStorage.getItem("mode") || "none"
+  );
+  const [billingDate, setBillingDate] = useState(
+    () => localStorage.getItem("billingDate") || null
+  );
+  const [track, setTrack] = useState(
+    () => localStorage.getItem("track") || ""
+  );
+  const [sessionId, setSessionId] = useState(
+    () => localStorage.getItem("sessionId") || null
+  );
   const [isVerifyingAdmin, setIsVerifyingAdmin] = useState(false);
 
   const isAdmin = mode && mode.includes("admin");
@@ -2989,7 +3036,9 @@ function App() {
           const openShift = status.find(
             (s) => s.status === "OPEN" && s.shift_name === track
           );
-          setActiveShift(openShift || status.find((s) => s.status === "OPEN"));
+          setActiveShift(
+            openShift || status.find((s) => s.status === "OPEN")
+          );
         } catch (err) {
           console.error("Error fetching shift status:", err);
         } finally {
@@ -3006,6 +3055,11 @@ function App() {
     setTrack(newTrack);
     setSessionId(newSessionId);
     setIsVerifyingAdmin(false);
+    // Persist to localStorage for session recovery
+    localStorage.setItem("mode", newMode);
+    localStorage.setItem("billingDate", date);
+    localStorage.setItem("track", newTrack);
+    localStorage.setItem("sessionId", newSessionId);
   };
 
   const handleStartAdminVerification = (date, newTrack) => {
@@ -3028,6 +3082,11 @@ function App() {
     setDrafts({});
     setCurrentTable("");
     setActiveTab("billing");
+    // Clear localStorage on logout
+    localStorage.removeItem("mode");
+    localStorage.removeItem("billingDate");
+    localStorage.removeItem("track");
+    localStorage.removeItem("sessionId");
   };
 
   return (
@@ -3125,4 +3184,5 @@ function App() {
     </div>
   );
 }
+
 export default App;
