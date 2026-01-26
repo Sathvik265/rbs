@@ -39,82 +39,148 @@ const BillingModel = {
     return [];
   },
 
-  // Get next bill number for a track based on current shift session
-  async getNextBillNumber(track) {
-    // 1. Get current open session for the track (shift)
-    const session = await ShiftModel.getCurrentOpenSession(track);
-
-    if (!session) {
-      throw new Error(
-        `No open shift session found for track: ${track}. Cannot generate bill number.`
-      );
-    }
-
-    // 2. Count bills created during this session
+  // Get next bill number for a track based on today's date
+  async getNextBillNumber(track, date) {
+    // Logic Changed: Now strictly sequential per track per day.
     const result = await pool.query(
-      `SELECT COUNT(*) as count 
+      `SELECT MAX(bill_number) as max_num 
        FROM bills 
        WHERE track = $1 
-       AND created_at >= $2`,
-      [track, session.start_time]
+       AND bill_date = $2`,
+      [track, date]
     );
 
-    const count = parseInt(result.rows[0].count);
-    return count + 1;
+    const maxNum = parseInt(result.rows[0].max_num) || 0;
+    return maxNum + 1;
   },
 
-  async createBill(data) {
+  // Find an existing provisional bill (bill_number = 0)
+  async getProvisionalBill(table_no, party_no, track, clerk_initials) {
+    const result = await pool.query(
+      `SELECT * FROM bills 
+       WHERE table_no = $1 
+       AND party_no = $2 
+       AND track = $3 
+       AND clerk_initials = $4 
+       AND bill_number = 0 
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [parseInt(table_no), party_no, track, clerk_initials]
+    );
+    return result.rows[0];
+  },
+
+  // Create a new provisional bill
+  async createProvisionalBill(data) {
     const {
       bill_date,
       table_no,
-      party_no = "1",
+      party_no,
       section,
       track,
       clerk_initials,
+      created_at, // Allow explicit timestamp
+    } = data;
+
+    // Use provided timestamp or generate one in Node (ms precision) to ensure consistency with orders FK
+    const finalCreatedAt = created_at || new Date();
+
+    const result = await pool.query(
+      `INSERT INTO bills (
+        bill_number, bill_date, table_no, party_no, section, 
+        track, clerk_initials, items_json, created_at
+      )
+      VALUES (0, $1, $2, $3, $4, $5, $6, '[]'::jsonb, $7)
+      RETURNING *`,
+      [
+        bill_date,
+        parseInt(table_no),
+        party_no,
+        section,
+        track,
+        clerk_initials,
+        finalCreatedAt,
+      ]
+    );
+    return result.rows[0];
+  },
+
+  // Finalize an existing provisional bill into a real bill
+  async finalizeBill(data) {
+    const {
+      // Keys to find the bill
+      table_no,
+      party_no,
+      track,
+      clerk_initials,
+      created_at, // The linking key!
+
+      // Update data
+      bill_date,
       subtotal,
       sgst,
       cgst,
       tax_amount,
       grand_total,
-      order_id = null,
+      order_id,
     } = data;
 
     const client = await pool.connect();
     try {
-      // Generate dynamic bill number
-      const bill_number = await this.getNextBillNumber(track);
-
       await client.query("BEGIN");
 
-      // 1. Insert the bill record first (without items_json initially)
-      const billInsertRes = await client.query(
-        `INSERT INTO bills (
-          bill_number, bill_date, table_no, party_no, section, 
-          track, clerk_initials, subtotal, sgst, cgst, 
-          tax_amount, grand_total, items_json, order_id
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, '[]'::jsonb, $13)
+      // 1. Generate real bill number
+      const bill_number = await this.getNextBillNumber(track, bill_date);
+
+      // 2. Update the existing provisional bill
+      // We must match on the Created At because that's the FK link
+      const updateRes = await client.query(
+        `UPDATE bills SET
+          bill_number = $1,
+          bill_date = $2,
+          subtotal = $3,
+          sgst = $4,
+          cgst = $5,
+          tax_amount = $6,
+          grand_total = $7,
+          order_id = $8
+        WHERE table_no = $9 
+          AND party_no = $10 
+          AND track = $11 
+          AND clerk_initials = $12
+          AND created_at = $13 -- Vital: Match the FK column exactly
+          AND bill_number = 0 -- Safety check
         RETURNING id`,
         [
           bill_number,
           bill_date,
-          parseInt(table_no), // Ensure table_no is integer
-          party_no,
-          section,
-          track,
-          clerk_initials,
           subtotal,
           sgst,
           cgst,
           tax_amount,
           grand_total,
           order_id,
+          parseInt(table_no),
+          party_no,
+          track,
+          clerk_initials,
+          created_at,
         ]
       );
-      const billId = billInsertRes.rows[0].id;
 
-      // 2. Call the stored procedure to move orders to bill items_json
-      // This function also handles the deletion of orders
+      if (updateRes.rows.length === 0) {
+        throw new Error("Provisional bill not found or already finalized.");
+      }
+
+      const billId = updateRes.rows[0].id;
+
+      // 3. Move orders to items_json (and clear from orders table)
+      // Note: The FK constraint on orders will cascade update if we changed PK, but we didn't change the FK cols.
+      // Wait: We didn't change created_at, so FK remains valid.
+      // But move_orders_to_bill_json deletes orders. The FK cascade delete might interfere if not handled or if FK is on delete cascade.
+      // Actually, standard move logic deletes orders.
+      // Deleting orders is fine, that's what we want.
+
       await client.query("SELECT move_orders_to_bill_json($1, $2, $3)", [
         billId,
         table_no.toString(),
@@ -126,15 +192,22 @@ const BillingModel = {
         bill_id: billId,
         bill_number,
         grand_total,
-        message: "Bill created successfully",
+        message: "Bill finalized successfully",
       };
     } catch (err) {
       await client.query("ROLLBACK");
-      console.error("Error in createBill transaction:", err);
+      console.error("Error in finalizeBill transaction:", err);
       throw err;
     } finally {
       client.release();
     }
+  },
+
+  // Retain for compatibility or logic unrelated to main flow
+  async createBill(data) {
+    // Alias to finalizeBill for now to avoid breaking other calls if any,
+    // BUT ideally controller should call finalizeBill explicitly.
+    return this.finalizeBill(data);
   },
 
   async getLastBillNumber(date) {
@@ -181,7 +254,7 @@ const BillingModel = {
             track, clerk_initials, subtotal, sgst, cgst, 
             tax_amount, grand_total, items_json
           ) VALUES (0, $1, NULL, '0', 'SYS', 'SYS', 'SYS', 0, 0, 0, 0, 0, '[]'::jsonb)
-          ON CONFLICT (bill_number, bill_date) DO NOTHING`,
+          ON CONFLICT (bill_number, bill_date, track) DO NOTHING`,
           [date]
         );
       }

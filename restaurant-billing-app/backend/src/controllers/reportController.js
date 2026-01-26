@@ -15,20 +15,19 @@ exports.getTimeRangeReport = async (req, res) => {
 
     const result = await pool.query(
       `
-      SELECT b.*, s.shift_name
+      SELECT b.*, b.track as shift_name
       FROM bills b
-      LEFT JOIN shifts s ON b.shift_id = s.shift_id
-      WHERE b.created_at >= $1 AND b.created_at <= $2
+      WHERE b.created_at >= $1 AND b.created_at <= $2 AND b.bill_number > 0
       ORDER BY b.created_at`,
       [startTimestamp, endTimestamp]
     );
 
     res.json(result.rows);
   } catch (error) {
-    console.error("Time range report error:", error, error && error.stack);
+    console.error("Time range report error:", error);
     res.status(500).json({ detail: "Failed to generate time range report" });
   }
-  };
+};
 
 // GET /api/reports/date-range
 exports.getDateRangeReport = async (req, res) => {
@@ -42,17 +41,16 @@ exports.getDateRangeReport = async (req, res) => {
 
     const result = await pool.query(
       `
-      SELECT b.*, s.shift_name
+      SELECT b.*, b.track as shift_name
       FROM bills b
-      LEFT JOIN shifts s ON b.shift_id = s.shift_id
-      WHERE b.bill_date >= $1 AND b.bill_date <= $2
+      WHERE b.bill_date >= $1 AND b.bill_date <= $2 AND b.bill_number > 0
       ORDER BY b.bill_date, b.bill_number`,
       [startDate, endDate]
     );
 
     res.json(result.rows);
   } catch (error) {
-    console.error("Date range report error:", error, error && error.stack);
+    console.error("Date range report error:", error);
     res.status(500).json({ detail: "Failed to generate date range report" });
   }
 };
@@ -67,38 +65,18 @@ exports.getShiftReport = async (req, res) => {
         .json({ detail: "date and shiftName are required" });
     }
 
-    // Try legacy schema first (b.shift_id)
-    try {
-      const result = await pool.query(
-        `
-        SELECT b.*
-        FROM bills b
-        JOIN shifts s ON b.shift_id = s.shift_id
-        WHERE b.bill_date = $1 AND s.shift_name = $2
-        ORDER BY b.bill_number`,
-        [date, shiftName]
-      );
-
-      return res.json(result.rows);
-    } catch (err) {
-      console.log('Legacy by-shift query failed, trying sessions-based fallback:', err && err.message);
-    }
-
-    // Fallback: find bills whose created_at falls in a session for the given date and shift_name
-    const fallback = await pool.query(
+    const result = await pool.query(
       `
       SELECT b.*
       FROM bills b
-      LEFT JOIN sessions s ON s.session_date = (b.created_at::date) AND b.created_at >= s.start_time AND (s.end_time IS NULL OR b.created_at <= s.end_time)
-      WHERE b.created_at::date = $1 AND s.shift_name = $2
-      ORDER BY b.created_at, b.bill_number
-      `,
+      WHERE b.bill_date = $1 AND b.track = $2 AND b.bill_number > 0
+      ORDER BY b.bill_number`,
       [date, shiftName]
     );
 
-    res.json(fallback.rows);
+    res.json(result.rows);
   } catch (error) {
-    console.error("Shift report error:", error, error && error.stack);
+    console.error("Shift report error:", error);
     res.status(500).json({ detail: "Failed to generate shift report" });
   }
 };
@@ -113,48 +91,23 @@ exports.getShiftWiseReport = async (req, res) => {
 
     console.log("Generating shift-wise report for date:", bill_date);
 
-    // Try legacy schema first (b.shift_id)
-    try {
-      const result = await pool.query(
-        `
-        SELECT   
-          s.shift_name,   
-          COUNT(b.*) as bill_count,
-          SUM(COALESCE(b.grand_total, b.total_amount)) as total_amount
-        FROM bills b
-        JOIN shifts s ON b.shift_id = s.shift_id
-        WHERE b.bill_date = $1
-        GROUP BY s.shift_name
-        ORDER BY s.shift_name`,
-        [bill_date]
-      );
-
-      console.log("Shift-wise report result:", result.rows);
-      return res.json({ report: result.rows });
-    } catch (err) {
-      console.log('Legacy shift query failed, trying sessions-based fallback:', err && err.message);
-    }
-
-    // Fallback: map bills to sessions using created_at between session start/end
-    const fallback = await pool.query(
+    const result = await pool.query(
       `
-      SELECT
-        s.shift_name,
-        COUNT(b.*) as bill_count,
-        SUM(COALESCE(b.grand_total, b.total_amount)) as total_amount
-      FROM bills b
-      LEFT JOIN sessions s ON s.session_date = (b.created_at::date) AND b.created_at >= s.start_time AND (s.end_time IS NULL OR b.created_at <= s.end_time)
-      WHERE b.created_at::date = $1
-      GROUP BY s.shift_name
-      ORDER BY s.shift_name
-      `,
+      SELECT   
+        track as shift_name,   
+        COUNT(id) as bill_count,
+        SUM(grand_total) as total_amount
+      FROM bills
+      WHERE bill_date = $1 AND bill_number > 0
+      GROUP BY track
+      ORDER BY track`,
       [bill_date]
     );
 
-    console.log("Shift-wise report fallback result:", fallback.rows);
-    res.json({ report: fallback.rows });
+    console.log("Shift-wise report result:", result.rows);
+    res.json({ report: result.rows });
   } catch (error) {
-    console.error("Shift wise report error:", error, error && error.stack);
+    console.error("Shift wise report error:", error);
     res.status(500).json({ detail: "Failed to generate shift wise report" });
   }
 };
@@ -176,16 +129,16 @@ exports.getTimeWiseReport = async (req, res) => {
         COUNT(id) as bill_count,
         SUM(grand_total) as total_amount
       FROM bills
-      WHERE bill_date = $1
-      GROUP BY TO_CHAR(created_at, 'HH24:00')
-      ORDER BY TO_CHAR(created_at, 'HH24:00')`,
+      WHERE bill_date = $1 AND bill_number > 0
+      GROUP BY time_slot
+      ORDER BY time_slot`,
       [bill_date]
     );
 
     console.log("Time-wise report result:", result.rows);
     res.json({ report: result.rows });
   } catch (error) {
-    console.error("Time wise report error:", error, error && error.stack);
+    console.error("Time wise report error:", error);
     res.status(500).json({ detail: "Failed to generate time wise report" });
   }
 };
@@ -200,116 +153,88 @@ exports.getItemWiseReport = async (req, res) => {
 
     console.log("Generating item-wise report for date:", bill_date);
 
-    // Try legacy bill_items table first
-    try {
-      const result = await pool.query(
-        `
-        SELECT   
-          bi.item_name,   
-          SUM(bi.quantity) as total_quantity,
-          SUM(bi.line_total) as total_amount
-        FROM bill_items bi
-        JOIN bills b ON bi.bill_id = b.id
-        WHERE b.bill_date = $1
-        GROUP BY bi.item_name
-        ORDER BY total_quantity DESC`,
-        [bill_date]
-      );
-
-      console.log("Item-wise report result (bill_items):", result.rows);
-      return res.json({ report: result.rows });
-    } catch (err) {
-      console.log('bill_items query failed, falling back to bills.items JSONB:', err && err.message);
-    }
-
-    // Fallback: extract from bills.items JSONB and aggregate
-    const fallback = await pool.query(
+    const result = await pool.query(
       `
-      SELECT
-        item->> 'name' as item_name,
-        SUM((item->> 'quantity')::int) as total_quantity,
-        SUM((item->> 'line_total')::numeric) as total_amount
-      FROM bills, jsonb_array_elements(bills.items) as item
-      WHERE (bills.bill_date = $1 OR bills.created_at::date = $1)
-      GROUP BY item_name
-      ORDER BY total_quantity DESC
-      `,
+      SELECT   
+        item->>'item_name' as item_name,   
+        SUM((item->>'quantity')::integer) as total_quantity,
+        SUM((item->>'line_total')::decimal) as total_amount
+      FROM bills b,
+      jsonb_array_elements(b.items_json) as item
+      WHERE b.bill_date = $1 AND b.bill_number > 0
+      GROUP BY item->>'item_name'
+      ORDER BY total_quantity DESC`,
       [bill_date]
     );
 
-    console.log("Item-wise report result (JSONB):", fallback.rows);
-    res.json({ report: fallback.rows });
+    console.log("Item-wise report result:", result.rows);
+    res.json({ report: result.rows });
   } catch (error) {
-    console.error("Item wise report error:", error, error && error.stack);
+    console.error("Item wise report error:", error);
     res.status(500).json({ detail: "Failed to generate item wise report" });
   }
 };
 
-// GET /api/reports/by-item (advanced item report with shift breakdown)
+// GET /api/reports/by-item (advanced item report with optional filters)
 exports.getItemReport = async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, item_name, category } = req.query;
     if (!startDate || !endDate) {
       return res
         .status(400)
         .json({ detail: "startDate and endDate are required" });
     }
 
+    // Build dynamic WHERE clause for optional filters
+    let whereConditions = [
+      "b.bill_date >= $1",
+      "b.bill_date <= $2",
+      "b.bill_number > 0",
+    ];
+    let params = [startDate, endDate];
+    let paramIndex = 3;
 
-
-      // Only use fallback JSONB + time slot logic for item report
-
-    // Fallback: aggregate from bills.items JSONB and join to sessions for shift breakdown
-    const totals = await pool.query(
-      `
-      SELECT item->> 'name' as item_name,
-             SUM((item->> 'quantity')::int) as total_quantity
-      FROM bills, jsonb_array_elements(bills.items) as item
-      WHERE (bills.bill_date >= $1 AND bills.bill_date <= $2) OR (bills.created_at::date >= $1 AND bills.created_at::date <= $2)
-      GROUP BY item_name
-      ORDER BY total_quantity DESC
-      `,
-      [startDate, endDate]
-    );
-
-    // Use fixed time slots for shifts
-    const byShift = await pool.query(
-      `
-      SELECT
-        CASE
-          WHEN EXTRACT(HOUR FROM b.created_at) >= 6 AND EXTRACT(HOUR FROM b.created_at) < 14 THEN 'Morning'
-          WHEN EXTRACT(HOUR FROM b.created_at) >= 14 AND EXTRACT(HOUR FROM b.created_at) < 18 THEN 'Afternoon'
-          WHEN EXTRACT(HOUR FROM b.created_at) >= 18 AND EXTRACT(HOUR FROM b.created_at) < 24 THEN 'Evening'
-          ELSE 'Night'
-        END AS shift_name,
-        item->> 'name' as item_name,
-        SUM((item->> 'quantity')::int) as qty
-      FROM bills b,
-           jsonb_array_elements(b.items) as item
-      WHERE (b.created_at::date >= $1 AND b.created_at::date <= $2)
-      GROUP BY shift_name, item_name
-      ORDER BY item_name, shift_name
-      `,
-      [startDate, endDate]
-    );
-
-    // Build mapping of item -> { totalQuantity, soldInShifts }
-    const shiftMap = {};
-    for (const row of byShift.rows) {
-      const item = row.item_name;
-      shiftMap[item] = shiftMap[item] || {};
-      shiftMap[item][row.shift_name || 'Unknown'] = parseInt(row.qty || 0);
+    if (item_name) {
+      whereConditions.push(`item->>'item_name' ILIKE $${paramIndex}`);
+      params.push(`%${item_name}%`);
+      paramIndex++;
     }
 
-    const formatted = totals.rows.map((r) => ({
-      itemName: r.item_name,
-      totalQuantity: parseInt(r.total_quantity || 0),
-      soldInShifts: shiftMap[r.item_name] || {},
+    if (category) {
+      whereConditions.push(`item->>'category' ILIKE $${paramIndex}`);
+      params.push(`%${category}%`);
+      paramIndex++;
+    }
+
+    const whereClause = whereConditions.join(" AND ");
+
+    const result = await pool.query(
+      `
+      SELECT   
+        item->>'item_name' as item_name,
+        item->>'category' as category,
+        SUM((item->>'quantity')::integer) as total_quantity,
+        SUM((item->>'line_total')::decimal) as total_amount,
+        b.track as shift_name
+      FROM bills b,
+      jsonb_array_elements(b.items_json) as item
+      WHERE ${whereClause}
+      GROUP BY item->>'item_name', item->>'category', b.track
+      ORDER BY total_quantity DESC`,
+      params
+    );
+
+    const formattedResult = result.rows.map((row) => ({
+      itemName: row.item_name,
+      category: row.category,
+      totalQuantity: parseInt(row.total_quantity),
+      totalAmount: parseFloat(row.total_amount),
+      shiftName: row.shift_name,
     }));
 
-    res.json(formatted);
+    res.json(formattedResult);
   } catch (error) {
-    console.error("Item report error:", error, error && error.stack);
+    console.error("Item report error:", error);
     res.status(500).json({ detail: "Failed to generate item report" });
   }
 };
@@ -330,7 +255,7 @@ exports.getUnprintedBills = async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error("Unprinted bills error:", error, error && error.stack);
+    console.error("Unprinted bills error:", error);
     res.status(500).json({ detail: "Failed to fetch unprinted bills" });
   }
 };
@@ -355,37 +280,64 @@ exports.getRunningBills = async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error("Running bills error:", error, error && error.stack);
+    console.error("Running bills error:", error);
     res.status(500).json({ detail: "Failed to fetch running bills" });
   }
 };
 
-// Simple settings storage in-memory for quick compatibility
-let _settings_store = {
-  hotel_name: "",
-  phone: "",
-  gstin: "",
-  address: "",
-};
+// Settings using SettingsModel
+const SettingsModel = require("../models/settingsModel");
 
 // GET /api/settings
 exports.getSettings = async (req, res) => {
   try {
-    res.json(_settings_store);
-  } catch (error) {
-    console.error("Get settings error:", error);
-    res.status(500).json({ detail: "Failed to fetch settings" });
+    const { clerk } = req.query;
+    // If clerk is passed, get for that clerk. Else default to 'CLK' or whoever is calling if we had auth middleware here.
+    // For now, default to 'CLK' if no clerk specified (preserving admin UI behavior)
+    // The frontend should ideally pass the logged-in clerk initials.
+    const settings = await SettingsModel.getSettings(clerk || "CLK");
+
+    // Fallback if null (shouldn't happen with ensureSettings, but safe check)
+    if (!settings) {
+      return res.json({
+        hotel_name: "",
+        phone: "",
+        gstin: "",
+        address: "",
+        clerk_initials: clerk || "CLK",
+      });
+    }
+
+    res.json(settings);
+  } catch (err) {
+    console.error("Get settings error:", err);
+    res.status(500).json({ detail: "Failed to get settings" });
   }
 };
 
-// PUT /api/settings - update in-memory settings
+// GET /api/settings/clerks
+exports.getClerks = async (req, res) => {
+  try {
+    const clerks = await SettingsModel.getAllClerks();
+    res.json(clerks);
+  } catch (err) {
+    console.error("Get clerks error:", err);
+    res.status(500).json({ detail: "Failed to get clerks list" });
+  }
+};
+
+// PUT /api/settings
 exports.updateSettings = async (req, res) => {
   try {
-    const newSettings = req.body || {};
-    _settings_store = Object.assign({}, _settings_store, newSettings);
-    res.json(_settings_store);
-  } catch (error) {
-    console.error("Update settings error:", error);
+    const { clerk } = req.query;
+    // Update for specific clerk or 'CLK'
+    const settings = await SettingsModel.updateSettings(
+      clerk || "CLK",
+      req.body
+    );
+    res.json(settings);
+  } catch (err) {
+    console.error("Update settings error:", err);
     res.status(500).json({ detail: "Failed to update settings" });
   }
 };
@@ -411,7 +363,7 @@ exports.getTopItems = async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error("Top items error:", error, error && error.stack);
+    console.error("Top items error:", error);
     res.status(500).json({ detail: "Failed to fetch top items" });
   }
 };
@@ -424,25 +376,14 @@ exports.getCategoryTotals = async (req, res) => {
       return res.status(400).json({ detail: "date is required" });
     }
 
-    // Fallback implementation: aggregate bill_items by category using items table if available
     const result = await pool.query(
-      `
-      SELECT COALESCE(i.category, 'Uncategorized') AS category,
-             SUM(bi.line_total) AS total_sales,
-             SUM(bi.quantity) AS total_quantity
-      FROM bill_items bi
-      JOIN bills b ON bi.bill_id = b.id
-      LEFT JOIN items i ON i.name = bi.item_name
-      WHERE b.bill_date = $1
-      GROUP BY COALESCE(i.category, 'Uncategorized')
-      ORDER BY total_sales DESC
-      `,
+      "SELECT * FROM get_category_totals_for_date($1)",
       [date]
     );
 
     res.json(result.rows);
   } catch (error) {
-    console.error("Category totals error:", error, error && error.stack);
+    console.error("Category totals error:", error);
     res.status(500).json({ detail: "Failed to fetch category totals" });
   }
-  };
+};

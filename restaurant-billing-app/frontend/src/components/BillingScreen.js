@@ -84,6 +84,25 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
           quantityInputRefs.current[prev].focus();
         return;
       }
+<<<<<<< HEAD
+=======
+
+      // PageDown => focus item code textbox
+      if (e.key === "PageDown") {
+        e.preventDefault();
+        const itemCodeEl = document.getElementById("item-code");
+        if (itemCodeEl) itemCodeEl.focus();
+        return;
+      }
+
+      // F1 => Prevent default browser help and open app help
+      if (e.key === "F1") {
+        e.preventDefault();
+        // Logic to open app help can go here if needed, or just prevent default
+        console.log("F1 pressed - Browser help suppressed");
+        return;
+      }
+>>>>>>> 7b01c6ec3fdea87c7406e635fd3de159629c5952
     };
 
     document.addEventListener("keydown", handleKeyDown);
@@ -375,7 +394,15 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
 
           <div className="form-group">
             <label>Bill No.</label>
-            <input type="text" value={billData.bill_no} disabled />
+            <input
+              type="text"
+              value={
+                billData.bill_no == 0 || billData.bill_no === "0"
+                  ? "Pending"
+                  : billData.bill_no
+              }
+              disabled
+            />
           </div>
         </div>
 
@@ -491,95 +518,120 @@ function BillingScreen({ billingDate, userMode, track, activeShift }) {
         </div>
       )}
 
-      <table
-        className="items-table"
-        style={{ width: "100%", borderCollapse: "collapse", marginTop: "20px" }}
+      <div
+        className="table-container"
+        style={{
+          maxHeight: "400px",
+          overflowY: "auto",
+          marginTop: "20px",
+          border: "1px solid #ccc",
+        }}
       >
-        <thead>
-          <tr style={{ backgroundColor: "#f0f0f0" }}>
-            <th style={{ border: "1px solid #ccc", padding: "8px" }}>No.</th>
-            <th style={{ border: "1px solid #ccc", padding: "8px" }}>Item</th>
-            <th style={{ border: "1px solid #ccc", padding: "8px" }}>Qty</th>
-            <th style={{ border: "1px solid #ccc", padding: "8px" }}>Rate</th>
-            <th style={{ border: "1px solid #ccc", padding: "8px" }}>Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item, index) => (
-            <tr
-              key={index}
-              className="table-row"
-              title="Double-click to remove item"
-              onDoubleClick={() => handleRemoveItem(index)}
-            >
-              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                {item.no}
-              </td>
-              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                {item.name}
-              </td>
-              <td
-                style={{
-                  border: "1px solid #ccc",
-                  padding: "8px",
-                  display: "flex",
-                  alignItems: "center",
+        <table
+          className="items-table"
+          style={{ width: "100%", borderCollapse: "collapse" }}
+        >
+          <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
+            <tr style={{ backgroundColor: "#f0f0f0" }}>
+              <th style={{ border: "1px solid #ccc", padding: "8px" }}>No.</th>
+              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Item</th>
+              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Qty</th>
+              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Rate</th>
+              <th style={{ border: "1px solid #ccc", padding: "8px" }}>
+                Amount
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, index) => (
+              <tr
+                key={index}
+                className="table-row"
+                title="Double-click to remove item"
+                onDoubleClick={() => handleRemoveItem(index)}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    const nextRow = e.currentTarget.nextElementSibling;
+                    if (nextRow) nextRow.focus();
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    const prevRow = e.currentTarget.previousElementSibling;
+                    if (prevRow) prevRow.focus();
+                  }
                 }}
+                style={{ cursor: "pointer" }}
               >
-                <button onClick={() => handleQuantityChange(index, -1)}>
-                  -
-                </button>
-                <input
-                  ref={(el) => (quantityInputRefs.current[index] = el)}
-                  type="number"
-                  value={item.qty}
-                  onChange={(e) => {
-                    const newQty = parseInt(e.target.value, 10);
-                    setItems((prev) =>
-                      prev.map((prevItem, i) =>
-                        i === index
-                          ? {
-                              ...prevItem,
-                              qty: newQty,
-                              amount: newQty * prevItem.rate,
-                            }
-                          : prevItem
-                      )
-                    );
+                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
+                  {item.no}
+                </td>
+                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
+                  {item.name}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "8px",
+                    display: "flex",
+                    alignItems: "center",
                   }}
-                  onKeyDown={(e) => handleQuantityKeyDown(e, index)}
-                  style={{ width: "50px", textAlign: "center" }}
-                />
-                <button onClick={() => handleQuantityChange(index, 1)}>
-                  +
-                </button>
-              </td>
-              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                ₹{item.rate.toFixed(2)}
-              </td>
-              <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                ₹{item.amount.toFixed(2)}
-              </td>
-            </tr>
-          ))}
-          {items.length === 0 && (
-            <tr>
-              <td
-                colSpan="5"
-                className="no-items"
-                style={{
-                  border: "1px solid #ccc",
-                  padding: "20px",
-                  textAlign: "center",
-                  color: "#999",
-                }}
-              >
-                No items added yet
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+                >
+                  <button onClick={() => handleQuantityChange(index, -1)}>
+                    -
+                  </button>
+                  <input
+                    ref={(el) => (quantityInputRefs.current[index] = el)}
+                    type="number"
+                    value={item.qty}
+                    onChange={(e) => {
+                      const newQty = parseInt(e.target.value, 10);
+                      setItems((prev) =>
+                        prev.map((prevItem, i) =>
+                          i === index
+                            ? {
+                                ...prevItem,
+                                qty: newQty,
+                                amount: newQty * prevItem.rate,
+                              }
+                            : prevItem
+                        )
+                      );
+                    }}
+                    onKeyDown={(e) => handleQuantityKeyDown(e, index)}
+                    style={{ width: "50px", textAlign: "center" }}
+                  />
+                  <button onClick={() => handleQuantityChange(index, 1)}>
+                    +
+                  </button>
+                </td>
+                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
+                  ₹{item.rate.toFixed(2)}
+                </td>
+                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
+                  ₹{item.amount.toFixed(2)}
+                </td>
+              </tr>
+            ))}
+            {items.length === 0 && (
+              <tr>
+                <td
+                  colSpan="5"
+                  className="no-items"
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "20px",
+                    textAlign: "center",
+                    color: "#999",
+                  }}
+                >
+                  No items added yet
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       <div className="form-actions" style={{ marginTop: "20px" }}>
         <button

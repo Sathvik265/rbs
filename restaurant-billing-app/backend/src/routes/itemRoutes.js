@@ -18,12 +18,10 @@ router.get("/items/separate", async (req, res) => {
     const items = await ItemModel.getSeparateItems();
     res.json(items);
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        error: "Failed to fetch separate items",
-        details: error.message,
-      });
+    res.status(500).json({
+      error: "Failed to fetch separate items",
+      details: error.message,
+    });
   }
 });
 
@@ -38,7 +36,31 @@ router.get("/items/regular", async (req, res) => {
   }
 });
 
-router.get("/items/:id", async (req, res) => {
+// Get all unique item names for dropdown (MUST be before /items/:id)
+router.get("/names/all", async (req, res) => {
+  try {
+    const names = await ItemModel.getAllItemNames();
+    res.json(names);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to fetch item names", details: error.message });
+  }
+});
+
+// Get all unique categories for dropdown (MUST be before /items/:id)
+router.get("/categories/all", async (req, res) => {
+  try {
+    const categories = await ItemModel.getAllCategories();
+    res.json(categories);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "Failed to fetch categories", details: error.message });
+  }
+});
+
+router.get("/:id", async (req, res) => {
   try {
     const item = await ItemModel.getItemById(req.params.id);
     if (item) {
