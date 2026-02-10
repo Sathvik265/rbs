@@ -92,8 +92,9 @@ const Button = ({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled ? "opacity-50 cursor-not-allowed" : ""
-        } transition-colors ${className}`}
+      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${
+        disabled ? "opacity-50 cursor-not-allowed" : ""
+      } transition-colors ${className}`}
       {...props}
     >
       {children}
@@ -118,7 +119,7 @@ const Tabs = ({ children, value, onValueChange }) => (
         React.cloneElement(child, {
           activeTab: value,
           onTabChange: onValueChange,
-        })
+        }),
     )}
   </div>
 );
@@ -132,7 +133,7 @@ const TabsList = ({ children, activeTab, onTabChange }) => (
         React.cloneElement(child, {
           isActive: child.props.value === activeTab,
           onClick: () => onTabChange && onTabChange(child.props.value),
-        })
+        }),
     )}
   </div>
 );
@@ -146,10 +147,11 @@ const TabsTrigger = ({
 }) => (
   <button
     onClick={onClick}
-    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${isActive
-      ? "bg-white text-blue-600 shadow-sm"
-      : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-      } ${className}`}
+    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+      isActive
+        ? "bg-white text-blue-600 shadow-sm"
+        : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+    } ${className}`}
   >
     {children}
   </button>
@@ -246,7 +248,7 @@ function BillPrint({ billData = null }) {
         fontSize: "12px",
         maxWidth: "300px",
         color: "black",
-        background: "white"
+        background: "white",
       }}
     >
       <div className="text-center font-bold">{hotelName}</div>
@@ -281,22 +283,36 @@ function BillPrint({ billData = null }) {
         </thead>
         <tbody>
           {items.length === 0 ? (
-            <tr><td colSpan="4" className="text-center">No Items Found</td></tr>
+            <tr>
+              <td colSpan="4" className="text-center">
+                No Items Found
+              </td>
+            </tr>
           ) : (
             items.map((item, i) => {
               let itemName = item.item_name || item.name || "Unknown Item";
 
               // Handle potential object/json structures similar to FoodMenu
               if (typeof itemName === "object") {
-                itemName = itemName.name || itemName.item_name || JSON.stringify(itemName);
+                itemName =
+                  itemName.name ||
+                  itemName.item_name ||
+                  JSON.stringify(itemName);
               }
               // Clean up if it was a JSON string
-              if (typeof itemName === 'string' && (itemName.startsWith('[') || itemName.startsWith('{'))) {
+              if (
+                typeof itemName === "string" &&
+                (itemName.startsWith("[") || itemName.startsWith("{"))
+              ) {
                 try {
                   const parsed = JSON.parse(itemName);
-                  if (Array.isArray(parsed) && parsed.length > 0) itemName = parsed[0].name || parsed[0].item_name;
-                  else if (typeof parsed === 'object') itemName = parsed.name || parsed.item_name;
-                } catch (e) {/* ignore */ }
+                  if (Array.isArray(parsed) && parsed.length > 0)
+                    itemName = parsed[0].name || parsed[0].item_name;
+                  else if (typeof parsed === "object")
+                    itemName = parsed.name || parsed.item_name;
+                } catch (e) {
+                  /* ignore */
+                }
               }
 
               let quantity = item.quantity || item.qty || 0;
@@ -365,9 +381,7 @@ function LoginPanel({ onLogin, onStartAdminVerification }) {
 
     const validTracks = ["`", "``", "RBS1", "RBS2"];
     if (!validTracks.includes(track)) {
-      toast.error(
-        "Invalid track. Valid tracks are '`', '``', 'RBS1', 'RBS2'."
-      );
+      toast.error("Invalid track. Valid tracks are '`', '``', 'RBS1', 'RBS2'.");
       return;
     }
 
@@ -393,7 +407,7 @@ function LoginPanel({ onLogin, onStartAdminVerification }) {
       toast.success(
         res.data.mode && res.data.mode.includes("admin")
           ? `Logged in as ${res.data.mode}`
-          : "Clerk mode"
+          : "Clerk mode",
       );
     } catch (e) {
       if (onLogin) {
@@ -571,7 +585,7 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
     } catch (e) {
       console.error("Failed to perform shift action:", e);
       toast.error(
-        safeGet(e, "response.data.detail", "Failed to perform shift action")
+        safeGet(e, "response.data.detail", "Failed to perform shift action"),
       );
     }
   };
@@ -627,10 +641,11 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
                   </TableCell>
                   <TableCell>
                     <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${shift.status === "OPEN"
-                        ? "bg-green-100 text-green-800"
-                        : "bg-red-100 text-red-800"
-                        }`}
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        shift.status === "OPEN"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
                     >
                       {shift.status}
                     </span>
@@ -764,7 +779,7 @@ function TimeRangeReport({ sessionId }) {
     } catch (e) {
       console.error("Failed to generate time range report:", e);
       toast.error(
-        safeGet(e, "response.data.detail", "Failed to generate report")
+        safeGet(e, "response.data.detail", "Failed to generate report"),
       );
       setReport(null);
     } finally {
@@ -881,7 +896,7 @@ function DateRangeReport({ sessionId }) {
     } catch (e) {
       console.error("Failed to generate date range report:", e);
       toast.error(
-        safeGet(e, "response.data.detail", "Failed to generate report")
+        safeGet(e, "response.data.detail", "Failed to generate report"),
       );
       setReport(null);
     } finally {
@@ -988,7 +1003,7 @@ function ShiftReport({ sessionId }) {
     } catch (e) {
       console.error("Failed to generate shift report:", e);
       toast.error(
-        safeGet(e, "response.data.detail", "Failed to generate report")
+        safeGet(e, "response.data.detail", "Failed to generate report"),
       );
       setReport(null);
     } finally {
@@ -1085,8 +1100,6 @@ function ItemReport({ sessionId }) {
     category: "",
   });
 
-<<<<<<< HEAD
-=======
   // Fetch item names and categories on component mount
   useEffect(() => {
     const fetchDropdownData = async () => {
@@ -1105,8 +1118,6 @@ function ItemReport({ sessionId }) {
     };
     fetchDropdownData();
   }, []);
-
->>>>>>> cf7bc9d53818df963d42a42cd7a74125edaa391f
   const generateReport = async () => {
     setLoading(true);
     try {
@@ -1129,7 +1140,7 @@ function ItemReport({ sessionId }) {
     } catch (e) {
       console.error("Failed to generate item report:", e);
       toast.error(
-        safeGet(e, "response.data.detail", "Failed to generate report")
+        safeGet(e, "response.data.detail", "Failed to generate report"),
       );
       setReport([]);
     } finally {
@@ -1252,14 +1263,7 @@ function ItemReport({ sessionId }) {
                       <TableCell className="font-bold">
                         {item.totalQuantity}
                       </TableCell>
-<<<<<<< HEAD
-                      <TableCell>{(item.soldInShifts && item.soldInShifts["`"]) || 0}</TableCell>
-                      <TableCell>{(item.soldInShifts && item.soldInShifts["``"]) || 0}</TableCell>
-                      <TableCell>{(item.soldInShifts && item.soldInShifts["RBS1"]) || 0}</TableCell>
-                      <TableCell>{(item.soldInShifts && item.soldInShifts["RBS2"]) || 0}</TableCell>
-=======
                       <TableCell>₹{item.totalAmount?.toFixed(2)}</TableCell>
->>>>>>> cf7bc9d53818df963d42a42cd7a74125edaa391f
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1375,7 +1379,7 @@ function EnhancedReconciliation({ sessionId, mode }) {
                             if (!details) {
                               try {
                                 const res = await api.get(
-                                  `/billing/orders/table/${row.table_no}/party/${row.party_no}`
+                                  `/billing/orders/table/${row.table_no}/party/${row.party_no}`,
                                 );
                                 setDetailsCache((prev) => ({
                                   ...prev,
@@ -1385,7 +1389,7 @@ function EnhancedReconciliation({ sessionId, mode }) {
                                 console.error(
                                   "Failed to load orders for",
                                   key,
-                                  err
+                                  err,
                                 );
                                 toast.error("Failed to load bill details");
                                 setDetailsCache((prev) => ({
@@ -1734,7 +1738,7 @@ function FoodMenu({ mode }) {
         // Format category as JSON object string: {"name": "Cat", "qty": 1}
         category: JSON.stringify({
           name: newItem.category,
-          qty: Number(newItem.quantity) || 1
+          qty: Number(newItem.quantity) || 1,
         }),
       });
 
@@ -1882,9 +1886,15 @@ function FoodMenu({ mode }) {
 
                 return (
                   <TableRow key={safeGet(item, "id", Math.random())}>
-                    <TableCell>{safeRender(safeGet(item, "name"), "N/A")}</TableCell>
-                    <TableCell>{safeRender(safeGet(item, "alpha_code"), "-")}</TableCell>
-                    <TableCell>{safeRender(safeGet(item, "numeric_code"), "-")}</TableCell>
+                    <TableCell>
+                      {safeRender(safeGet(item, "name"), "N/A")}
+                    </TableCell>
+                    <TableCell>
+                      {safeRender(safeGet(item, "alpha_code"), "-")}
+                    </TableCell>
+                    <TableCell>
+                      {safeRender(safeGet(item, "numeric_code"), "-")}
+                    </TableCell>
                     <TableCell>
                       {Number(safeGet(item, "price_fixed", 0)).toFixed(2)}
                     </TableCell>
@@ -1904,7 +1914,8 @@ function FoodMenu({ mode }) {
                         // 1. Try to treat as object/array first
                         if (typeof raw === "object") {
                           if (Array.isArray(raw) && raw.length > 0) {
-                            display = raw[0].name || raw[0].item_name || display;
+                            display =
+                              raw[0].name || raw[0].item_name || display;
                           } else if (!Array.isArray(raw)) {
                             display = raw.name || raw.item_name || display;
                           }
@@ -1912,24 +1923,38 @@ function FoodMenu({ mode }) {
                         // 2. Try to parse as JSON string
                         else if (typeof raw === "string") {
                           try {
-                            if (raw.trim().startsWith("[") || raw.trim().startsWith("{")) {
+                            if (
+                              raw.trim().startsWith("[") ||
+                              raw.trim().startsWith("{")
+                            ) {
                               const parsed = JSON.parse(raw);
                               if (Array.isArray(parsed) && parsed.length > 0) {
-                                display = parsed[0].name || parsed[0].item_name || display;
+                                display =
+                                  parsed[0].name ||
+                                  parsed[0].item_name ||
+                                  display;
                               } else if (parsed && typeof parsed === "object") {
-                                display = parsed.name || parsed.item_name || display;
+                                display =
+                                  parsed.name || parsed.item_name || display;
                               }
                             }
                           } catch (e) {
                             // Regex fallback
-                            const match = raw.match(/["']name["']\s*:\s*["']([^"']+)["']/i);
+                            const match = raw.match(
+                              /["']name["']\s*:\s*["']([^"']+)["']/i,
+                            );
                             if (match && match[1]) display = match[1];
                           }
                         }
 
                         // Remove any lingering JSON artifacts if regex didn't catch it but it looks like JSON
-                        if (display.startsWith("[") && display.includes("name")) {
-                          const match = display.match(/["']name["']\s*:\s*["']([^"']+)["']/i);
+                        if (
+                          display.startsWith("[") &&
+                          display.includes("name")
+                        ) {
+                          const match = display.match(
+                            /["']name["']\s*:\s*["']([^"']+)["']/i,
+                          );
                           if (match && match[1]) display = match[1];
                         }
 
@@ -1952,7 +1977,7 @@ function FoodMenu({ mode }) {
                                 price_general: safeGet(
                                   item,
                                   "price_general",
-                                  0
+                                  0,
                                 ),
                                 price_ac: safeGet(item, "price_ac", 0),
                                 category: safeGet(item, "category", ""),
@@ -1964,7 +1989,9 @@ function FoodMenu({ mode }) {
                           <Button
                             variant="destructive"
                             size="sm"
-                            onClick={() => handleDeleteItem(safeGet(item, "id"))}
+                            onClick={() =>
+                              handleDeleteItem(safeGet(item, "id"))
+                            }
                           >
                             X
                           </Button>
@@ -2124,7 +2151,7 @@ function Billing({
           alpha_code: order.item_code,
         }));
         toast.success(
-          `Loaded ${pendingOrders.length} pending items for Table ${tableNo}`
+          `Loaded ${pendingOrders.length} pending items for Table ${tableNo}`,
         );
       }
     } catch (error) {
@@ -2195,7 +2222,8 @@ function Billing({
       const item = menuItems.find(
         (i) =>
           safeGet(i, "numeric_code") === entryCode ||
-          safeGet(i, "alpha_code", "").toLowerCase() === entryCode.toLowerCase()
+          safeGet(i, "alpha_code", "").toLowerCase() ===
+            entryCode.toLowerCase(),
       );
       if (item) {
         if (qtyRef.current) {
@@ -2255,7 +2283,9 @@ function Billing({
       return {
         ...l,
         quantity: newQty,
-        line_total: Number((safeGet(l, "unit_price", 0) * (Number(newQty) || 0)).toFixed(2)),
+        line_total: Number(
+          (safeGet(l, "unit_price", 0) * (Number(newQty) || 0)).toFixed(2),
+        ),
       };
     });
 
@@ -2290,7 +2320,7 @@ function Billing({
   const cgst = useMemo(() => Number((subtotal * 0.025).toFixed(2)), [subtotal]);
   const total = useMemo(
     () => Number((subtotal + sgst + cgst).toFixed(2)),
-    [subtotal, sgst, cgst]
+    [subtotal, sgst, cgst],
   );
 
   const createBill = useCallback(
@@ -2358,7 +2388,7 @@ function Billing({
       } catch (e) {
         console.error("Bill creation error:", e);
         toast.error(
-          safeGet(e, "response.data.detail", "Failed to create bill")
+          safeGet(e, "response.data.detail", "Failed to create bill"),
         );
       } finally {
         setLoading(false);
@@ -2381,7 +2411,7 @@ function Billing({
       setQty,
       tableNoRef,
       setPrintData,
-    ]
+    ],
   );
 
   const addItem = useCallback(
@@ -2420,15 +2450,15 @@ function Billing({
 
         const itemName = safeExtract(
           safeGet(item, "name", "Unknown Item"),
-          "name"
+          "name",
         );
         const itemAlphaCode = safeExtract(
           safeGet(item, "alpha_code", ""),
-          "alpha_code"
+          "alpha_code",
         );
         const itemNumericCode = safeExtract(
           safeGet(item, "numeric_code", ""),
-          "numeric_code"
+          "numeric_code",
         );
 
         const newLine = {
@@ -2490,7 +2520,7 @@ function Billing({
       setEntryCode,
       setQty,
       itemCodeRef,
-    ]
+    ],
   );
 
   const handlePrintBill = useCallback(async () => {
@@ -2681,9 +2711,7 @@ function Billing({
         safeGet(item, "numeric_code", "")
           .toLowerCase()
           .includes(lowercasedQuery) ||
-        safeGet(item, "alpha_code", "")
-          .toLowerCase()
-          .includes(lowercasedQuery)
+        safeGet(item, "alpha_code", "").toLowerCase().includes(lowercasedQuery),
     );
     setFilteredItems(filtered);
     setSelectedHelpIndex(0);
@@ -2703,7 +2731,7 @@ function Billing({
         const selectedItem = filteredItems[selectedHelpIndex];
         setEntryCode(
           safeGet(selectedItem, "numeric_code", "") ||
-          safeGet(selectedItem, "alpha_code", "")
+            safeGet(selectedItem, "alpha_code", ""),
         );
         setShowHelp(false);
         if (qtyRef.current) {
@@ -2746,9 +2774,7 @@ function Billing({
                 <Input
                   ref={partyNoRef}
                   value={safeGet(currentDraft, "header.party_no", "")}
-                  onChange={(e) =>
-                    onHeaderChange({ party_no: e.target.value })
-                  }
+                  onChange={(e) => onHeaderChange({ party_no: e.target.value })}
                   onKeyDown={handlePartyNoKeyDown}
                 />
               </div>
@@ -2774,7 +2800,6 @@ function Billing({
                   ref={itemCodeRef}
                   type="text"
                   placeholder="Enter Item Code"
-
                   value={entryCode}
                   onChange={(e) => setEntryCode(e.target.value)}
                   onKeyDown={handleItemCodeKeyDown}
@@ -2853,15 +2878,17 @@ function Billing({
           <div className="help-header">
             <div className="help-tabs">
               <button
-                className={`help-tab-btn ${helpTab === "shortcuts" ? "active" : ""
-                  }`}
+                className={`help-tab-btn ${
+                  helpTab === "shortcuts" ? "active" : ""
+                }`}
                 onClick={() => setHelpTab("shortcuts")}
               >
                 Shortcuts
               </button>
               <button
-                className={`help-tab-btn ${helpTab === "active" ? "active" : ""
-                  }`}
+                className={`help-tab-btn ${
+                  helpTab === "active" ? "active" : ""
+                }`}
                 onClick={() => setHelpTab("active")}
               >
                 Active Bills ({activeTables.length})
@@ -2902,14 +2929,15 @@ function Billing({
                             {filteredItems.map((item, index) => (
                               <TableRow
                                 key={safeGet(item, "id", Math.random())}
-                                className={`cursor-pointer hover:bg-gray-100 ${selectedHelpIndex === index
-                                  ? "bg-blue-100"
-                                  : ""
-                                  }`}
+                                className={`cursor-pointer hover:bg-gray-100 ${
+                                  selectedHelpIndex === index
+                                    ? "bg-blue-100"
+                                    : ""
+                                }`}
                                 onClick={() => {
                                   setEntryCode(
                                     safeGet(item, "numeric_code", "") ||
-                                    safeGet(item, "alpha_code", "")
+                                      safeGet(item, "alpha_code", ""),
                                   );
                                   setShowHelp(false);
                                   if (qtyRef.current) {
@@ -2928,7 +2956,7 @@ function Billing({
                                 </TableCell>
                                 <TableCell>
                                   {Number(
-                                    safeGet(item, "price_general", 0)
+                                    safeGet(item, "price_general", 0),
                                   ).toFixed(2)}
                                 </TableCell>
                               </TableRow>
@@ -3076,7 +3104,7 @@ function SettingsEditor({ settings, onChange }) {
     } catch (e) {
       console.error("Settings save error:", e);
       toast.error(
-        safeGet(e, "response.data.detail", "Failed to save settings")
+        safeGet(e, "response.data.detail", "Failed to save settings"),
       );
     } finally {
       setLoading(false);
@@ -3107,9 +3135,7 @@ function SettingsEditor({ settings, onChange }) {
               <TableCell>
                 <Input
                   value={safeGet(form, "phone", "")}
-                  onChange={(e) =>
-                    setForm({ ...form, phone: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 />
               </TableCell>
             </TableRow>
@@ -3118,9 +3144,7 @@ function SettingsEditor({ settings, onChange }) {
               <TableCell>
                 <Input
                   value={safeGet(form, "gstin", "")}
-                  onChange={(e) =>
-                    setForm({ ...form, gstin: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, gstin: e.target.value })}
                 />
               </TableCell>
             </TableRow>
@@ -3246,16 +3270,14 @@ function EnhancedAdminPanel({ mode, sessionId }) {
 
 function App() {
   const [mode, setMode] = useState(
-    () => localStorage.getItem("mode") || "none"
+    () => localStorage.getItem("mode") || "none",
   );
   const [billingDate, setBillingDate] = useState(
-    () => localStorage.getItem("billingDate") || null
+    () => localStorage.getItem("billingDate") || null,
   );
-  const [track, setTrack] = useState(
-    () => localStorage.getItem("track") || ""
-  );
+  const [track, setTrack] = useState(() => localStorage.getItem("track") || "");
   const [sessionId, setSessionId] = useState(
-    () => localStorage.getItem("sessionId") || null
+    () => localStorage.getItem("sessionId") || null,
   );
   const [isVerifyingAdmin, setIsVerifyingAdmin] = useState(false);
 
@@ -3275,11 +3297,9 @@ function App() {
         try {
           const status = await getShiftStatus(billingDate);
           const openShift = status.find(
-            (s) => s.status === "OPEN" && s.shift_name === track
+            (s) => s.status === "OPEN" && s.shift_name === track,
           );
-          setActiveShift(
-            openShift || status.find((s) => s.status === "OPEN")
-          );
+          setActiveShift(openShift || status.find((s) => s.status === "OPEN"));
         } catch (err) {
           console.error("Error fetching shift status:", err);
         } finally {
