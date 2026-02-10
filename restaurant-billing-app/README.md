@@ -84,7 +84,6 @@ For a more detailed breakdown of fields and constraints, see [ER_Diagram.md](./E
    ```
 
 2. Set up the backend:
-
    - Navigate to the `backend` directory:
      ```bash
      cd backend
@@ -137,6 +136,32 @@ docker-compose up
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or features.
+
+## Automated Setup (Windows)
+
+For a one-click setup experience on Windows, we have provided a PowerShell script that handles:
+
+- Installing Node.js (LTS)
+- Installing PostgreSQL 17
+- Installing pgAdmin 4
+- Configuring the database and user
+- Installing project dependencies (Frontend & Backend)
+- Starting the application
+
+**To run the setup:**
+
+1. Open PowerShell as **Administrator**.
+2. Navigate to the project root:
+   ```powershell
+   cd "path\to\restaurant-billing-app"
+   ```
+3. Run the script:
+   ```powershell
+   .\setup_and_run.ps1
+   ```
+4. Follow the on-screen prompts to set your database password.
+
+The script will automatically launch the backend API on port 8000 and the frontend React app on port 3000.
 
 ## License
 

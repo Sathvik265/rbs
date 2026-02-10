@@ -1075,19 +1075,52 @@ function ShiftReport({ sessionId }) {
 function ItemReport({ sessionId }) {
   const [report, setReport] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [itemNames, setItemNames] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [dropdownsLoaded, setDropdownsLoaded] = useState(false);
   const [filters, setFilters] = useState({
     startDate: new Date().toISOString().split("T")[0],
     endDate: new Date().toISOString().split("T")[0],
+    item_name: "",
+    category: "",
   });
 
+<<<<<<< HEAD
+=======
+  // Fetch item names and categories on component mount
+  useEffect(() => {
+    const fetchDropdownData = async () => {
+      try {
+        const [namesRes, categoriesRes] = await Promise.all([
+          axios.get(`${API}/items/names/all`),
+          axios.get(`${API}/items/categories/all`),
+        ]);
+        setItemNames(safeArray(namesRes.data));
+        setCategories(safeArray(categoriesRes.data));
+        setDropdownsLoaded(true);
+      } catch (e) {
+        console.error("Failed to fetch dropdown data:", e);
+        setDropdownsLoaded(false); // Use text inputs as fallback
+      }
+    };
+    fetchDropdownData();
+  }, []);
+
+>>>>>>> cf7bc9d53818df963d42a42cd7a74125edaa391f
   const generateReport = async () => {
     setLoading(true);
     try {
+      const params = {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+      };
+
+      // Only add optional filters if they have values
+      if (filters.item_name) params.item_name = filters.item_name;
+      if (filters.category) params.category = filters.category;
+
       const res = await axios.get(`${API}/reports/by-item`, {
-        params: {
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-        },
+        params,
         headers: { Authorization: "admin" },
       });
 
@@ -1132,6 +1165,62 @@ function ItemReport({ sessionId }) {
                 }
               />
             </div>
+            <div>
+              <Label>Item Name (optional)</Label>
+              {dropdownsLoaded && itemNames.length > 0 ? (
+                <select
+                  className="w-full p-2 border rounded"
+                  value={filters.item_name}
+                  onChange={(e) =>
+                    setFilters({ ...filters, item_name: e.target.value })
+                  }
+                >
+                  <option value="">All Items</option>
+                  {itemNames.map((name, index) => (
+                    <option key={index} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  type="text"
+                  placeholder="Type item name..."
+                  value={filters.item_name}
+                  onChange={(e) =>
+                    setFilters({ ...filters, item_name: e.target.value })
+                  }
+                />
+              )}
+            </div>
+            <div>
+              <Label>Category (optional)</Label>
+              {dropdownsLoaded && categories.length > 0 ? (
+                <select
+                  className="w-full p-2 border rounded"
+                  value={filters.category}
+                  onChange={(e) =>
+                    setFilters({ ...filters, category: e.target.value })
+                  }
+                >
+                  <option value="">All Categories</option>
+                  {categories.map((cat, index) => (
+                    <option key={index} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  type="text"
+                  placeholder="Type category..."
+                  value={filters.category}
+                  onChange={(e) =>
+                    setFilters({ ...filters, category: e.target.value })
+                  }
+                />
+              )}
+            </div>
           </div>
 
           <Button onClick={generateReport} disabled={loading}>
@@ -1146,11 +1235,10 @@ function ItemReport({ sessionId }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Item Name</TableHead>
-                    <TableHead>Total Quantity</TableHead>
-                    <TableHead>Morning (`)</TableHead>
-                    <TableHead>Afternoon (``)</TableHead>
-                    <TableHead>Evening (RBS1)</TableHead>
-                    <TableHead>Night (RBS2)</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Shift</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead>Amount</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1159,13 +1247,19 @@ function ItemReport({ sessionId }) {
                       <TableCell className="font-medium">
                         {item.itemName}
                       </TableCell>
+                      <TableCell>{item.category || "N/A"}</TableCell>
+                      <TableCell>{item.shiftName}</TableCell>
                       <TableCell className="font-bold">
                         {item.totalQuantity}
                       </TableCell>
+<<<<<<< HEAD
                       <TableCell>{(item.soldInShifts && item.soldInShifts["`"]) || 0}</TableCell>
                       <TableCell>{(item.soldInShifts && item.soldInShifts["``"]) || 0}</TableCell>
                       <TableCell>{(item.soldInShifts && item.soldInShifts["RBS1"]) || 0}</TableCell>
                       <TableCell>{(item.soldInShifts && item.soldInShifts["RBS2"]) || 0}</TableCell>
+=======
+                      <TableCell>₹{item.totalAmount?.toFixed(2)}</TableCell>
+>>>>>>> cf7bc9d53818df963d42a42cd7a74125edaa391f
                     </TableRow>
                   ))}
                 </TableBody>
@@ -2405,6 +2499,35 @@ function Billing({
       return;
     }
 
+    // Check if this is an existing bill that needs to be reprinted
+    const billIdToPrint =
+      safeGet(currentDraft, "modified_from_bill_id") ||
+      safeGet(currentDraft, "header.bill_id");
+
+    if (billIdToPrint) {
+      // This is an existing bill - just fetch and print it
+      try {
+        setLoading(true);
+        const fullBillData = await getBillById(billIdToPrint);
+        if (typeof window !== "undefined") {
+          window.printBillData = fullBillData;
+        }
+        setTimeout(() => {
+          window.print();
+          if (tableNoRef.current) {
+            tableNoRef.current.focus();
+          }
+        }, 200);
+      } catch (e) {
+        console.error("Error fetching bill for reprint:", e);
+        toast.error("Failed to load bill for printing");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // This is a new bill - create it first
     let finalLines = safeArray(currentDraft.lines);
     if (document.activeElement === qtyRef.current && entryCode) {
       const newItem = await addItem(false);
@@ -2421,7 +2544,16 @@ function Billing({
     }
 
     await createBill(finalLines);
-  }, [currentTable, currentDraft, entryCode, qtyRef, addItem, createBill]);
+  }, [
+    currentTable,
+    currentDraft,
+    entryCode,
+    qtyRef,
+    addItem,
+    createBill,
+    setLoading,
+    tableNoRef,
+  ]);
 
   // --- Active Bills Logic ---
   const [helpTab, setHelpTab] = useState("shortcuts");
