@@ -92,9 +92,8 @@ const Button = ({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${
-        disabled ? "opacity-50 cursor-not-allowed" : ""
-      } transition-colors ${className}`}
+      className={`${baseClasses} ${variants[variant]} ${sizes[size]} ${disabled ? "opacity-50 cursor-not-allowed" : ""
+        } transition-colors ${className}`}
       {...props}
     >
       {children}
@@ -147,11 +146,10 @@ const TabsTrigger = ({
 }) => (
   <button
     onClick={onClick}
-    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-      isActive
-        ? "bg-white text-blue-600 shadow-sm"
-        : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-    } ${className}`}
+    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${isActive
+      ? "bg-white text-blue-600 shadow-sm"
+      : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+      } ${className}`}
   >
     {children}
   </button>
@@ -226,7 +224,8 @@ function BillPrint({ billData = null }) {
   }
 
   const header = safeObject(data.header);
-  const items = safeArray(data.items);
+  // Backend returns items_json
+  const items = safeArray(data.items || data.items_json);
   const billNumber = safeGet(header, "bill_number", "N/A");
   const tableNo = safeGet(header, "table_no", "N/A");
   const hotelName = safeGet(data, "hotel_name", "Restaurant");
@@ -242,7 +241,13 @@ function BillPrint({ billData = null }) {
   return (
     <div
       className="print-receipt"
-      style={{ fontFamily: "monospace", fontSize: "12px", maxWidth: "300px" }}
+      style={{
+        fontFamily: "monospace",
+        fontSize: "12px",
+        maxWidth: "300px",
+        color: "black",
+        background: "white"
+      }}
     >
       <div className="text-center font-bold">{hotelName}</div>
       {address && <div className="text-center text-xs">{address}</div>}
@@ -265,32 +270,49 @@ function BillPrint({ billData = null }) {
       </div>
       <div>{"=".repeat(40)}</div>
 
-      <table className="w-full">
+      <table className="w-full" style={{ width: "100%", color: "black" }}>
         <thead>
           <tr>
-            <th>No.</th>
-            <th>Item</th>
-            <th>Qty</th>
-            <th>Rate</th>
-            <th>Amt</th>
+            <th className="text-left">No.</th>
+            <th className="text-left">Item</th>
+            <th className="text-left">Qty</th>
+            <th className="text-left">Amt</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item, i) => {
-            const itemName = safeGet(item, "name", "Unknown Item");
-            const quantity = safeGet(item, "quantity", 0);
-            const unitPrice = safeGet(item, "unit_price", 0);
-            const lineTotal = safeGet(item, "line_total", 0);
-            return (
-              <tr key={i}>
-                <td>{i + 1}</td>
-                <td>{itemName}</td>
-                <td>{quantity}</td>
-                <td>{Number(unitPrice).toFixed(2)}</td>
-                <td>{Number(lineTotal).toFixed(2)}</td>
-              </tr>
-            );
-          })}
+          {items.length === 0 ? (
+            <tr><td colSpan="4" className="text-center">No Items Found</td></tr>
+          ) : (
+            items.map((item, i) => {
+              let itemName = item.item_name || item.name || "Unknown Item";
+
+              // Handle potential object/json structures similar to FoodMenu
+              if (typeof itemName === "object") {
+                itemName = itemName.name || itemName.item_name || JSON.stringify(itemName);
+              }
+              // Clean up if it was a JSON string
+              if (typeof itemName === 'string' && (itemName.startsWith('[') || itemName.startsWith('{'))) {
+                try {
+                  const parsed = JSON.parse(itemName);
+                  if (Array.isArray(parsed) && parsed.length > 0) itemName = parsed[0].name || parsed[0].item_name;
+                  else if (typeof parsed === 'object') itemName = parsed.name || parsed.item_name;
+                } catch (e) {/* ignore */ }
+              }
+
+              let quantity = item.quantity || item.qty || 0;
+
+              const lineTotal = item.line_total || item.amount || 0;
+
+              return (
+                <tr key={i}>
+                  <td>{i + 1}</td>
+                  <td>{itemName}</td>
+                  <td>{quantity}</td>
+                  <td>{Number(lineTotal).toFixed(2)}</td>
+                </tr>
+              );
+            })
+          )}
         </tbody>
       </table>
 
@@ -518,15 +540,11 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
     if (!sessionId) return;
 
     try {
-      const res = await closeShift(sessionId); // Use the imported service function
+      const res = await axios.post(`${API}/shifts/close`, {
+        session_id: sessionId,
+      });
 
-<<<<<<< HEAD
       toast.success(`Shift ${res.data.shift_name} closed successfully`);
-=======
-      toast.success(`Shift ${res.shift_name} closed successfully`);
-
-      // Log out user
->>>>>>> 7b01c6ec3fdea87c7406e635fd3de159629c5952
       setTimeout(() => {
         window.location.reload();
       }, 1500);
@@ -609,11 +627,10 @@ function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
                   </TableCell>
                   <TableCell>
                     <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        shift.status === "OPEN"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
+                      className={`px-2 py-1 rounded text-xs font-medium ${shift.status === "OPEN"
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                        }`}
                     >
                       {shift.status}
                     </span>
@@ -1145,10 +1162,10 @@ function ItemReport({ sessionId }) {
                       <TableCell className="font-bold">
                         {item.totalQuantity}
                       </TableCell>
-                      <TableCell>{item.soldInShifts["`"] || 0}</TableCell>
-                      <TableCell>{item.soldInShifts["``"] || 0}</TableCell>
-                      <TableCell>{item.soldInShifts["RBS1"] || 0}</TableCell>
-                      <TableCell>{item.soldInShifts["RBS2"] || 0}</TableCell>
+                      <TableCell>{(item.soldInShifts && item.soldInShifts["`"]) || 0}</TableCell>
+                      <TableCell>{(item.soldInShifts && item.soldInShifts["``"]) || 0}</TableCell>
+                      <TableCell>{(item.soldInShifts && item.soldInShifts["RBS1"]) || 0}</TableCell>
+                      <TableCell>{(item.soldInShifts && item.soldInShifts["RBS2"]) || 0}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1264,18 +1281,23 @@ function EnhancedReconciliation({ sessionId, mode }) {
                             if (!details) {
                               try {
                                 const res = await api.get(
-                                  `/reconciliation/running/${row.table_no}/${row.party_no}`,
-                                  {
-                                    headers: { Authorization: "admin" },
-                                  }
+                                  `/billing/orders/table/${row.table_no}/party/${row.party_no}`
                                 );
                                 setDetailsCache((prev) => ({
                                   ...prev,
-                                  [key]: res.data,
+                                  [key]: safeArray(res.data),
                                 }));
-                              } catch (e) {
-                                console.error("Failed to load details:", e);
-                                toast.error("Failed to load details");
+                              } catch (err) {
+                                console.error(
+                                  "Failed to load orders for",
+                                  key,
+                                  err
+                                );
+                                toast.error("Failed to load bill details");
+                                setDetailsCache((prev) => ({
+                                  ...prev,
+                                  [key]: [],
+                                }));
                               }
                             }
                           }}
@@ -1284,28 +1306,41 @@ function EnhancedReconciliation({ sessionId, mode }) {
                         </Button>
                       </div>
                     </div>
-                    {isExpanded && details && (
-                      <div className="mt-2 pl-4 border-l-2 border-gray-200">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Item</TableHead>
-                              <TableHead>Qty</TableHead>
-                              <TableHead>Price</TableHead>
-                              <TableHead>Total</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {details.map((d, i) => (
-                              <TableRow key={i}>
-                                <TableCell>{d.item_name}</TableCell>
-                                <TableCell>{d.quantity}</TableCell>
-                                <TableCell>{d.rate}</TableCell>
-                                <TableCell>{d.amount}</TableCell>
+
+                    {isExpanded && (
+                      <div className="mt-3">
+                        {!details ? (
+                          <div className="text-sm text-gray-500">
+                            Loading...
+                          </div>
+                        ) : details.length === 0 ? (
+                          <div className="text-sm text-gray-500">No items</div>
+                        ) : (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Item</TableHead>
+                                <TableHead>Qty</TableHead>
+                                <TableHead>Rate</TableHead>
+                                <TableHead>Amount</TableHead>
                               </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                            </TableHeader>
+                            <TableBody>
+                              {details.map((d, idx) => (
+                                <TableRow key={idx}>
+                                  <TableCell>{d.item_name}</TableCell>
+                                  <TableCell>{d.quantity}</TableCell>
+                                  <TableCell>
+                                    {Number(d.unit_price || 0).toFixed(2)}
+                                  </TableCell>
+                                  <TableCell>
+                                    {Number(d.line_total || 0).toFixed(2)}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1602,6 +1637,11 @@ function FoodMenu({ mode }) {
         price_fixed: parseFloat(newItem.price_fixed) || 0,
         price_general: parseFloat(newItem.price_general) || 0,
         price_ac: parseFloat(newItem.price_ac) || 0,
+        // Format category as JSON object string: {"name": "Cat", "qty": 1}
+        category: JSON.stringify({
+          name: newItem.category,
+          qty: Number(newItem.quantity) || 1
+        }),
       });
 
       toast.success("Item added successfully");
@@ -1613,6 +1653,7 @@ function FoodMenu({ mode }) {
         price_general: "",
         price_ac: "",
         category: "",
+        quantity: "",
       });
       load();
     } catch (e) {
@@ -1703,7 +1744,14 @@ function FoodMenu({ mode }) {
               value={newItem.category}
               onChange={handleNewItemChange}
             />
-            <Button onClick={handleAddItem} className="col-span-7">
+            <Input
+              name="quantity"
+              type="number"
+              placeholder="Qty (for Category JSON)"
+              value={newItem.quantity || ""}
+              onChange={handleNewItemChange}
+            />
+            <Button onClick={handleAddItem} className="col-span-6">
               + Add Item
             </Button>
           </div>
@@ -1729,65 +1777,109 @@ function FoodMenu({ mode }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item) => (
-                <TableRow key={safeGet(item, "id", Math.random())}>
-                  <TableCell>{safeGet(item, "name", "N/A")}</TableCell>
-                  <TableCell>{safeGet(item, "alpha_code", "-")}</TableCell>
-                  <TableCell>{safeGet(item, "numeric_code", "-")}</TableCell>
-                  <TableCell>
-                    {Number(safeGet(item, "price_fixed", 0)).toFixed(2)}
-                  </TableCell>
-                  <TableCell>
-                    {Number(safeGet(item, "price_general", 0)).toFixed(2)}
-                  </TableCell>
-                  <TableCell>
-                    {Number(safeGet(item, "price_ac", 0)).toFixed(2)}
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      const cat = safeGet(item, "category", "-");
-                      return typeof cat === "object"
-                        ? JSON.stringify(cat)
-                        : cat;
-                    })()}
-                  </TableCell>
-                  {mode === "admin-full" && (
+              {items.map((item) => {
+                const safeRender = (val, def = "-") => {
+                  if (val === null || val === undefined) return def;
+                  if (typeof val === "object") {
+                    return val.name || val.item_name || JSON.stringify(val);
+                  }
+                  return val;
+                };
+
+                return (
+                  <TableRow key={safeGet(item, "id", Math.random())}>
+                    <TableCell>{safeRender(safeGet(item, "name"), "N/A")}</TableCell>
+                    <TableCell>{safeRender(safeGet(item, "alpha_code"), "-")}</TableCell>
+                    <TableCell>{safeRender(safeGet(item, "numeric_code"), "-")}</TableCell>
                     <TableCell>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setEditingItem({
-                              id: safeGet(item, "id"),
-                              name: safeGet(item, "name", ""),
-                              alpha_code: safeGet(item, "alpha_code", ""),
-                              numeric_code: safeGet(item, "numeric_code", ""),
-                              price_fixed: safeGet(item, "price_fixed", 0),
-                              price_general: safeGet(
-                                item,
-                                "price_general",
-                                0
-                              ),
-                              price_ac: safeGet(item, "price_ac", 0),
-                              category: safeGet(item, "category", ""),
-                            });
-                          }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteItem(safeGet(item, "id"))}
-                        >
-                          X
-                        </Button>
-                      </div>
+                      {Number(safeGet(item, "price_fixed", 0)).toFixed(2)}
                     </TableCell>
-                  )}
-                </TableRow>
-              ))}
+                    <TableCell>
+                      {Number(safeGet(item, "price_general", 0)).toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      {Number(safeGet(item, "price_ac", 0)).toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const raw = safeGet(item, "category");
+                        if (!raw) return "-";
+
+                        let display = String(raw);
+
+                        // 1. Try to treat as object/array first
+                        if (typeof raw === "object") {
+                          if (Array.isArray(raw) && raw.length > 0) {
+                            display = raw[0].name || raw[0].item_name || display;
+                          } else if (!Array.isArray(raw)) {
+                            display = raw.name || raw.item_name || display;
+                          }
+                        }
+                        // 2. Try to parse as JSON string
+                        else if (typeof raw === "string") {
+                          try {
+                            if (raw.trim().startsWith("[") || raw.trim().startsWith("{")) {
+                              const parsed = JSON.parse(raw);
+                              if (Array.isArray(parsed) && parsed.length > 0) {
+                                display = parsed[0].name || parsed[0].item_name || display;
+                              } else if (parsed && typeof parsed === "object") {
+                                display = parsed.name || parsed.item_name || display;
+                              }
+                            }
+                          } catch (e) {
+                            // Regex fallback
+                            const match = raw.match(/["']name["']\s*:\s*["']([^"']+)["']/i);
+                            if (match && match[1]) display = match[1];
+                          }
+                        }
+
+                        // Remove any lingering JSON artifacts if regex didn't catch it but it looks like JSON
+                        if (display.startsWith("[") && display.includes("name")) {
+                          const match = display.match(/["']name["']\s*:\s*["']([^"']+)["']/i);
+                          if (match && match[1]) display = match[1];
+                        }
+
+                        return display;
+                      })()}
+                    </TableCell>
+                    {mode === "admin-full" && (
+                      <TableCell>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditingItem({
+                                id: safeGet(item, "id"),
+                                name: safeGet(item, "name", ""),
+                                alpha_code: safeGet(item, "alpha_code", ""),
+                                numeric_code: safeGet(item, "numeric_code", ""),
+                                price_fixed: safeGet(item, "price_fixed", 0),
+                                price_general: safeGet(
+                                  item,
+                                  "price_general",
+                                  0
+                                ),
+                                price_ac: safeGet(item, "price_ac", 0),
+                                category: safeGet(item, "category", ""),
+                              });
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteItem(safeGet(item, "id"))}
+                          >
+                            X
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         )}
@@ -1810,6 +1902,7 @@ function Billing({
   sessionId = null,
   activeShift,
   isShiftLoading,
+  setPrintData,
 }) {
   const [entryCode, setEntryCode] = useState("");
   const [qty, setQty] = useState(1);
@@ -1822,7 +1915,7 @@ function Billing({
   const itemCodeRef = useRef(null);
   const qtyRef = useRef(null);
   const searchInputRef = useRef(null);
-  
+
   // Array ref for item quantity inputs
   const itemQtyRefs = useRef([]);
 
@@ -1831,34 +1924,6 @@ function Billing({
   const [menuItems, setMenuItems] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
   const [selectedHelpIndex, setSelectedHelpIndex] = useState(0);
-
-  // Navigation state
-  const [focusedRowIndex, setFocusedRowIndex] = useState(-1);
-  const rowRefs = useRef([]);
-
-  // Global F1 Handler
-  useEffect(() => {
-    const handleGlobalF1 = (event) => {
-      if (event.key === "F1" || event.keyCode === 112) {
-        event.preventDefault();
-        event.stopPropagation();
-        console.log("Custom F1 action");
-        setShowHelp(true);
-      }
-    };
-    document.addEventListener("keydown", handleGlobalF1);
-    return () => {
-      document.removeEventListener("keydown", handleGlobalF1);
-    };
-  }, []);
-
-  // Focus row when index changes
-  useEffect(() => {
-    if (focusedRowIndex >= 0 && rowRefs.current[focusedRowIndex]) {
-      rowRefs.current[focusedRowIndex].focus();
-      rowRefs.current[focusedRowIndex].scrollIntoView({ block: "nearest" });
-    }
-  }, [focusedRowIndex]);
 
   const currentDraft = useMemo(() => {
     const defaultDraft = {
@@ -2025,8 +2090,6 @@ function Billing({
     if (e.key === "F1") {
       e.preventDefault();
       setShowHelp(true);
-      // Prevent default browser help
-      return;
     } else if (e.key === "Escape") {
       e.preventDefault();
       setShowHelp(false);
@@ -2081,15 +2144,15 @@ function Billing({
 
   const updateQty = (index, val) => {
     if (!setDrafts || !currentTable) return;
-    
+
     // Parse value, allow empty string
     let newQty = val;
     if (val !== "") {
-        newQty = Number(val);
-        if (newQty <= 0) {
-            removeLine(index);
-            return;
-        }
+      newQty = Number(val);
+      if (newQty <= 0) {
+        removeLine(index);
+        return;
+      }
     }
 
     const lines = safeArray(currentDraft.lines);
@@ -2173,6 +2236,9 @@ function Billing({
           if (typeof window !== "undefined") {
             window.printBillData = fullBillData;
           }
+          if (setPrintData) {
+            setPrintData(fullBillData);
+          }
           setTimeout(() => {
             window.print();
             if (tableNoRef.current) {
@@ -2220,6 +2286,7 @@ function Billing({
       setEntryCode,
       setQty,
       tableNoRef,
+      setPrintData,
     ]
   );
 
@@ -2250,17 +2317,37 @@ function Billing({
             unitPrice = safeGet(item, "price_general", 0);
         }
 
+        const safeExtract = (val, key) => {
+          if (val && typeof val === "object") {
+            return val[key] || val.name || val.item_name || "";
+          }
+          return val;
+        };
+
+        const itemName = safeExtract(
+          safeGet(item, "name", "Unknown Item"),
+          "name"
+        );
+        const itemAlphaCode = safeExtract(
+          safeGet(item, "alpha_code", ""),
+          "alpha_code"
+        );
+        const itemNumericCode = safeExtract(
+          safeGet(item, "numeric_code", ""),
+          "numeric_code"
+        );
+
         const newLine = {
           code: entryCode.toUpperCase(),
-          name: safeGet(item, "name", "Unknown Item"),
+          name: itemName,
           quantity: qty || 1,
           unit_price: Number(unitPrice),
           line_total: Number((unitPrice * (qty || 1)).toFixed(2)),
-          numeric_code: safeGet(item, "numeric_code", ""),
-          alpha_code: safeGet(item, "alpha_code", ""),
+          numeric_code: itemNumericCode,
+          alpha_code: itemAlphaCode,
         };
 
-        await createOrder({
+        const payload = {
           table_no: currentTable,
           party_no: safeGet(currentDraft, "header.party_no", "1"),
           item_name: newLine.name,
@@ -2272,7 +2359,8 @@ function Billing({
           bill_number: 0,
           item_code: newLine.alpha_code,
           numeric_item_code: newLine.numeric_code,
-        });
+        };
+        await createOrder(payload);
 
         if (focusItemCode && setDrafts) {
           const updatedLines = [...safeArray(currentDraft.lines), newLine];
@@ -2406,19 +2494,6 @@ function Billing({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [helpTab]);
 
-  // F5 Refresh Shortcut for Active Bills
-  useEffect(() => {
-    const handleRefreshShortcut = (e) => {
-      if (showHelp && helpTab === "active" && e.key === "F5") {
-        e.preventDefault();
-        setNow(new Date());
-        fetchActiveTables();
-      }
-    };
-    window.addEventListener("keydown", handleRefreshShortcut);
-    return () => window.removeEventListener("keydown", handleRefreshShortcut);
-  }, [showHelp, helpTab, fetchActiveTables]);
-
   const formatDuration = (ms) => {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -2496,7 +2571,7 @@ function Billing({
         const selectedItem = filteredItems[selectedHelpIndex];
         setEntryCode(
           safeGet(selectedItem, "numeric_code", "") ||
-            safeGet(selectedItem, "alpha_code", "")
+          safeGet(selectedItem, "alpha_code", "")
         );
         setShowHelp(false);
         if (qtyRef.current) {
@@ -2586,16 +2661,9 @@ function Billing({
               </div>
             </div>
 
-            <div
-              className="mb-4 table-container"
-              style={{
-                maxHeight: "400px",
-                overflowY: "auto",
-                border: "1px solid #ccc",
-              }}
-            >
+            <div className="mb-4">
               <Table>
-                <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
+                <TableHeader>
                   <TableRow>
                     <TableHead>No.</TableHead>
                     <TableHead>Item</TableHead>
@@ -2606,37 +2674,7 @@ function Billing({
                 </TableHeader>
                 <TableBody>
                   {safeArray(currentDraft.lines).map((l, idx) => (
-                    <TableRow
-                      key={idx}
-                      ref={(el) => (rowRefs.current[idx] = el)}
-                      tabIndex={0}
-                      className={`cursor-pointer focus:bg-blue-50 whitespace-nowrap ${
-                        focusedRowIndex === idx ? "bg-blue-50" : ""
-                      }`}
-                      onClick={() => setFocusedRowIndex(idx)}
-                      onKeyDown={(e) => {
-                        if (e.key === "ArrowDown") {
-                          e.preventDefault();
-                          setFocusedRowIndex((prev) =>
-                            prev < (currentDraft.lines || []).length - 1
-                              ? prev + 1
-                              : prev
-                          );
-                        } else if (e.key === "ArrowUp") {
-                          e.preventDefault();
-                          setFocusedRowIndex((prev) =>
-                            prev > 0 ? prev - 1 : prev
-                          );
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          const input = e.currentTarget.querySelector("input");
-                          if (input) {
-                            input.focus();
-                            input.select();
-                          }
-                        }
-                      }}
-                    >
+                    <TableRow key={idx}>
                       <TableCell>{idx + 1}</TableCell>
                       <TableCell>
                         {safeGet(l, "name", "Unknown Item")}
@@ -2648,19 +2686,6 @@ function Billing({
                         >
                           -
                         </Button>
-                        <Button
-                          variant="success"
-                          size="sm"
-                          className="ml-2"
-                          onClick={() =>
-                            updateQty(
-                              idx,
-                              (Number(safeGet(l, "quantity", 0)) || 0) + 1
-                            )
-                          }
-                        >
-                          +
-                        </Button>
                       </TableCell>
                       <TableCell>
                         <Input
@@ -2668,40 +2693,12 @@ function Billing({
                           type="number"
                           min="1"
                           className="w-16"
-<<<<<<< HEAD
-                          value={safeGet(l, "quantity", "")} 
+                          value={safeGet(l, "quantity", "")}
                           // Defaulting to "" allows empty input, but logical default is handled in updateQty if needed
                           // If l.quantity is missing, show 1 by default:
                           // value={l.quantity !== undefined ? l.quantity : 1}
                           onChange={(e) => updateQty(idx, e.target.value)}
                           onKeyDown={(e) => handleTableQtyKeyDown(e, idx)}
-=======
-                          value={safeGet(l, "quantity", 0)}
-                          onChange={(e) =>
-                            updateQty(idx, Number(e.target.value) || 1)
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (rowRefs.current[idx]) {
-                                rowRefs.current[idx].focus();
-                              }
-                            } else if (e.key === "ArrowDown") {
-                              e.preventDefault();
-                              setFocusedRowIndex((prev) =>
-                                prev < (currentDraft.lines || []).length - 1
-                                  ? prev + 1
-                                  : prev
-                              );
-                            } else if (e.key === "ArrowUp") {
-                              e.preventDefault();
-                              setFocusedRowIndex((prev) =>
-                                prev > 0 ? prev - 1 : prev
-                              );
-                            }
-                          }}
->>>>>>> 7b01c6ec3fdea87c7406e635fd3de159629c5952
                         />
                       </TableCell>
                       <TableCell>
@@ -2724,17 +2721,15 @@ function Billing({
           <div className="help-header">
             <div className="help-tabs">
               <button
-                className={`help-tab-btn ${
-                  helpTab === "shortcuts" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "shortcuts" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("shortcuts")}
               >
                 Shortcuts
               </button>
               <button
-                className={`help-tab-btn ${
-                  helpTab === "active" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "active" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("active")}
               >
                 Active Bills ({activeTables.length})
@@ -2775,15 +2770,14 @@ function Billing({
                             {filteredItems.map((item, index) => (
                               <TableRow
                                 key={safeGet(item, "id", Math.random())}
-                                className={`cursor-pointer hover:bg-gray-100 ${
-                                  selectedHelpIndex === index
-                                    ? "bg-blue-100"
-                                    : ""
-                                }`}
+                                className={`cursor-pointer hover:bg-gray-100 ${selectedHelpIndex === index
+                                  ? "bg-blue-100"
+                                  : ""
+                                  }`}
                                 onClick={() => {
                                   setEntryCode(
                                     safeGet(item, "numeric_code", "") ||
-                                      safeGet(item, "alpha_code", "")
+                                    safeGet(item, "alpha_code", "")
                                   );
                                   setShowHelp(false);
                                   if (qtyRef.current) {
@@ -2845,19 +2839,6 @@ function Billing({
               </>
             ) : (
               <div className="active-bills-list">
-                <div className="flex justify-end mb-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setNow(new Date());
-                      fetchActiveTables();
-                    }}
-                    title="Refresh (F5)"
-                  >
-                    Refresh
-                  </Button>
-                </div>
                 {activeTables.length === 0 ? (
                   <div className="no-active-bills">No active bills</div>
                 ) : (
@@ -2947,92 +2928,19 @@ function Billing({
 function SettingsEditor({ settings, onChange }) {
   const [form, setForm] = useState(safeObject(settings));
   const [loading, setLoading] = useState(false);
-  const [clerks, setClerks] = useState([]);
-  const [selectedClerk, setSelectedClerk] = useState(
-    settings?.clerk_initials || "CLK"
-  );
-  const [newClerkName, setNewClerkName] = useState("");
-  const [isAddingClerk, setIsAddingClerk] = useState(false);
-
-  // Load clerks list
-  const loadClerks = async () => {
-    try {
-      const res = await axios.get(`${API}/settings/clerks`);
-      setClerks(safeArray(res.data));
-    } catch (e) {
-      console.error("Failed to load clerks", e);
-    }
-  };
-
-  useEffect(() => {
-    loadClerks();
-  }, []);
 
   useEffect(() => {
     setForm(safeObject(settings));
-    if (settings?.clerk_initials) {
-      setSelectedClerk(settings.clerk_initials);
-    }
   }, [settings]);
-
-  // When clerk selection changes, fetch settings for that clerk
-  const handleClerkChange = async (e) => {
-    const newClerk = e.target.value;
-    setSelectedClerk(newClerk);
-    setLoading(true);
-    try {
-      const res = await axios.get(`${API}/settings`, {
-        params: { clerk: newClerk },
-      });
-      setForm(safeObject(res.data));
-      if (onChange) {
-        onChange(res.data);
-      }
-    } catch (e) {
-      toast.error("Failed to load settings for " + newClerk);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateClerk = async () => {
-    if (!newClerkName) return;
-    const code = newClerkName.toUpperCase();
-    setLoading(true);
-    try {
-      // Verify/Create by fetching settings (backend ensures existence)
-      const res = await axios.get(`${API}/settings`, {
-        params: { clerk: code },
-      });
-      setClerks((prev) => [
-        ...prev.filter((c) => c.clerk_initials !== code),
-        { clerk_initials: code },
-      ]);
-      setSelectedClerk(code);
-      setForm(safeObject(res.data));
-      if (onChange) {
-        onChange(res.data);
-      }
-      setNewClerkName("");
-      setIsAddingClerk(false);
-      toast.success("Clerk added: " + code);
-    } catch (e) {
-      toast.error("Failed to add clerk");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const save = async () => {
     setLoading(true);
     try {
-      const res = await axios.put(`${API}/settings`, form, {
-        params: { clerk: selectedClerk },
-      });
+      const res = await axios.put(`${API}/settings`, form);
       if (onChange) {
         onChange(res.data);
       }
-      toast.success("Settings saved for " + selectedClerk);
+      toast.success("Settings saved");
     } catch (e) {
       console.error("Settings save error:", e);
       toast.error(
@@ -3046,59 +2954,7 @@ function SettingsEditor({ settings, onChange }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex justify-between items-center">
-          <CardTitle>Receipt Settings</CardTitle>
-          <div className="flex gap-2 items-center">
-            {isAddingClerk ? (
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Initials (e.g. ABC)"
-                  value={newClerkName}
-                  onChange={(e) =>
-                    setNewClerkName(e.target.value.toUpperCase())
-                  }
-                  className="w-32"
-                  maxLength={5}
-                />
-                <Button size="sm" onClick={handleCreateClerk}>
-                  Add
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setIsAddingClerk(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            ) : (
-              <>
-                <select
-                  className="border rounded p-1 bg-white"
-                  value={selectedClerk}
-                  onChange={handleClerkChange}
-                >
-                  {clerks.map((c) => (
-                    <option key={c.clerk_initials} value={c.clerk_initials}>
-                      {c.clerk_initials}
-                    </option>
-                  ))}
-                  {/* Fallback if list empty or current not in list */}
-                  {!clerks.find((c) => c.clerk_initials === selectedClerk) && (
-                    <option value={selectedClerk}>{selectedClerk}</option>
-                  )}
-                </select>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setIsAddingClerk(true)}
-                >
-                  + New Clerk
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
+        <CardTitle>Receipt Settings</CardTitle>
       </CardHeader>
       <CardContent>
         <Table>
@@ -3152,11 +3008,7 @@ function SettingsEditor({ settings, onChange }) {
         </Table>
         <div className="mt-4">
           <Button onClick={save} disabled={loading} className="w-full">
-            {loading ? (
-              <Loader2 size={16} className="mr-2" />
-            ) : (
-              `Save Settings for ${selectedClerk}`
-            )}
+            {loading ? <Loader2 size={16} className="mr-2" /> : "Save Settings"}
           </Button>
         </div>
       </CardContent>
@@ -3282,6 +3134,7 @@ function App() {
   const [activeTab, setActiveTab] = useState("billing");
   const [activeShift, setActiveShift] = useState(null);
   const [isShiftLoading, setIsShiftLoading] = useState(true);
+  const [printData, setPrintData] = useState(null);
 
   useEffect(() => {
     const fetchShiftStatus = async () => {
@@ -3403,6 +3256,7 @@ function App() {
                   sessionId={sessionId}
                   activeShift={activeShift}
                   isShiftLoading={isShiftLoading}
+                  setPrintData={setPrintData}
                 />
               </TabsContent>
 
@@ -3434,8 +3288,8 @@ function App() {
       </div>
 
       {/* Hidden print area */}
-      <div className="hidden">
-        <BillPrint />
+      <div className="hidden print-area">
+        <BillPrint billData={printData} />
       </div>
     </div>
   );

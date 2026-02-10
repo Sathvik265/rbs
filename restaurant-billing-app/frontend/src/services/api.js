@@ -1,11 +1,11 @@
 import axios from "axios";
 
 // FIXED: Updated to use the correct port (8000) instead of 5000
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000/api";
+const API_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000/api";
 
 if (!process.env.REACT_APP_API_URL) {
   console.warn(
-    "REACT_APP_API_URL is not defined. Falling back to http://localhost:8000/api"
+    "REACT_APP_API_URL is not defined. Falling back to http://127.0.0.1:8000/api"
   );
 }
 

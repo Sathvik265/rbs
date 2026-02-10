@@ -59,14 +59,22 @@ function RecentBills({ billingDate }) {
 
     // Map item keys to UI-friendly keys
     const mapped = items.map((it) => {
+      const q = it.quantity || it.qty;
+      const finalQty =
+        q && typeof q === "object" ? q.qty || q.quantity || 1 : q || 1;
+
+      const n = it.item_name || it.name || it.item_name;
+      const finalName =
+        n && typeof n === "object" ? n.name || n.item_name || "" : n || "";
+
       return {
-        name: it.item_name || it.name || it.item_name || "",
-        quantity: it.quantity || it.qty || 1,
+        name: finalName,
+        quantity: finalQty,
         unit_price:
           it.unit_price || it.fixed_price || it.actual_price || it.price || 0,
         line_total:
           it.line_total ||
-          Number((it.quantity || 1) * (it.unit_price || it.fixed_price || 0)),
+          Number((finalQty || 1) * (it.unit_price || it.fixed_price || 0)),
       };
     });
 
@@ -233,9 +241,8 @@ function RecentBills({ billingDate }) {
               key={bill.id}
               ref={(el) => (rowRefs.current[index] = el)}
               tabIndex={0}
-              className={`bill-card ${isExpanded ? "expanded" : ""} ${
-                focusedBillIndex === index ? "focused" : ""
-              }`}
+              className={`bill-card ${isExpanded ? "expanded" : ""} ${focusedBillIndex === index ? "focused" : ""
+                }`}
               onClick={async () => {
                 if (isExpanded) {
                   setSelectedBill(null);

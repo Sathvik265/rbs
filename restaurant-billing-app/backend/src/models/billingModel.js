@@ -41,13 +41,13 @@ const BillingModel = {
 
   // Get next bill number for a track based on today's date
   async getNextBillNumber(track, date) {
-    // Logic Changed: Now strictly sequential per track per day.
+    // Logic Changed: Global sequence to avoid duplicate key error.
+    // Ignored 'track' to ensure bill_number is unique per date across all tracks.
     const result = await pool.query(
       `SELECT MAX(bill_number) as max_num 
        FROM bills 
-       WHERE track = $1 
-       AND bill_date = $2`,
-      [track, date]
+       WHERE bill_date = $1`,
+      [date]
     );
 
     const maxNum = parseInt(result.rows[0].max_num) || 0;
