@@ -1,9 +1,27 @@
-import React from "react";
-import { safeGet, safeArray, safeObject } from "../utils/helpers";
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+import { API, safeGet, safeArray, safeObject } from "../utils/helpers";
 
 export default function BillPrint({ billData = null }) {
-  const data =
+  const [fetchedSettings, setFetchedSettings] = useState(null);
+
+  useEffect(() => {
+    // If settings are missing in props, fetch them
+    if (!billData?.hotel_name) {
+      const clerk = billData?.clerk_initials || "CLK";
+      axios
+        .get(`${API}/settings?clerk=${clerk}`)
+        .then((res) => setFetchedSettings(res.data))
+        .catch((err) =>
+          console.error("Failed to fetch settings for print", err),
+        );
+    }
+  }, [billData]);
+
+  const propsData =
     billData || (typeof window !== "undefined" && window.printBillData) || null;
+
+  const data = { ...fetchedSettings, ...propsData };
 
   if (!data) {
     console.log("BillPrint: No bill data available");
@@ -12,12 +30,16 @@ export default function BillPrint({ billData = null }) {
 
   const header = safeObject(data.header);
   const items = safeArray(data.items || data.items_json);
-  const billNumber = safeGet(header, "bill_number", "N/A");
-  const tableNo = safeGet(header, "table_no", "N/A");
+  const billNumber =
+    safeGet(data, "bill_number") || safeGet(header, "bill_number", "N/A");
+  const tableNo =
+    safeGet(data, "table_no") || safeGet(header, "table_no", "N/A");
+  const partyNo = safeGet(data, "party_no") || safeGet(header, "party_no", "0");
   const hotelName = safeGet(data, "hotel_name", "Restaurant");
   const address = safeGet(data, "address", "");
   const phone = safeGet(data, "phone", "");
   const gstin = safeGet(data, "gstin", "");
+  const clerkInitials = safeGet(data, "clerk_initials", "CLK"); // Added clerk initials
   const createdAt = safeGet(data, "created_at", null);
   const subtotal = safeGet(data, "subtotal", 0);
   const sgst = safeGet(data, "sgst", 0);
@@ -38,7 +60,7 @@ export default function BillPrint({ billData = null }) {
       <div className="text-center font-bold">{hotelName}</div>
       {address && <div className="text-center text-xs">{address}</div>}
       <div className="text-center text-xs">
-        GST Included{gstin ? ` GSTIN: ${gstin}` : ""}
+        {gstin ? ` GSTIN: ${gstin}` : ""}
         {phone ? `  Ph: ${phone}` : ""}
       </div>
       <div className="text-center">{"=".repeat(40)}</div>
@@ -52,7 +74,13 @@ export default function BillPrint({ billData = null }) {
       </div>
       <div className="flex justify-between">
         <span>Table</span>
-        <span>{tableNo}</span>
+        <span>
+          {tableNo} {partyNo && partyNo !== "0" ? `(Party ${partyNo})` : ""}
+        </span>
+      </div>
+      <div className="flex justify-between">
+        <span>Server</span>
+        <span>{clerkInitials}</span>
       </div>
       <div>{"=".repeat(40)}</div>
 

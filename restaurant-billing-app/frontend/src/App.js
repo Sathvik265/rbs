@@ -28,6 +28,9 @@ function App() {
   const [sessionId, setSessionId] = useState(
     () => localStorage.getItem("sessionId") || null,
   );
+  const [userInitials, setUserInitials] = useState(
+    () => localStorage.getItem("userInitials") || "CLK",
+  );
   const [isVerifyingAdmin, setIsVerifyingAdmin] = useState(false);
 
   const isAdmin = mode && mode.includes("admin");
@@ -57,18 +60,125 @@ function App() {
       }
     };
     fetchShiftStatus();
+    fetchShiftStatus();
   }, [billingDate, track]);
 
-  const handleLogin = (newMode, date, newTrack, newSessionId) => {
+  // State for admin jump target (shortcuts)
+  const [adminJumpTarget, setAdminJumpTarget] = useState(null);
+
+  useEffect(() => {
+    const handleGlobalShortcuts = (e) => {
+      // Admin Main Tabs (Ctrl + Alt + Number)
+      if (e.ctrlKey && e.altKey) {
+        switch (e.key) {
+          case "1":
+            if (isAdmin) {
+              setActiveTab("admin");
+              setAdminJumpTarget({ tab: "dashboard" });
+            }
+            break;
+          case "2":
+            if (isAdmin) {
+              setActiveTab("admin");
+              setAdminJumpTarget({ tab: "reports" });
+            }
+            break;
+          case "3":
+            if (isAdmin) {
+              setActiveTab("admin");
+              setAdminJumpTarget({ tab: "reconciliation" });
+            }
+            break;
+          case "4":
+            if (isAdmin) {
+              setActiveTab("admin");
+              setAdminJumpTarget({ tab: "settings" });
+            }
+            break;
+          default:
+            break;
+        }
+      }
+      // Admin Reports Sub-tabs (Ctrl + Shift + Number)
+      else if (e.ctrlKey && e.shiftKey) {
+        switch (e.key) {
+          case "1": // Time Range
+          case "!":
+            if (isAdmin) {
+              setActiveTab("admin");
+              setAdminJumpTarget({ tab: "reports", subTab: "time-range" });
+            }
+            break;
+          case "2": // Date Range
+          case "@":
+            if (isAdmin) {
+              setActiveTab("admin");
+              setAdminJumpTarget({ tab: "reports", subTab: "date-range" });
+            }
+            break;
+          case "3": // Shift Report
+          case "#":
+            if (isAdmin) {
+              setActiveTab("admin");
+              setAdminJumpTarget({ tab: "reports", subTab: "shift-report" });
+            }
+            break;
+          case "4": // Item Report
+          case "$":
+            if (isAdmin) {
+              setActiveTab("admin");
+              setAdminJumpTarget({ tab: "reports", subTab: "item-report" });
+            }
+            break;
+          default:
+            break;
+        }
+      }
+      // Main Tabs (Alt + Number)
+      else if (e.altKey) {
+        switch (e.key) {
+          case "1":
+            setActiveTab("billing");
+            break;
+          case "2":
+            setActiveTab("recent-bills");
+            break;
+          case "3":
+            setActiveTab("shifts");
+            break;
+          case "4":
+            setActiveTab("menu");
+            break;
+          case "5":
+            if (isAdmin) setActiveTab("admin");
+            break;
+          default:
+            break;
+        }
+      }
+    };
+    window.addEventListener("keydown", handleGlobalShortcuts);
+    return () => window.removeEventListener("keydown", handleGlobalShortcuts);
+  }, [isAdmin]);
+
+  const handleLogin = (
+    newMode,
+    date,
+    newTrack,
+    newSessionId,
+    initials = "CLK",
+  ) => {
     setMode(newMode);
     setBillingDate(date);
     setTrack(newTrack);
     setSessionId(newSessionId);
+    setUserInitials(initials);
     setIsVerifyingAdmin(false);
     localStorage.setItem("mode", newMode);
     localStorage.setItem("billingDate", date);
     localStorage.setItem("track", newTrack);
     localStorage.setItem("sessionId", newSessionId);
+    localStorage.setItem("userInitials", initials);
   };
 
   const handleStartAdminVerification = (date, newTrack) => {
@@ -95,6 +205,8 @@ function App() {
     localStorage.removeItem("billingDate");
     localStorage.removeItem("track");
     localStorage.removeItem("sessionId");
+    localStorage.removeItem("userInitials");
+    setUserInitials("CLK");
   };
 
   return (
@@ -154,6 +266,7 @@ function App() {
                   track={track}
                   sessionId={sessionId}
                   activeShift={activeShift}
+                  userInitials={userInitials} // Passed prop
                   isShiftLoading={isShiftLoading}
                   setPrintData={setPrintData}
                 />
@@ -178,7 +291,11 @@ function App() {
 
               {isAdmin && (
                 <TabsContent value="admin">
-                  <EnhancedAdminPanel mode={mode} sessionId={sessionId} />
+                  <EnhancedAdminPanel
+                    mode={mode}
+                    sessionId={sessionId}
+                    jumpTarget={adminJumpTarget}
+                  />
                 </TabsContent>
               )}
             </Tabs>

@@ -5,7 +5,7 @@ const BillingModel = {
   // Get all bills
   async getAllBills() {
     const result = await pool.query(
-      "SELECT * FROM bills ORDER BY created_at DESC"
+      "SELECT * FROM bills ORDER BY created_at DESC",
     );
     return result.rows;
   },
@@ -22,7 +22,7 @@ const BillingModel = {
   async getBillByNumber(billNumber, billDate) {
     const result = await pool.query(
       "SELECT * FROM bills WHERE bill_number = $1 AND bill_date = $2",
-      [billNumber, billDate]
+      [billNumber, billDate],
     );
     return result.rows[0];
   },
@@ -31,7 +31,7 @@ const BillingModel = {
   async getBillItems(billId) {
     const result = await pool.query(
       "SELECT items_json FROM bills WHERE id = $1",
-      [billId]
+      [billId],
     );
     if (result.rows.length > 0 && result.rows[0].items_json) {
       return result.rows[0].items_json;
@@ -47,7 +47,7 @@ const BillingModel = {
       `SELECT MAX(bill_number) as max_num 
        FROM bills 
        WHERE bill_date = $1`,
-      [date]
+      [date],
     );
 
     const maxNum = parseInt(result.rows[0].max_num) || 0;
@@ -65,7 +65,7 @@ const BillingModel = {
        AND bill_number = 0 
        ORDER BY created_at DESC 
        LIMIT 1`,
-      [parseInt(table_no), party_no, track, clerk_initials]
+      [parseInt(table_no), party_no, track, clerk_initials],
     );
     return result.rows[0];
   },
@@ -100,7 +100,7 @@ const BillingModel = {
         track,
         clerk_initials,
         finalCreatedAt,
-      ]
+      ],
     );
     return result.rows[0];
   },
@@ -143,12 +143,11 @@ const BillingModel = {
           cgst = $5,
           tax_amount = $6,
           grand_total = $7,
-          order_id = $8
+          order_id = $8,
+          clerk_initials = $12
         WHERE table_no = $9 
           AND party_no = $10 
-          AND track = $11 
-          AND clerk_initials = $12
-          AND created_at = $13 -- Vital: Match the FK column exactly
+          AND created_at = $11 -- Vital: Match the FK column exactly
           AND bill_number = 0 -- Safety check
         RETURNING id`,
         [
@@ -162,10 +161,9 @@ const BillingModel = {
           order_id,
           parseInt(table_no),
           party_no,
-          track,
-          clerk_initials,
           created_at,
-        ]
+          clerk_initials,
+        ],
       );
 
       if (updateRes.rows.length === 0) {
@@ -213,7 +211,7 @@ const BillingModel = {
   async getLastBillNumber(date) {
     const result = await pool.query(
       "SELECT MAX(bill_number) as last_bill_number FROM bills WHERE bill_date = $1",
-      [date]
+      [date],
     );
     return result.rows[0];
   },
@@ -225,7 +223,7 @@ const BillingModel = {
        WHERE bill_date BETWEEN $1 AND $2 
        AND bill_number > 0
        ORDER BY created_at DESC`,
-      [startDate, endDate]
+      [startDate, endDate],
     );
     return result.rows;
   },
@@ -234,7 +232,7 @@ const BillingModel = {
   async getBillsByTable(tableNo) {
     const result = await pool.query(
       "SELECT * FROM bills WHERE table_no = $1 ORDER BY created_at DESC LIMIT 50",
-      [tableNo]
+      [tableNo],
     );
     return result.rows;
   },
@@ -245,7 +243,7 @@ const BillingModel = {
     try {
       const check = await client.query(
         "SELECT id FROM bills WHERE bill_number = 0 AND bill_date = $1",
-        [date]
+        [date],
       );
       if (check.rows.length === 0) {
         await client.query(
@@ -255,7 +253,7 @@ const BillingModel = {
             tax_amount, grand_total, items_json
           ) VALUES (0, $1, NULL, '0', 'SYS', 'SYS', 'SYS', 0, 0, 0, 0, 0, '[]'::jsonb)
           ON CONFLICT (bill_number, bill_date, track) DO NOTHING`,
-          [date]
+          [date],
         );
       }
     } finally {

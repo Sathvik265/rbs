@@ -13,6 +13,7 @@ import {
   TabsTrigger,
   TabsContent,
   Textarea,
+  Label,
 } from "./ui/UIComponents";
 import {
   Table,
@@ -274,7 +275,7 @@ function TopItemsDashboard({ sessionId }) {
 
 // ================== SETTINGS EDITOR ==================
 
-function SettingsEditor({ settings, onChange }) {
+function SettingsEditor({ settings, onChange, clerk }) {
   const [form, setForm] = useState(safeObject(settings));
   const [loading, setLoading] = useState(false);
 
@@ -285,7 +286,10 @@ function SettingsEditor({ settings, onChange }) {
   const save = async () => {
     setLoading(true);
     try {
-      const res = await axios.put(`${API}/settings`, form);
+      const res = await axios.put(
+        `${API}/settings?clerk=${clerk || "CLK"}`,
+        form,
+      );
       if (onChange) {
         onChange(res.data);
       }
@@ -363,16 +367,28 @@ function SettingsEditor({ settings, onChange }) {
 
 // ================== ENHANCED ADMIN PANEL ==================
 
-export default function EnhancedAdminPanel({ mode, sessionId }) {
+export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [adminActiveTab, setAdminActiveTab] = useState("dashboard");
   const [reportsInnerTab, setReportsInnerTab] = useState("time-range");
+  const [settingsClerk, setSettingsClerk] = useState("CLK");
+
+  useEffect(() => {
+    if (jumpTarget) {
+      if (jumpTarget.tab) {
+        setAdminActiveTab(jumpTarget.tab);
+      }
+      if (jumpTarget.subTab && jumpTarget.tab === "reports") {
+        setReportsInnerTab(jumpTarget.subTab);
+      }
+    }
+  }, [jumpTarget]);
 
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/settings`);
+      const res = await axios.get(`${API}/settings?clerk=${settingsClerk}`);
       setSettings(safeObject(res.data));
     } catch (e) {
       console.error("Failed to load settings:", e);
@@ -387,7 +403,7 @@ export default function EnhancedAdminPanel({ mode, sessionId }) {
     if (mode === "admin-full") {
       loadSettings();
     }
-  }, [mode]);
+  }, [mode, settingsClerk]);
 
   const isAdmin = mode && mode.includes("admin");
 
@@ -443,6 +459,16 @@ export default function EnhancedAdminPanel({ mode, sessionId }) {
         </TabsContent>
 
         <TabsContent value="settings">
+          <div className="flex items-center gap-2 mb-4">
+            <Label>Settings for Clerk:</Label>
+            <Input
+              value={settingsClerk}
+              onChange={(e) => setSettingsClerk(e.target.value.toUpperCase())}
+              maxLength={3}
+              className="w-24"
+              placeholder="CLK"
+            />
+          </div>
           {loading ? (
             <Card>
               <CardContent className="text-center py-8">
@@ -451,7 +477,11 @@ export default function EnhancedAdminPanel({ mode, sessionId }) {
               </CardContent>
             </Card>
           ) : (
-            <SettingsEditor settings={settings} onChange={setSettings} />
+            <SettingsEditor
+              settings={settings}
+              onChange={setSettings}
+              clerk={settingsClerk}
+            />
           )}
         </TabsContent>
       </Tabs>

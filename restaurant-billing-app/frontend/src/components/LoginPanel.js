@@ -123,7 +123,13 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
       });
 
       if (onLogin) {
-        onLogin(res.data.mode, date, track, res.data.session_id);
+        onLogin(
+          res.data.mode,
+          date,
+          track,
+          res.data.session_id,
+          credential.toUpperCase(),
+        );
       }
 
       toast.success(

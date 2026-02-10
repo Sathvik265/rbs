@@ -43,6 +43,7 @@ export default function Billing({
   track = "",
   sessionId = null,
   activeShift,
+  userInitials, // New prop
   isShiftLoading,
   setPrintData,
 }) {
@@ -60,6 +61,8 @@ export default function Billing({
 
   // Array ref for item quantity inputs
   const itemQtyRefs = useRef([]);
+  // Array ref for item rows (navigation mode)
+  const itemRowRefs = useRef([]);
 
   const [showHelp, setShowHelp] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -200,7 +203,7 @@ export default function Billing({
     if (event.key === "PageDown") {
       event.preventDefault();
       if (itemCodeRef.current) itemCodeRef.current.focus();
-    } else if (event.key === "Enter") {
+    } else if (event.key === "Enter" || event.key === "Tab") {
       event.preventDefault();
       const newTableNo = event.target.value;
       if (setCurrentTable) {
@@ -212,9 +215,10 @@ export default function Billing({
   };
 
   const handlePartyNoKeyDown = (event) => {
-    if (event.key === "Enter") {
+    if (event.key === "Enter" || event.key === "Tab") {
       event.preventDefault();
-      if (sectionRef.current) sectionRef.current.focus();
+      // Skip Section, go to Item Code
+      if (itemCodeRef.current) itemCodeRef.current.focus();
     }
   };
 
@@ -232,8 +236,8 @@ export default function Billing({
     } else if (e.key === "Escape") {
       e.preventDefault();
       setShowHelp(false);
-      if (itemCodeRef.current) {
-        itemCodeRef.current.focus();
+      if (tableNoRef.current) {
+        tableNoRef.current.focus();
       }
     } else if (e.key === "Enter" && entryCode) {
       e.preventDefault();
@@ -251,6 +255,12 @@ export default function Billing({
       } else {
         setShowHelp(true);
       }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      // Focus first row if exists
+      if (itemRowRefs.current[0]) {
+        itemRowRefs.current[0].focus();
+      }
     }
   };
 
@@ -264,18 +274,54 @@ export default function Billing({
   const handleTableQtyKeyDown = (e, index) => {
     if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (index >= 0) {
+      if (index > 0) {
         itemQtyRefs.current[index - 1]?.focus();
         itemQtyRefs.current[index - 1]?.select();
       } else {
         qtyRef.current?.focus();
         qtyRef.current?.select();
       }
-    } else if (e.key === "ArrowDown" || e.key === "Enter") {
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
       if (index < safeArray(currentDraft.lines).length - 1) {
         itemQtyRefs.current[index + 1]?.focus();
         itemQtyRefs.current[index + 1]?.select();
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      // Move to next input or just handle confirm?
+      // Default behavior: cycle down
+      if (index < safeArray(currentDraft.lines).length - 1) {
+        itemQtyRefs.current[index + 1]?.focus();
+        itemQtyRefs.current[index + 1]?.select();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      // Switch back to Nav Mode (Focus Row)
+      itemRowRefs.current[index]?.focus();
+    }
+  };
+
+  const handleRowKeyDown = (e, index) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Switch to Edit Mode (Focus Input)
+      itemQtyRefs.current[index]?.focus();
+      itemQtyRefs.current[index]?.select();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = index + 1;
+      if (itemRowRefs.current[next]) {
+        itemRowRefs.current[next].focus();
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const prev = index - 1;
+      if (prev >= 0 && itemRowRefs.current[prev]) {
+        itemRowRefs.current[prev].focus();
+      } else if (prev < 0) {
+        // Back to item code
+        if (itemCodeRef.current) itemCodeRef.current.focus();
       }
     }
   };
@@ -353,7 +399,7 @@ export default function Billing({
           party_no: safeGet(header, "party_no", "1"),
           section: safeGet(header, "section", "G"),
           track: activeShift?.shift_name || track || "`",
-          clerk_initials: activeShift?.clerk_initials || "CLK",
+          clerk_initials: userInitials || activeShift?.clerk_initials || "CLK",
           subtotal: subtotal,
           sgst: sgst,
           cgst: cgst,
@@ -414,6 +460,7 @@ export default function Billing({
       currentTable,
       activeShift,
       track,
+      userInitials,
       subtotal,
       sgst,
       cgst,
@@ -494,7 +541,7 @@ export default function Billing({
           unit_price: newLine.unit_price,
           line_total: newLine.line_total,
           track: activeShift?.shift_name || track || "`",
-          clerk_initials: activeShift?.clerk_initials || "CLK",
+          clerk_initials: userInitials || activeShift?.clerk_initials || "CLK",
           bill_number: 0,
           item_code: newLine.alpha_code,
           numeric_item_code: newLine.numeric_code,
@@ -531,6 +578,7 @@ export default function Billing({
       qty,
       activeShift,
       track,
+      userInitials,
       setDrafts,
       setEntryCode,
       setQty,
@@ -687,6 +735,18 @@ export default function Billing({
       } else if (event.key === "End" || event.key === "Home") {
         event.preventDefault();
         handlePrintBill();
+      } else if (event.key === "PageDown") {
+        event.preventDefault();
+        if (itemCodeRef.current) {
+          itemCodeRef.current.focus();
+        }
+      } else if (
+        (event.ctrlKey || event.metaKey) &&
+        (event.key === "f" || event.code === "KeyF")
+      ) {
+        // Override standard ctrl+f
+        event.preventDefault();
+        setShowHelp(true);
       }
     };
 
@@ -842,7 +902,13 @@ export default function Billing({
                 </TableHeader>
                 <TableBody>
                   {safeArray(currentDraft.lines).map((l, idx) => (
-                    <TableRow key={idx}>
+                    <TableRow
+                      key={idx}
+                      ref={(el) => (itemRowRefs.current[idx] = el)}
+                      tabIndex={0}
+                      onKeyDown={(e) => handleRowKeyDown(e, idx)}
+                      className="focus:bg-blue-50 outline-none ring-2 ring-transparent focus:ring-blue-300"
+                    >
                       <TableCell>{idx + 1}</TableCell>
                       <TableCell>
                         {safeGet(l, "name", "Unknown Item")}

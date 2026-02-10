@@ -33,7 +33,21 @@ export default function FoodMenu({ mode }) {
     price_general: "",
     price_ac: "",
     category: "",
+    quantity: "", // Logic added to support quantity
   });
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchInputRef = React.useRef(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.code === "KeyF")) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -274,6 +288,17 @@ export default function FoodMenu({ mode }) {
     }
   };
 
+  // Filter items based on searchTerm
+  const filteredItems = items.filter((item) => {
+    const term = searchTerm.toLowerCase();
+    return (
+      (item.name || "").toLowerCase().includes(term) ||
+      (item.alpha_code || "").toLowerCase().includes(term) ||
+      (item.numeric_code || "").toString().includes(term) ||
+      (item.category || "").toString().toLowerCase().includes(term)
+    );
+  });
+
   if (loading) {
     return (
       <Card>
@@ -289,10 +314,19 @@ export default function FoodMenu({ mode }) {
     <Card>
       <CardHeader>
         <CardTitle>Food Menu ({items.length} items)</CardTitle>
+        <div className="mt-2">
+          <Input
+            ref={searchInputRef}
+            placeholder="Search items..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-sm"
+          />
+        </div>
       </CardHeader>
       <CardContent>
         {mode === "admin-full" && (
-          <div className="grid grid-cols-7 gap-2 mb-6 p-4 bg-gray-50 rounded-lg">
+          <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
             <Input
               name="name"
               placeholder="Item Name"
@@ -309,6 +343,12 @@ export default function FoodMenu({ mode }) {
               name="numeric_code"
               placeholder="Numeric Code"
               value={newItem.numeric_code}
+              onChange={handleNewItemChange}
+            />
+            <Input
+              name="category"
+              placeholder="Category"
+              value={newItem.category}
               onChange={handleNewItemChange}
             />
             <Input
@@ -336,28 +376,23 @@ export default function FoodMenu({ mode }) {
               onChange={handleNewItemChange}
             />
             <Input
-              name="category"
-              placeholder="Category"
-              value={newItem.category}
-              onChange={handleNewItemChange}
-            />
-            <Input
               name="quantity"
               type="number"
               placeholder="Qty (for Category JSON)"
               value={newItem.quantity || ""}
               onChange={handleNewItemChange}
             />
-            <Button onClick={handleAddItem} className="col-span-6">
+            <Button onClick={handleAddItem} className="col-span-4">
               + Add Item
             </Button>
           </div>
         )}
 
-        {items.length === 0 ? (
+        {filteredItems.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
-            No menu items found.{" "}
-            {mode === "admin-full" && "Add some items above to get started."}
+            {searchTerm
+              ? `No items found matching "${searchTerm}"`
+              : "No menu items found."}
           </div>
         ) : (
           <Table>
@@ -374,7 +409,7 @@ export default function FoodMenu({ mode }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item) => {
+              {filteredItems.map((item) => {
                 const safeRender = (val, def = "-") => {
                   if (val === null || val === undefined) return def;
                   if (typeof val === "object") {

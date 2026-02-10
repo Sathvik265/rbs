@@ -34,8 +34,10 @@ function RecentBills({ billingDate }) {
 
   const filteredBills = bills.filter(
     (bill) =>
-      bill.bill_number.toString().includes(searchTerm) ||
-      bill.table_no.toLowerCase().includes(searchTerm.toLowerCase())
+      (bill.bill_number || "").toString().includes(searchTerm) ||
+      String(bill.table_no || "")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase()),
   );
 
   // Normalize bill returned by backend to a consistent shape used by UI
@@ -113,7 +115,7 @@ function RecentBills({ billingDate }) {
         console.error("Failed to fetch bill details:", err);
       }
     },
-    [filteredBills, billDetailsCache, expandedBillId]
+    [filteredBills, billDetailsCache, expandedBillId],
   );
 
   useEffect(() => {
@@ -128,13 +130,13 @@ function RecentBills({ billingDate }) {
         case "ArrowUp":
           event.preventDefault();
           setFocusedBillIndex((prevIndex) =>
-            prevIndex <= 0 ? filteredBills.length - 1 : prevIndex - 1
+            prevIndex <= 0 ? filteredBills.length - 1 : prevIndex - 1,
           );
           break;
         case "ArrowDown":
           event.preventDefault();
           setFocusedBillIndex((prevIndex) =>
-            prevIndex >= filteredBills.length - 1 ? 0 : prevIndex + 1
+            prevIndex >= filteredBills.length - 1 ? 0 : prevIndex + 1,
           );
           break;
         case "Enter":
@@ -241,8 +243,9 @@ function RecentBills({ billingDate }) {
               key={bill.id}
               ref={(el) => (rowRefs.current[index] = el)}
               tabIndex={0}
-              className={`bill-card ${isExpanded ? "expanded" : ""} ${focusedBillIndex === index ? "focused" : ""
-                }`}
+              className={`bill-card ${isExpanded ? "expanded" : ""} ${
+                focusedBillIndex === index ? "focused" : ""
+              }`}
               onClick={async () => {
                 if (isExpanded) {
                   setSelectedBill(null);

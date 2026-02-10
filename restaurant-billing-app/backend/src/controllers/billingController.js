@@ -87,7 +87,7 @@ const billingController = {
       // because that's what the provisional bill was created with
       const existingOrders = await OrderModel.getPendingOrdersByTableAndParty(
         table_no,
-        party_no
+        party_no,
       );
 
       if (existingOrders && existingOrders.length > 0) {
@@ -95,7 +95,7 @@ const billingController = {
         track = existingOrders[0].track;
         clerk_initials = existingOrders[0].clerk_initials;
         console.log(
-          `Using track="${track}" and clerk="${clerk_initials}" from existing orders`
+          `Using track="${track}" and clerk="${clerk_initials}" from existing orders`,
         );
       }
 
@@ -108,23 +108,23 @@ const billingController = {
       });
 
       // Look up the active provisional bill to get the linking 'created_at'
-      const provisionalBill = await BillingModel.getProvisionalBill(
-        table_no,
-        party_no,
-        track,
-        clerk_initials
+      // Look up the active provisional bill strictly by table/party
+      const provisionalRes = await pool.query(
+        `SELECT * FROM bills WHERE table_no = $1 AND party_no = $2 AND bill_number = 0 ORDER BY created_at DESC LIMIT 1`,
+        [parseInt(table_no), party_no],
       );
+      const provisionalBill = provisionalRes.rows[0];
 
       console.log(`Provisional bill found:`, provisionalBill);
 
       if (!provisionalBill) {
         // ENHANCED ERROR: Query all provisional bills to see what exists
         const allProvisionalBills = await pool.query(
-          `SELECT * FROM bills WHERE bill_number = 0 ORDER BY created_at DESC LIMIT 10`
+          `SELECT * FROM bills WHERE bill_number = 0 ORDER BY created_at DESC LIMIT 10`,
         );
         console.log(
           `All provisional bills in database:`,
-          allProvisionalBills.rows
+          allProvisionalBills.rows,
         );
 
         return res.status(404).json({
@@ -230,7 +230,7 @@ const billingController = {
       const { tableNo, partyNo } = req.params;
       const orders = await OrderModel.getPendingOrdersByTableAndParty(
         tableNo,
-        partyNo
+        partyNo,
       );
       res.json(orders);
     } catch (error) {
@@ -276,7 +276,7 @@ const billingController = {
         orderData.table_no,
         orderData.party_no,
         orderData.track,
-        orderData.clerk_initials
+        orderData.clerk_initials,
       );
 
       console.log(`Existing provisional bill:`, provisionalBill);
@@ -295,9 +295,8 @@ const billingController = {
 
         console.log(`Creating new provisional bill with:`, provisionalBillData);
 
-        provisionalBill = await BillingModel.createProvisionalBill(
-          provisionalBillData
-        );
+        provisionalBill =
+          await BillingModel.createProvisionalBill(provisionalBillData);
 
         console.log(`Created provisional bill:`, provisionalBill);
       }
@@ -332,7 +331,7 @@ const billingController = {
       const updatedOrder = await OrderModel.updateOrderQuantity(
         orderId,
         quantity,
-        line_total
+        line_total,
       );
 
       res.json(updatedOrder);
