@@ -28,7 +28,7 @@ const SettingsModel = require("./models/settingsModel");
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
-  })
+  }),
 );
 
 // Rate limiting - development tuned
@@ -43,7 +43,7 @@ app.use(
   cors({
     origin: ["http://127.0.0.1:3000", "http://localhost:3000"],
     credentials: true,
-  })
+  }),
 );
 
 // Body parsing
@@ -92,16 +92,26 @@ app.post("/api/auth/login", async (req, res) => {
       mode = is_root ? "admin-full" : "admin-limited";
     else return res.status(401).json({ detail: "Invalid credentials" });
 
-    // IMPORTANT: If the requested track/shift for the given date is CLOSED,
-    // do not allow login for any user on that track.
+    // IMPORTANT: If the requested track/shift is CLOSED, do not allow login.
+    // We check by shift_name only — session_date is a fixed creation date and
+    // doesn't change per login, so date-specific comparisons always miss closed shifts.
     console.log(`Checking closed status for Track: ${track}, Date: ${date}`);
     const closedCheck = await pool.query(
-      `SELECT 1 FROM sessions WHERE shift_name = $1 AND session_date = $2::date AND UPPER(status) = 'CLOSED' LIMIT 1`,
-      [track, date]
+      `SELECT 1 FROM sessions WHERE shift_name = $1 AND UPPER(status) = 'CLOSED' LIMIT 1`,
+      [track],
     );
-    console.log(`Closed Check Result:`, closedCheck.rows);
+    const openCheck = await pool.query(
+      `SELECT 1 FROM sessions WHERE shift_name = $1 AND UPPER(status) = 'OPEN' LIMIT 1`,
+      [track],
+    );
+    console.log(
+      `Closed Check Result:`,
+      closedCheck.rows,
+      `Open Check:`,
+      openCheck.rows,
+    );
 
-    if (closedCheck.rows.length > 0) {
+    if (closedCheck.rows.length > 0 && openCheck.rows.length === 0) {
       return res
         .status(403)
         .json({ detail: "Shift is closed for this track/date" });
@@ -111,7 +121,7 @@ app.post("/api/auth/login", async (req, res) => {
     let shiftSessionResult = await pool.query(
       `SELECT session_id FROM sessions 
              WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
-      [track, date, upperStaffCode]
+      [track, date, upperStaffCode],
     );
 
     let shift_session_id;
@@ -124,7 +134,7 @@ app.post("/api/auth/login", async (req, res) => {
      ON CONFLICT (shift_name, session_date, clerk_initials)
      DO NOTHING
      RETURNING session_id`,
-        [track, upperStaffCode, date]
+        [track, upperStaffCode, date],
       );
 
       if (createResult.rows.length > 0) {
@@ -133,7 +143,7 @@ app.post("/api/auth/login", async (req, res) => {
         // Conflict happened but no row returned (existing row present). Try to fetch it again.
         const retry = await pool.query(
           `SELECT session_id FROM sessions WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
-          [track, date, upperStaffCode]
+          [track, date, upperStaffCode],
         );
         if (retry.rows.length > 0) shift_session_id = retry.rows[0].session_id;
         else
@@ -164,7 +174,7 @@ app.post("/api/auth/login", async (req, res) => {
 app.get("/api/menu", async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT * FROM items ORDER BY category, name"
+      "SELECT * FROM items ORDER BY category, name",
     );
     res.json(result.rows);
   } catch (error) {
@@ -201,7 +211,7 @@ app.post("/api/menu", async (req, res) => {
         parseFloat(price_general) || 0,
         parseFloat(price_ac) || 0,
         category,
-      ]
+      ],
     );
     res.json(result.rows[0]);
   } catch (error) {
@@ -218,7 +228,7 @@ app.delete("/api/menu/:id", async (req, res) => {
     const { id } = req.params;
     const result = await pool.query(
       "DELETE FROM items WHERE id = $1 RETURNING *",
-      [id]
+      [id],
     );
     if (result.rows.length === 0)
       return res.status(404).json({ detail: "Item not found" });
@@ -268,7 +278,7 @@ app.put("/api/menu/:id", async (req, res) => {
         parseFloat(price_ac) || 0,
         category,
         id,
-      ]
+      ],
     );
 
     if (result.rows.length === 0)
@@ -290,7 +300,7 @@ app.get("/api/menu/lookup/:code", async (req, res) => {
     const result = await pool.query(
       `SELECT * FROM items 
              WHERE (UPPER(alpha_code) = $1 OR UPPER(numeric_code) = $1) LIMIT 1`,
-      [upperCode]
+      [upperCode],
     );
 
     if (result.rows.length === 0)
@@ -311,13 +321,13 @@ app.get("/api/admin/dashboard", async (req, res) => {
     const salesResult = await pool.query(
       `SELECT COALESCE(SUM(grand_total), 0) as total_sales, COUNT(*) as total_bills 
              FROM bills WHERE bill_date = $1`,
-      [today]
+      [today],
     );
 
     const tablesResult = await pool.query(
       `SELECT DISTINCT table_no FROM bills 
              WHERE bill_date = $1 AND created_at >= $2`,
-      [today, new Date(Date.now() - 2 * 60 * 60 * 1000)]
+      [today, new Date(Date.now() - 2 * 60 * 60 * 1000)],
     );
 
     const totalTables = 50;
@@ -332,7 +342,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
              GROUP BY bi.item_name
              ORDER BY total_quantity DESC
              LIMIT 5`,
-      [today]
+      [today],
     );
 
     const billsCount = salesResult.rows[0].total_bills;
@@ -399,10 +409,10 @@ const server = app.listen(PORT, () => {
 server.on("error", (err) => {
   if (err && err.code === "EADDRINUSE") {
     console.error(
-      `❌ Port ${PORT} is already in use. Stop the process using this port or set a different PORT environment variable.`
+      `❌ Port ${PORT} is already in use. Stop the process using this port or set a different PORT environment variable.`,
     );
     console.error(
-      `You can free the port (PowerShell): netstat -ano | findstr :${PORT} ; taskkill /PID <pid> /F  OR Stop-Process -Id <pid> -Force`
+      `You can free the port (PowerShell): netstat -ano | findstr :${PORT} ; taskkill /PID <pid> /F  OR Stop-Process -Id <pid> -Force`,
     );
     process.exit(1);
   } else {

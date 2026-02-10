@@ -1,473 +1,258 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { getCurrentShifts, manualToggleShift } from "../services/api";
+import axios from "axios";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Button,
+  Loader2,
+} from "./ui/UIComponents";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "./ui/Table";
+import { getShiftStatus, reopenShift, closeShift } from "../services/api";
+import { API, toast, safeGet, safeArray } from "../utils/helpers";
 
-// Show a compact 4-row table for admins, and the existing card/grid view for clerks
-function ShiftManagement({ billingDate, mode = "clerk" }) {
+export default function ShiftTab({
+  mode,
+  sessionId,
+  currentShift,
+  currentDate,
+}) {
   const [shifts, setShifts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [actionLoading, setActionLoading] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
-  const fetchShifts = useCallback(async () => {
+  const isAdmin = mode && mode.includes("admin");
+  const isClerk = mode === "clerk";
+
+  const loadShiftStatus = useCallback(async () => {
+    if (!isAdmin) return;
+
+    setLoading(true);
     try {
-      setLoading(true);
-      console.log("Fetching shifts for date:", billingDate);
-      const response = await getCurrentShifts(billingDate);
-      console.log("Shifts response:", response);
-
-      // Handle both array response and object with shifts property
-      const shiftsData = Array.isArray(response)
-        ? response
-        : response.shifts || response;
-      setShifts(shiftsData);
-      setError(null);
-    } catch (err) {
-      console.error("Error fetching shifts:", err);
-      setError(
-        "Failed to fetch shifts: " + (err.response?.data?.detail || err.message)
-      );
+      const res = await getShiftStatus();
+      setShifts(safeArray(res));
+    } catch (e) {
+      console.error("Failed to load shift status:", e);
+      toast.error("Failed to load shift status");
+      setShifts([]);
     } finally {
       setLoading(false);
     }
-  }, [billingDate]);
+  }, [isAdmin]);
 
   useEffect(() => {
-    fetchShifts();
-  }, [fetchShifts]);
+    if (isAdmin) {
+      loadShiftStatus();
+      const interval = setInterval(loadShiftStatus, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isAdmin, loadShiftStatus]);
 
-  const handleToggleShift = async (shiftId, currentStatus) => {
-    const newStatus = currentStatus === "OPEN" ? "CLOSED" : "OPEN";
+  const handleCloseShift = async () => {
+    if (!sessionId) return;
 
     try {
-      setActionLoading(shiftId);
-      console.log(
-        `Toggling shift ${shiftId} from ${currentStatus} to ${newStatus}`
-      );
+      const res = await axios.post(`${API}/shifts/close`, {
+        session_id: sessionId,
+      });
 
-      // pass billingDate so demo or date-aware backend endpoints toggle the correct day's shift
-      await manualToggleShift(shiftId, newStatus, billingDate);
-      await fetchShifts(); // Refresh data
-      setError(null);
-    } catch (err) {
-      console.error("Error toggling shift:", err);
-      setError(
-        `Failed to ${newStatus.toLowerCase()} shift: ` +
-          (err.response?.data?.detail || err.message)
+      toast.success(`Shift ${res.data.shift_name} closed successfully`);
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (e) {
+      console.error("Failed to close shift:", e);
+      toast.error(safeGet(e, "response.data.detail", "Failed to close shift"));
+    }
+
+    setShowCloseConfirm(false);
+  };
+
+  const handleShiftAction = async (shiftId, currentStatus) => {
+    if (!isAdmin) return;
+
+    try {
+      if (currentStatus === "OPEN") {
+        await closeShift(shiftId);
+        toast.success(`Shift closed successfully`);
+      } else {
+        await reopenShift(shiftId);
+        toast.success(`Shift reopened successfully`);
+      }
+      loadShiftStatus();
+    } catch (e) {
+      console.error("Failed to perform shift action:", e);
+      toast.error(
+        safeGet(e, "response.data.detail", "Failed to perform shift action"),
       );
-    } finally {
-      setActionLoading(null);
     }
   };
 
-  const getShiftDisplayName = (shiftName) => {
-    switch (shiftName) {
-      case "`":
-        return "Morning Shift";
-      case "``":
-        return "Afternoon Shift";
-      case "RBS1":
-        return "Evening Shift (RBS1)";
-      case "RBS2":
-        return "Night Shift (RBS2)";
-      default:
-        return shiftName;
-    }
-  };
-
-  // Admin wants a 4-row table with statuses for all shifts
-  const isAdmin = mode && mode.toLowerCase().includes("admin");
-
-  if (loading) {
-    return (
-      <div className="shift-management" style={{ padding: "20px" }}>
-        <h2>Shift Management</h2>
-        <div className="loading">Loading shifts...</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="shift-management" style={{ padding: "20px" }}>
-      <div className="shift-header">
-        <h2>Shift Management</h2>
-        <div
-          className="shift-date"
-          style={{ marginBottom: "20px", color: "#666" }}
-        >
-          Date: {billingDate}
-        </div>
-      </div>
-
-      {error && (
-        <div
-          className="error-message"
-          style={{
-            color: "red",
-            padding: "10px",
-            margin: "10px 0",
-            border: "1px solid red",
-            borderRadius: "4px",
-            backgroundColor: "#f8d7da",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {shifts.length === 0 ? (
-        <div
-          className="no-shifts"
-          style={{
-            padding: "20px",
-            textAlign: "center",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            backgroundColor: "#f9f9f9",
-          }}
-        >
-          <p>No shifts found for {billingDate}</p>
-          <small>
-            Shifts are automatically created at the start of each day.
-          </small>
-        </div>
-      ) : // If admin mode, render a table with the 4 shifts and their statuses
-      isAdmin ? (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th
-                  style={{
-                    textAlign: "left",
-                    padding: "8px",
-                    borderBottom: "1px solid #ddd",
-                  }}
-                >
-                  Shift
-                </th>
-                <th
-                  style={{
-                    textAlign: "left",
-                    padding: "8px",
-                    borderBottom: "1px solid #ddd",
-                  }}
-                >
-                  Start Time
-                </th>
-                <th
-                  style={{
-                    textAlign: "left",
-                    padding: "8px",
-                    borderBottom: "1px solid #ddd",
-                  }}
-                >
-                  End Time
-                </th>
-                <th
-                  style={{
-                    textAlign: "left",
-                    padding: "8px",
-                    borderBottom: "1px solid #ddd",
-                  }}
-                >
-                  Status
-                </th>
-                <th
-                  style={{
-                    textAlign: "left",
-                    padding: "8px",
-                    borderBottom: "1px solid #ddd",
-                  }}
-                >
-                  Closed By
-                </th>
-                <th
-                  style={{
-                    textAlign: "left",
-                    padding: "8px",
-                    borderBottom: "1px solid #ddd",
-                  }}
-                >
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {["`", "``", "RBS1", "RBS2"].map((sName) => {
-                const shift = shifts.find((x) => x.shift_name === sName) || {};
-                return (
-                  <tr key={sName}>
-                    <td
-                      style={{
-                        padding: "8px",
-                        borderBottom: "1px solid #f0f0f0",
-                      }}
-                    >
-                      {getShiftDisplayName(sName)}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px",
-                        borderBottom: "1px solid #f0f0f0",
-                      }}
-                    >
-                      {shift.start_time
-                        ? new Date(shift.start_time).toLocaleTimeString()
-                        : "-"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px",
-                        borderBottom: "1px solid #f0f0f0",
-                      }}
-                    >
-                      {shift.end_time
-                        ? new Date(shift.end_time).toLocaleTimeString()
-                        : "-"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px",
-                        borderBottom: "1px solid #f0f0f0",
-                      }}
-                    >
-                      <strong>
-                        {(shift.status || "CLOSED").toUpperCase()}
-                      </strong>
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px",
-                        borderBottom: "1px solid #f0f0f0",
-                      }}
-                    >
-                      {shift.closed_by || "-"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "8px",
-                        borderBottom: "1px solid #f0f0f0",
-                      }}
-                    >
-                      <button
-                        onClick={() =>
-                          // only call when we have a valid session id
-                          shift.session_id &&
-                          handleToggleShift(
-                            shift.session_id,
-                            shift.status || "CLOSED"
-                          )
-                        }
-                        disabled={
-                          !shift.session_id ||
-                          actionLoading === shift.session_id
-                        }
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 4,
-                          border: "none",
-                          backgroundColor:
-                            shift.status === "OPEN" ? "#f44336" : "#4CAF50",
-                          color: "white",
-                          cursor:
-                            !shift.session_id ||
-                            actionLoading === shift.session_id
-                              ? "not-allowed"
-                              : "pointer",
-                        }}
-                      >
-                        {actionLoading === shift.session_id
-                          ? "Processing..."
-                          : shift.status === "OPEN"
-                          ? "Close"
-                          : "Open"}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div
-          className="shifts-container"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-            gap: "20px",
-          }}
-        >
-          {shifts.map((shift) => (
-            <div
-              key={shift.session_id}
-              className={`shift-card ${String(
-                shift.status || ""
-              ).toLowerCase()}`}
-              style={{
-                border: "1px solid #ccc",
-                borderRadius: "8px",
-                padding: "20px",
-                backgroundColor:
-                  shift.status === "OPEN" ? "#e8f5e8" : "#f5e8e8",
-              }}
-            >
-              <div
-                className="shift-card-header"
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "15px",
-                }}
-              >
-                <h3 style={{ margin: 0 }}>
-                  {getShiftDisplayName(shift.shift_name)}
-                </h3>
-                <span
-                  className={`status-badge ${shift.status.toLowerCase()}`}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: "4px",
-                    backgroundColor:
-                      shift.status === "OPEN" ? "#4CAF50" : "#f44336",
-                    color: "white",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {shift.status}
-                </span>
-              </div>
-
-              <div className="shift-details" style={{ marginBottom: "15px" }}>
-                <div className="shift-time" style={{ marginBottom: "8px" }}>
-                  <strong>Start Time:</strong>{" "}
-                  {shift.start_time
-                    ? new Date(shift.start_time).toLocaleTimeString()
-                    : "-"}
-                </div>
-                {shift.end_time && (
-                  <div className="shift-time" style={{ marginBottom: "8px" }}>
-                    <strong>End Time:</strong>{" "}
-                    {new Date(shift.end_time).toLocaleTimeString()}
-                  </div>
-                )}
-                {shift.closed_by && (
-                  <div className="shift-time" style={{ marginBottom: "8px" }}>
-                    <strong>Closed By:</strong> {shift.closed_by}
-                  </div>
-                )}
-              </div>
-
-              <div className="shift-actions">
-                <button
-                  onClick={() =>
-                    // ensure we have a valid session id
-                    shift.session_id &&
-                    handleToggleShift(shift.session_id, shift.status)
-                  }
-                  disabled={actionLoading === shift.session_id}
-                  style={{
-                    width: "100%",
-                    padding: "10px 16px",
-                    borderRadius: "4px",
-                    border: "none",
-                    backgroundColor:
-                      shift.status === "OPEN" ? "#f44336" : "#4CAF50",
-                    color: "white",
-                    cursor:
-                      actionLoading === shift.session_id
-                        ? "not-allowed"
-                        : "pointer",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {actionLoading === shift.session_id
-                    ? shift.status === "OPEN"
-                      ? "Closing..."
-                      : "Reopening..."
-                    : shift.status === "OPEN"
-                    ? "Close Shift"
-                    : "Reopen Shift"}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="shift-info" style={{ marginTop: "40px" }}>
-        <h3>Shift Information</h3>
-        <div
-          className="shift-schedule"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-            gap: "15px",
-            marginTop: "15px",
-          }}
-        >
-          <div
-            className="schedule-item"
-            style={{
-              padding: "15px",
-              border: "1px solid #ddd",
-              borderRadius: "6px",
-              backgroundColor: "#f9f9f9",
-            }}
-          >
-            <h4 style={{ margin: "0 0 5px 0", color: "#333" }}>
-              Morning Shift (`)
-            </h4>
-            <p style={{ margin: 0, color: "#666" }}>6:00 AM - 12:00 PM</p>
-          </div>
-          <div
-            className="schedule-item"
-            style={{
-              padding: "15px",
-              border: "1px solid #ddd",
-              borderRadius: "6px",
-              backgroundColor: "#f9f9f9",
-            }}
-          >
-            <h4 style={{ margin: "0 0 5px 0", color: "#333" }}>
-              Afternoon Shift (``)
-            </h4>
-            <p style={{ margin: 0, color: "#666" }}>12:00 PM - 6:00 PM</p>
-          </div>
-          <div
-            className="schedule-item"
-            style={{
-              padding: "15px",
-              border: "1px solid #ddd",
-              borderRadius: "6px",
-              backgroundColor: "#f9f9f9",
-            }}
-          >
-            <h4 style={{ margin: "0 0 5px 0", color: "#333" }}>
-              Evening Shift (RBS1)
-            </h4>
-            <p style={{ margin: 0, color: "#666" }}>6:00 PM - 10:00 PM</p>
-          </div>
-          <div
-            className="schedule-item"
-            style={{
-              padding: "15px",
-              border: "1px solid #ddd",
-              borderRadius: "6px",
-              backgroundColor: "#f9f9f9",
-            }}
-          >
-            <h4 style={{ margin: "0 0 5px 0", color: "#333" }}>
-              Night Shift (RBS2)
-            </h4>
-            <p style={{ margin: 0, color: "#666" }}>10:00 PM - 6:00 AM</p>
-          </div>
-        </div>
-      </div>
+  const ClerkView = () => (
+    <div className="text-center p-6 bg-blue-50 rounded-lg">
+      <h3 className="text-lg font-semibold text-blue-900 mb-2">
+        Current Shift: {currentShift || "Unknown"}
+      </h3>
+      <p className="text-sm text-blue-700 mb-4">
+        You are currently working in shift {currentShift} on {currentDate}
+      </p>
+      <Button
+        variant="destructive"
+        onClick={() => setShowCloseConfirm(true)}
+        className="w-full max-w-xs"
+      >
+        Close Shift & Logout
+      </Button>
     </div>
   );
-}
 
-export default ShiftManagement;
+  const AdminView = () => (
+    <>
+      {loading ? (
+        <div className="text-center py-8">
+          <Loader2 size={24} className="mb-2" />
+          <p>Loading shift status...</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Button onClick={loadShiftStatus} variant="outline" size="sm">
+              Refresh Status
+            </Button>
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Shift Name</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Start Time</TableHead>
+                <TableHead>End Time</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shifts.map((shift) => (
+                <TableRow key={shift.session_id}>
+                  <TableCell className="font-medium">
+                    {shift.shift_name}
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-medium ${
+                        shift.status === "OPEN"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {shift.status}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {shift.start_time
+                      ? new Date(shift.start_time).toLocaleTimeString()
+                      : "-"}
+                  </TableCell>
+                  <TableCell>
+                    {shift.end_time
+                      ? new Date(shift.end_time).toLocaleTimeString()
+                      : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      variant={
+                        shift.status === "OPEN" ? "destructive" : "success"
+                      }
+                      onClick={() =>
+                        handleShiftAction(shift.session_id, shift.status)
+                      }
+                    >
+                      {shift.status === "OPEN" ? "Close" : "Re-open"}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {shifts.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No shifts found for this date
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Shift Management</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isAdmin && (
+            <div className="mb-4">
+              <Button
+                onClick={() => setShowCloseConfirm(true)}
+                variant="destructive"
+                size="sm"
+              >
+                Close Current Shift & Logout
+              </Button>
+            </div>
+          )}
+          {isClerk ? (
+            <ClerkView />
+          ) : isAdmin ? (
+            <AdminView />
+          ) : (
+            <p>Access Denied</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {showCloseConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="max-w-md mx-4">
+            <CardHeader>
+              <CardTitle>Close Shift</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-4">
+                Are you sure you want to close this shift? This will log you
+                out.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCloseConfirm(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleCloseShift}
+                  className="flex-1"
+                >
+                  Yes, Close Shift
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </>
+  );
+}

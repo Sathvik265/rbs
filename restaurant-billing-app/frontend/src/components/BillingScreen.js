@@ -1,762 +1,1094 @@
-
-import React, { useState, useEffect, useRef } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
+import axios from "axios";
 import {
-  getNextBillNumber,
-  createBill,
-  lookupMenuItem,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Input,
+  Button,
+  Label,
+  Loader2,
+} from "./ui/UIComponents";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "./ui/Table";
+import {
   createOrder,
-  getPendingOrdersByTable,
+  createBill as createBillAPI,
+  getBillById,
+  getPendingOrdersByTableAndParty,
+  getAllPendingOrders,
 } from "../services/api";
+import { API, toast, safeGet, safeArray, safeObject } from "../utils/helpers";
 
-function BillingScreen({ billingDate, userMode, track, activeShift }) {
-  const [billData, setBillData] = useState({
-    table_no: "",
-    party_no: "1",
-    section: "G",
-    bill_no: "1",
-  });
-  const [items, setItems] = useState([]);
-  const [currentItem, setCurrentItem] = useState({ code: "", quantity: 1 });
+export default function Billing({
+  drafts = {},
+  setDrafts,
+  currentTable = "",
+  setCurrentTable,
+  billingDate,
+  activeTab,
+  track = "",
+  sessionId = null,
+  activeShift,
+  isShiftLoading,
+  setPrintData,
+}) {
+  const [entryCode, setEntryCode] = useState("");
+  const [qty, setQty] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
 
   // --- REFS FOR NAVIGATION ---
   const tableNoRef = useRef(null);
   const partyNoRef = useRef(null);
   const sectionRef = useRef(null);
   const itemCodeRef = useRef(null);
-  
-  const quantityInputRefs = useRef([]);
-  const currentQtyRef = useRef(null);
+  const qtyRef = useRef(null);
+  const searchInputRef = useRef(null);
 
-  // --- GLOBAL SHORTCUTS (Esc, Arrows, etc) ---
+  // Array ref for item quantity inputs
+  const itemQtyRefs = useRef([]);
+
+  const [showHelp, setShowHelp] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [menuItems, setMenuItems] = useState([]);
+  const [filteredItems, setFilteredItems] = useState([]);
+  const [selectedHelpIndex, setSelectedHelpIndex] = useState(0);
+
+  const currentDraft = useMemo(() => {
+    const defaultDraft = {
+      header: {
+        table_no: currentTable || "",
+        party_no: "1",
+        section: "G",
+        track: track || "",
+        bill_number: null,
+      },
+      lines: [],
+      modified_from_bill_id: null,
+    };
+
+    if (!drafts || !currentTable) {
+      return defaultDraft;
+    }
+
+    const draft = drafts[currentTable];
+    if (!draft) {
+      return defaultDraft;
+    }
+
+    return {
+      header: safeObject(draft.header, defaultDraft.header),
+      lines: safeArray(draft.lines, []),
+      modified_from_bill_id: draft.modified_from_bill_id || null,
+    };
+  }, [drafts, currentTable, track]);
+
+  useEffect(() => {
+    const loadMenu = async () => {
+      try {
+        const res = await axios.get(`${API}/menu`);
+        const items = safeArray(res.data);
+        setMenuItems(items);
+        setFilteredItems(items);
+      } catch (e) {
+        console.error("Failed to load menu for help:", e);
+        toast.error("Failed to load menu for help panel");
+        setMenuItems([]);
+        setFilteredItems([]);
+      }
+    };
+    loadMenu();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "billing" && tableNoRef.current) {
+      tableNoRef.current.focus();
+    }
+  }, [activeTab]);
+
+  const onHeaderChange = (patch) => {
+    if (!currentTable || !setDrafts) return;
+
+    const newHeader = {
+      ...safeObject(currentDraft.header),
+      ...patch,
+    };
+
+    const newDraft = {
+      ...currentDraft,
+      header: newHeader,
+    };
+
+    setDrafts((prev) => ({
+      ...safeObject(prev),
+      [currentTable]: newDraft,
+    }));
+  };
+
+  const setSectionByTable = (tableNo) => {
+    const table = parseInt(tableNo, 10);
+    if (isNaN(table)) return;
+
+    let section = "G";
+    if (table === 1) {
+      section = "P";
+    } else if (table >= 15 && table <= 30) {
+      section = "AC";
+    }
+    onHeaderChange({ section });
+  };
+
+  const loadDataForTable = async (tableNo) => {
+    if (!tableNo || !setDrafts) return;
+    setSectionByTable(tableNo);
+    if (drafts && drafts[tableNo]) return;
+
+    let initialLines = [];
+    let modifiedFromBillId = null;
+
+    try {
+      const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, "1");
+      if (pendingOrders && pendingOrders.length > 0) {
+        initialLines = pendingOrders.map((order) => ({
+          code: order.item_code || order.numeric_item_code,
+          name: order.item_name,
+          quantity: order.quantity,
+          unit_price: order.unit_price,
+          line_total: order.line_total,
+          numeric_code: order.numeric_item_code,
+          alpha_code: order.item_code,
+        }));
+        toast.success(
+          `Loaded ${pendingOrders.length} pending items for Table ${tableNo}`,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load pending orders:", error);
+      toast.error("Failed to load pending orders for this table.");
+    }
+
+    setDrafts((prev) => ({
+      ...safeObject(prev),
+      [tableNo]: {
+        header: {
+          table_no: tableNo,
+          party_no: "1",
+          section: "G",
+          bill_number: null,
+        },
+        lines: initialLines,
+        modified_from_bill_id: modifiedFromBillId,
+      },
+    }));
+  };
+
+  // --- NAVIGATION HANDLERS ---
+  const handleTableNoKeyDown = (event) => {
+    if (event.key === "PageDown") {
+      event.preventDefault();
+      if (itemCodeRef.current) itemCodeRef.current.focus();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const newTableNo = event.target.value;
+      if (setCurrentTable) {
+        setCurrentTable(newTableNo);
+      }
+      loadDataForTable(newTableNo);
+      if (partyNoRef.current) partyNoRef.current.focus();
+    }
+  };
+
+  const handlePartyNoKeyDown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (sectionRef.current) sectionRef.current.focus();
+    }
+  };
+
+  const handleSectionKeyDown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (itemCodeRef.current) itemCodeRef.current.focus();
+    }
+  };
+
+  const handleItemCodeKeyDown = (e) => {
+    if (e.key === "F1") {
+      e.preventDefault();
+      setShowHelp(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setShowHelp(false);
+      if (itemCodeRef.current) {
+        itemCodeRef.current.focus();
+      }
+    } else if (e.key === "Enter" && entryCode) {
+      e.preventDefault();
+      const item = menuItems.find(
+        (i) =>
+          safeGet(i, "numeric_code") === entryCode ||
+          safeGet(i, "alpha_code", "").toLowerCase() ===
+            entryCode.toLowerCase(),
+      );
+      if (item) {
+        if (qtyRef.current) {
+          qtyRef.current.focus();
+          qtyRef.current.select();
+        }
+      } else {
+        setShowHelp(true);
+      }
+    }
+  };
+
+  const handleQtyKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addItem();
+    }
+  };
+
+  const handleTableQtyKeyDown = (e, index) => {
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (index >= 0) {
+        itemQtyRefs.current[index - 1]?.focus();
+        itemQtyRefs.current[index - 1]?.select();
+      } else {
+        qtyRef.current?.focus();
+        qtyRef.current?.select();
+      }
+    } else if (e.key === "ArrowDown" || e.key === "Enter") {
+      e.preventDefault();
+      if (index < safeArray(currentDraft.lines).length - 1) {
+        itemQtyRefs.current[index + 1]?.focus();
+        itemQtyRefs.current[index + 1]?.select();
+      }
+    }
+  };
+
+  const updateQty = (index, val) => {
+    if (!setDrafts || !currentTable) return;
+
+    let newQty = val;
+    if (val !== "") {
+      newQty = Number(val);
+      if (newQty <= 0) {
+        removeLine(index);
+        return;
+      }
+    }
+
+    const lines = safeArray(currentDraft.lines);
+    const updatedLines = lines.map((l, i) => {
+      if (i !== index) return l;
+      return {
+        ...l,
+        quantity: newQty,
+        line_total: Number(
+          (safeGet(l, "unit_price", 0) * (Number(newQty) || 0)).toFixed(2),
+        ),
+      };
+    });
+
+    setDrafts((prev) => ({
+      ...safeObject(prev),
+      [currentTable]: {
+        ...currentDraft,
+        lines: updatedLines,
+      },
+    }));
+  };
+
+  const removeLine = (index) => {
+    if (!setDrafts || !currentTable) return;
+    const lines = safeArray(currentDraft.lines);
+    const updatedLines = lines.filter((_, i) => i !== index);
+    setDrafts((prev) => ({
+      ...safeObject(prev),
+      [currentTable]: {
+        ...currentDraft,
+        lines: updatedLines,
+      },
+    }));
+  };
+
+  const subtotal = useMemo(() => {
+    const lines = safeArray(currentDraft.lines);
+    return lines.reduce((s, l) => s + Number(safeGet(l, "line_total", 0)), 0);
+  }, [currentDraft.lines]);
+
+  const sgst = useMemo(() => Number((subtotal * 0.025).toFixed(2)), [subtotal]);
+  const cgst = useMemo(() => Number((subtotal * 0.025).toFixed(2)), [subtotal]);
+  const total = useMemo(
+    () => Number((subtotal + sgst + cgst).toFixed(2)),
+    [subtotal, sgst, cgst],
+  );
+
+  const createBill = useCallback(
+    async (lines) => {
+      if (!lines || lines.length === 0) {
+        toast.error("No items to bill");
+        return;
+      }
+      setLoading(true);
+      const header = safeObject(currentDraft.header);
+
+      try {
+        const payload = {
+          table_no: safeGet(header, "table_no", currentTable),
+          party_no: safeGet(header, "party_no", "1"),
+          section: safeGet(header, "section", "G"),
+          track: activeShift?.shift_name || track || "`",
+          clerk_initials: activeShift?.clerk_initials || "CLK",
+          subtotal: subtotal,
+          sgst: sgst,
+          cgst: cgst,
+          tax_amount: sgst + cgst,
+          grand_total: total,
+          bill_date: billingDate,
+          modified_from_bill_id: currentDraft.modified_from_bill_id,
+          session_id: sessionId,
+        };
+
+        const createdBill = await createBillAPI(payload);
+        const billId = createdBill?.bill_id;
+        const billNumber = createdBill?.bill_number || "Unknown";
+
+        toast.success(`Bill #${billNumber} created`);
+
+        if (billId) {
+          const fullBillData = await getBillById(billId);
+          if (typeof window !== "undefined") {
+            window.printBillData = fullBillData;
+          }
+          if (setPrintData) {
+            setPrintData(fullBillData);
+          }
+          setTimeout(() => {
+            window.print();
+            if (tableNoRef.current) {
+              tableNoRef.current.focus();
+            }
+          }, 200);
+        }
+
+        if (setDrafts) {
+          setDrafts((prev) => {
+            const newDrafts = { ...safeObject(prev) };
+            delete newDrafts[currentTable];
+            return newDrafts;
+          });
+        }
+
+        if (setCurrentTable) {
+          setCurrentTable("");
+        }
+
+        setEntryCode("");
+        setQty(1);
+      } catch (e) {
+        console.error("Bill creation error:", e);
+        toast.error(
+          safeGet(e, "response.data.detail", "Failed to create bill"),
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      currentDraft,
+      currentTable,
+      activeShift,
+      track,
+      subtotal,
+      sgst,
+      cgst,
+      total,
+      billingDate,
+      sessionId,
+      setDrafts,
+      setCurrentTable,
+      setEntryCode,
+      setQty,
+      tableNoRef,
+      setPrintData,
+    ],
+  );
+
+  const addItem = useCallback(
+    async (focusItemCode = true) => {
+      if (!entryCode || !currentTable) return null;
+
+      try {
+        const res = await axios.get(`${API}/menu/lookup/${entryCode}`);
+        const item = res.data;
+
+        if (!item) {
+          toast.error("Item not found");
+          return null;
+        }
+
+        const section = safeGet(currentDraft, "header.section", "G");
+        let unitPrice;
+
+        switch (section) {
+          case "AC":
+            unitPrice = safeGet(item, "price_ac", 0);
+            break;
+          case "P":
+            unitPrice = safeGet(item, "price_fixed", 0);
+            break;
+          default:
+            unitPrice = safeGet(item, "price_general", 0);
+        }
+
+        const safeExtract = (val, key) => {
+          if (val && typeof val === "object") {
+            return val[key] || val.name || val.item_name || "";
+          }
+          return val;
+        };
+
+        const itemName = safeExtract(
+          safeGet(item, "name", "Unknown Item"),
+          "name",
+        );
+        const itemAlphaCode = safeExtract(
+          safeGet(item, "alpha_code", ""),
+          "alpha_code",
+        );
+        const itemNumericCode = safeExtract(
+          safeGet(item, "numeric_code", ""),
+          "numeric_code",
+        );
+
+        const newLine = {
+          code: entryCode.toUpperCase(),
+          name: itemName,
+          quantity: qty || 1,
+          unit_price: Number(unitPrice),
+          line_total: Number((unitPrice * (qty || 1)).toFixed(2)),
+          numeric_code: itemNumericCode,
+          alpha_code: itemAlphaCode,
+        };
+
+        const payload = {
+          table_no: currentTable,
+          party_no: safeGet(currentDraft, "header.party_no", "1"),
+          item_name: newLine.name,
+          quantity: newLine.quantity,
+          unit_price: newLine.unit_price,
+          line_total: newLine.line_total,
+          track: activeShift?.shift_name || track || "`",
+          clerk_initials: activeShift?.clerk_initials || "CLK",
+          bill_number: 0,
+          item_code: newLine.alpha_code,
+          numeric_item_code: newLine.numeric_code,
+        };
+        await createOrder(payload);
+
+        if (focusItemCode && setDrafts) {
+          const updatedLines = [...safeArray(currentDraft.lines), newLine];
+          setDrafts((prev) => ({
+            ...safeObject(prev),
+            [currentTable]: {
+              ...currentDraft,
+              lines: updatedLines,
+            },
+          }));
+          setEntryCode("");
+          setQty(1);
+          if (itemCodeRef.current) {
+            itemCodeRef.current.focus();
+          }
+        }
+
+        return newLine;
+      } catch (e) {
+        console.error("Add item error:", e);
+        toast.error(safeGet(e, "response.data.detail", "Item not found"));
+        return null;
+      }
+    },
+    [
+      entryCode,
+      currentTable,
+      currentDraft,
+      qty,
+      activeShift,
+      track,
+      setDrafts,
+      setEntryCode,
+      setQty,
+      itemCodeRef,
+    ],
+  );
+
+  const handlePrintBill = useCallback(async () => {
+    if (!currentTable) {
+      toast.error("Please enter a table number before printing.");
+      return;
+    }
+
+    const billIdToPrint =
+      safeGet(currentDraft, "modified_from_bill_id") ||
+      safeGet(currentDraft, "header.bill_id");
+
+    if (billIdToPrint) {
+      try {
+        setLoading(true);
+        const fullBillData = await getBillById(billIdToPrint);
+        if (typeof window !== "undefined") {
+          window.printBillData = fullBillData;
+        }
+        setTimeout(() => {
+          window.print();
+          if (tableNoRef.current) {
+            tableNoRef.current.focus();
+          }
+        }, 200);
+      } catch (e) {
+        console.error("Error fetching bill for reprint:", e);
+        toast.error("Failed to load bill for printing");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    let finalLines = safeArray(currentDraft.lines);
+    if (document.activeElement === qtyRef.current && entryCode) {
+      const newItem = await addItem(false);
+      if (newItem) {
+        finalLines = [...finalLines, newItem];
+      } else {
+        return;
+      }
+    }
+
+    if (finalLines.length === 0) {
+      toast.error("Please add at least one item to the bill.");
+      return;
+    }
+
+    await createBill(finalLines);
+  }, [
+    currentTable,
+    currentDraft,
+    entryCode,
+    qtyRef,
+    addItem,
+    createBill,
+    setLoading,
+    tableNoRef,
+  ]);
+
+  // --- Active Bills Logic ---
+  const [helpTab, setHelpTab] = useState("shortcuts");
+  const [activeTables, setActiveTables] = useState([]);
+  const [now, setNow] = useState(new Date());
+
+  const fetchActiveTables = useCallback(async () => {
+    try {
+      const orders = await getAllPendingOrders();
+      const groups = {};
+      orders.forEach((o) => {
+        const key = `${o.table_no}-${o.party_no}`;
+        if (!groups[key]) {
+          groups[key] = {
+            table_no: o.table_no,
+            party_no: o.party_no,
+            first_order_at: new Date(o.created_at),
+            last_order_at: new Date(o.created_at),
+            item_count: 0,
+            total_amount: 0,
+          };
+        }
+        const g = groups[key];
+        const orderTime = new Date(o.created_at);
+        if (orderTime < g.first_order_at) g.first_order_at = orderTime;
+        if (orderTime > g.last_order_at) g.last_order_at = orderTime;
+
+        if (o.updated_at) {
+          const updateTime = new Date(o.updated_at);
+          if (updateTime > g.last_order_at) g.last_order_at = updateTime;
+        }
+
+        g.item_count += 1;
+        g.total_amount += parseFloat(o.line_total || 0);
+      });
+      setActiveTables(Object.values(groups));
+    } catch (err) {
+      console.error("Failed to fetch active tables", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    let interval;
+    if (showHelp) {
+      fetchActiveTables();
+      interval = setInterval(() => {
+        setNow(new Date());
+        if (new Date().getSeconds() === 0) fetchActiveTables();
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [showHelp, fetchActiveTables]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // ESCAPE -> Focus Table No and Select Text
-      if (e.key === "Escape") {
+      if (e.key === "F2") {
         e.preventDefault();
+        setShowHelp((prev) => {
+          if (!prev) {
+            setHelpTab("active");
+            return true;
+          }
+          if (helpTab === "active") return false;
+          setHelpTab("active");
+          return true;
+        });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [helpTab]);
+
+  const formatDuration = (ms) => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    if (hours > 0) return `${hours}h ${minutes % 60}m`;
+    return `${minutes}m ${seconds % 60}s`;
+  };
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
         if (tableNoRef.current) {
           tableNoRef.current.focus();
           tableNoRef.current.select();
         }
-        return;
+      } else if (event.key === "End" || event.key === "Home") {
+        event.preventDefault();
+        handlePrintBill();
       }
-
-      // PageDown -> Focus Item Code
-      if (e.key === "PageDown") {
-        e.preventDefault();
-        if (itemCodeRef.current) itemCodeRef.current.focus();
-        return;
-      }
-
-      // Alt+Q -> Focus Add-Item Quantity
-      if (e.altKey && e.key.toLowerCase() === "q") {
-        e.preventDefault();
-        if (currentQtyRef.current) currentQtyRef.current.focus();
-        return;
-      }
-
-      // Alt+ArrowDown -> Navigate Items Table (Next)
-      if (e.altKey && e.key === "ArrowDown") {
-        e.preventDefault();
-        const active = document.activeElement;
-        const idx = quantityInputRefs.current.findIndex((el) => el === active);
-        const next =
-          idx === -1
-            ? 0
-            : Math.min(quantityInputRefs.current.length - 1, idx + 1);
-        if (quantityInputRefs.current[next])
-          quantityInputRefs.current[next].focus();
-        return;
-      }
-
-      // Alt+ArrowUp -> Navigate Items Table (Previous)
-      if (e.altKey && e.key === "ArrowUp") {
-        e.preventDefault();
-        const active = document.activeElement;
-        const idx = quantityInputRefs.current.findIndex((el) => el === active);
-        const prev =
-          idx === -1
-            ? quantityInputRefs.current.length - 1
-            : Math.max(0, idx - 1);
-        if (quantityInputRefs.current[prev])
-          quantityInputRefs.current[prev].focus();
-        return;
-      }
-<<<<<<< HEAD
-=======
-
-      // PageDown => focus item code textbox
-      if (e.key === "PageDown") {
-        e.preventDefault();
-        const itemCodeEl = document.getElementById("item-code");
-        if (itemCodeEl) itemCodeEl.focus();
-        return;
-      }
-
-      // F1 => Prevent default browser help and open app help
-      if (e.key === "F1") {
-        e.preventDefault();
-        // Logic to open app help can go here if needed, or just prevent default
-        console.log("F1 pressed - Browser help suppressed");
-        return;
-      }
->>>>>>> 7b01c6ec3fdea87c7406e635fd3de159629c5952
     };
 
-    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleGlobalKeyDown);
     return () => {
-      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [items]); // Added items dependency to keep table nav fresh
+  }, [handlePrintBill]);
 
-  // --- TABLE QUANTITY NAV ---
-  const handleQuantityKeyDown = (e, index) => {
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      if (index > 0) {
-        quantityInputRefs.current[index - 1].focus();
-      }
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      if (index < items.length - 1) {
-        quantityInputRefs.current[index + 1].focus();
-      }
-    }
-  };
+  const displayBillNumber =
+    safeGet(currentDraft, "header.bill_number") !== null
+      ? safeGet(currentDraft, "header.bill_number")
+      : "Auto";
 
   useEffect(() => {
-    const loadPendingOrders = async () => {
-      if (billData.table_no) {
-        try {
-          const orders = await getPendingOrdersByTable(billData.table_no);
-          if (orders.length > 0) {
-            setItems(
-              orders.map((o, i) => ({
-                no: i + 1,
-                code: o.item_code,
-                name: o.item_name,
-                qty: o.quantity,
-                rate: o.unit_price,
-                amount: o.line_total,
-              }))
-            );
-            setBillData((prev) => ({
-              ...prev,
-              party_no: orders[0].party_no,
-              bill_no: orders[0].bill_number,
-            }));
-          }
-        } catch (err) {
-          console.error("Error loading pending orders:", err);
+    if (showHelp) {
+      setSearchQuery("");
+      setFilteredItems([...menuItems]);
+      setSelectedHelpIndex(0);
+      setTimeout(() => {
+        if (searchInputRef.current) {
+          searchInputRef.current.focus();
+        }
+      }, 0);
+    }
+  }, [showHelp, menuItems]);
+
+  useEffect(() => {
+    const lowercasedQuery = searchQuery.toLowerCase();
+    const filtered = menuItems.filter(
+      (item) =>
+        safeGet(item, "name", "").toLowerCase().includes(lowercasedQuery) ||
+        safeGet(item, "numeric_code", "")
+          .toLowerCase()
+          .includes(lowercasedQuery) ||
+        safeGet(item, "alpha_code", "").toLowerCase().includes(lowercasedQuery),
+    );
+    setFilteredItems(filtered);
+    setSelectedHelpIndex(0);
+  }, [searchQuery, menuItems]);
+
+  const handleSearchKeyDown = (e) => {
+    const itemsLength = filteredItems.length;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedHelpIndex((prev) => (prev + 1) % itemsLength);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedHelpIndex((prev) => (prev - 1 + itemsLength) % itemsLength);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (filteredItems[selectedHelpIndex]) {
+        const selectedItem = filteredItems[selectedHelpIndex];
+        setEntryCode(
+          safeGet(selectedItem, "numeric_code", "") ||
+            safeGet(selectedItem, "alpha_code", ""),
+        );
+        setShowHelp(false);
+        if (qtyRef.current) {
+          qtyRef.current.focus();
+          qtyRef.current.select();
         }
       }
-    };
-    loadPendingOrders();
-  }, [billData.table_no]);
-
-  const fetchNextBillNumber = async () => {
-    try {
-      const response = await getNextBillNumber(billingDate);
-      setBillData((prev) => ({
-        ...prev,
-        bill_no: response.bill_number.toString(),
-      }));
-    } catch (err) {
-      console.error("Error fetching bill number:", err);
-    }
-  };
-
-  const handleAddItem = async () => {
-    if (!currentItem.code.trim()) {
-      setError("Please enter item code");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const item = await lookupMenuItem(currentItem.code);
-
-      const orderData = {
-        track: activeShift?.shift_name || track || "`",
-        clerk_initials: activeShift?.clerk_initials || "CLK",
-        table_no: billData.table_no,
-        party_no: billData.party_no,
-        bill_number: billData.bill_no,
-        item_code: item.alpha_code,
-        numeric_item_code: item.numeric_code,
-        item_name: item.name,
-        quantity: parseInt(currentItem.quantity),
-        unit_price: item.price_general || 0,
-        line_total: parseInt(currentItem.quantity) * (item.price_general || 0),
-      };
-
-      await createOrder(orderData);
-
-      const newItem = {
-        no: items.length + 1,
-        code: currentItem.code,
-        name: item.name,
-        qty: parseInt(currentItem.quantity),
-        rate: item.price_general || 0,
-        amount: parseInt(currentItem.quantity) * (item.price_general || 0),
-      };
-
-      setItems((prev) => [...prev, newItem]);
-      setCurrentItem({ code: "", quantity: 1 });
-      setError(null);
-      
-      // Keep focus on Item Code for rapid entry
-      if (itemCodeRef.current) itemCodeRef.current.focus();
-
-    } catch (err) {
-      console.error("Error adding item:", err);
-      setError(`Item "${currentItem.code}" not found`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleClearItems = () => {
-    setItems([]);
-    setError(null);
-    setSuccess(null);
-  };
-
-  const handleRemoveItem = (index) => {
-    setItems((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleQuantityChange = (index, delta) => {
-    setItems((prev) =>
-      prev.map((item, i) =>
-        i === index
-          ? {
-              ...item,
-              qty: Math.max(1, item.qty + delta),
-              amount: Math.max(1, item.qty + delta) * item.rate,
-            }
-          : item
-      )
-    );
-  };
-
-  const calculateTotals = () => {
-    const subtotal = items.reduce((sum, item) => sum + item.amount, 0);
-    const sgst = subtotal * 0.025; // 2.5%
-    const cgst = subtotal * 0.025; // 2.5%
-    const grandTotal = subtotal + sgst + cgst;
-    return { subtotal, sgst, cgst, grandTotal };
-  };
-
-  const { subtotal, sgst, cgst, grandTotal } = calculateTotals();
-
-  const handlePrintBill = async () => {
-    if (!billData.table_no.trim()) {
-      setError("Please enter Table No.");
-      if (tableNoRef.current) tableNoRef.current.focus();
-      return;
-    }
-
-    if (items.length === 0) {
-      setError("Please add items to the bill");
-      if (itemCodeRef.current) itemCodeRef.current.focus();
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      setSuccess(null);
-
-      const billPayload = {
-        bill_number: billData.bill_no,
-        bill_date: billingDate,
-        table_no: billData.table_no,
-        party_no: billData.party_no,
-        section: billData.section,
-        track: activeShift?.shift_name || track,
-        clerk_initials: activeShift?.clerk_initials,
-        subtotal,
-        sgst,
-        cgst,
-        tax_amount: sgst + cgst,
-        grand_total: grandTotal,
-        items: items.map((item) => ({
-          item_code: item.code,
-          name: item.name,
-          quantity: item.qty,
-          unit_price: item.rate,
-          line_total: item.amount,
-        })),
-      };
-
-      const response = await createBill(billPayload);
-
-      const billNumber =
-        response?.bill_number ||
-        response?.header?.bill_number ||
-        response?.header?.billnumber ||
-        response?.billnumber ||
-        response?.header?.billNumber ||
-        null;
-
-      if (billNumber) {
-        setSuccess(`Bill #${billNumber} created successfully!`);
-      } else {
-        setSuccess("Bill created successfully!");
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setShowHelp(false);
+      if (itemCodeRef.current) {
+        itemCodeRef.current.focus();
       }
-
-      setItems([]);
-      setBillData((prev) => ({ ...prev, table_no: "", party_no: "1" }));
-      await fetchNextBillNumber();
-      
-      // Reset focus to Table No for next bill
-      if (tableNoRef.current) tableNoRef.current.focus();
-
-    } catch (err) {
-      console.error("Error creating bill:", err);
-      const errorMessage =
-        err.response?.data?.error || err.response?.data?.detail || err.message;
-      setError("Failed to create bill: " + errorMessage);
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
-    <div className="billing-screen">
-      <div className="billing-header">
-        <h2>Billing for {billingDate}</h2>
-        {track && <div className="current-track">Current Track: {track}</div>}
+    <div className="grid grid-cols-12 gap-6">
+      <div className="col-span-8 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Billing for {billingDate}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-4 gap-4 mb-4">
+              <div>
+                <Label>Table No</Label>
+                <Input
+                  ref={tableNoRef}
+                  placeholder="Type & Enter"
+                  value={currentTable}
+                  onChange={(e) =>
+                    setCurrentTable && setCurrentTable(e.target.value)
+                  }
+                  onKeyDown={handleTableNoKeyDown}
+                />
+              </div>
+              <div>
+                <Label>Party No.</Label>
+                <Input
+                  ref={partyNoRef}
+                  value={safeGet(currentDraft, "header.party_no", "")}
+                  onChange={(e) => onHeaderChange({ party_no: e.target.value })}
+                  onKeyDown={handlePartyNoKeyDown}
+                />
+              </div>
+              <div>
+                <Label>Section</Label>
+                <Input
+                  ref={sectionRef}
+                  value={safeGet(currentDraft, "header.section", "G")}
+                  readOnly
+                  onKeyDown={handleSectionKeyDown}
+                />
+              </div>
+              <div>
+                <Label>Bill No.</Label>
+                <Input value={displayBillNumber || "..."} readOnly />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div>
+                <Label>Item Code (F1 for Help)</Label>
+                <Input
+                  ref={itemCodeRef}
+                  type="text"
+                  placeholder="Enter Item Code"
+                  value={entryCode}
+                  onChange={(e) => setEntryCode(e.target.value)}
+                  onKeyDown={handleItemCodeKeyDown}
+                />
+              </div>
+              <div>
+                <Label>Quantity</Label>
+                <Input
+                  ref={qtyRef}
+                  type="number"
+                  min="1"
+                  value={qty}
+                  onChange={(e) => setQty(Number(e.target.value) || 1)}
+                  onKeyDown={handleQtyKeyDown}
+                />
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>No.</TableHead>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead>Rate</TableHead>
+                    <TableHead>Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {safeArray(currentDraft.lines).map((l, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>{idx + 1}</TableCell>
+                      <TableCell>
+                        {safeGet(l, "name", "Unknown Item")}
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="ml-2"
+                          onClick={() => removeLine(idx)}
+                        >
+                          -
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          ref={(el) => (itemQtyRefs.current[idx] = el)}
+                          type="number"
+                          min="1"
+                          className="w-16"
+                          value={safeGet(l, "quantity", "")}
+                          onChange={(e) => updateQty(idx, e.target.value)}
+                          onKeyDown={(e) => handleTableQtyKeyDown(e, idx)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {Number(safeGet(l, "unit_price", 0)).toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        {Number(safeGet(l, "line_total", 0)).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="bill-form">
-        <div className="form-row">
-          <div className="form-group">
-            <label>Table No.</label>
-            <input
-              ref={tableNoRef}
-              type="text"
-              value={billData.table_no}
-              onChange={(e) =>
-                setBillData((prev) => ({ ...prev, table_no: e.target.value }))
-              }
-              placeholder="Type & Enter"
-              // ENTER -> Focus Party No
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  partyNoRef.current?.focus();
-                }
-              }}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Party No.</label>
-            <input
-              ref={partyNoRef}
-              type="text"
-              value={billData.party_no}
-              onChange={(e) =>
-                setBillData((prev) => ({ ...prev, party_no: e.target.value }))
-              }
-              // ENTER -> Focus Section
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  sectionRef.current?.focus();
-                }
-              }}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Section</label>
-            <input
-              ref={sectionRef}
-              type="text"
-              value={billData.section}
-              onChange={(e) =>
-                setBillData((prev) => ({ ...prev, section: e.target.value }))
-              }
-              // ENTER -> Focus Item Code
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  itemCodeRef.current?.focus();
-                }
-              }}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Bill No.</label>
-            <input
-              type="text"
-              value={
-                billData.bill_no == 0 || billData.bill_no === "0"
-                  ? "Pending"
-                  : billData.bill_no
-              }
-              disabled
-            />
-          </div>
-        </div>
-
-        <div className="form-row">
-          <div className="form-group">
-            <label>Item Code (F1 for Help)</label>
-            <input
-              ref={itemCodeRef}
-              type="text"
-              value={currentItem.code}
-              onChange={(e) =>
-                setCurrentItem((prev) => ({
-                  ...prev,
-                  code: e.target.value,
-                }))
-              }
-              placeholder="Enter Item Code"
-              // ENTER -> Add Item
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddItem();
-                }
-              }}
-            />
-          </div>
-
-          <div className="form-group">
-            <label>Quantity</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div className="col-span-4 space-y-6 sticky-sidebar">
+        <div className={`help-panel ${showHelp ? "visible" : ""}`}>
+          <div className="help-header">
+            <div className="help-tabs">
               <button
-                type="button"
-                onClick={() =>
-                  setCurrentItem((p) => ({
-                    ...p,
-                    quantity: Math.max(1, (parseInt(p.quantity, 10) || 1) - 1),
-                  }))
-                }
+                className={`help-tab-btn ${
+                  helpTab === "shortcuts" ? "active" : ""
+                }`}
+                onClick={() => setHelpTab("shortcuts")}
               >
-                -
+                Shortcuts
               </button>
-              <input
-                ref={currentQtyRef}
-                type="number"
-                min="1"
-                value={currentItem.quantity}
-                onChange={(e) =>
-                  setCurrentItem((prev) => ({
-                    ...prev,
-                    quantity: e.target.value,
-                  }))
-                }
-                // ENTER -> Add Item
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleAddItem();
-                  }
-                }}
-                style={{ width: 70, textAlign: "center" }}
-              />
               <button
-                type="button"
-                onClick={() =>
-                  setCurrentItem((p) => ({
-                    ...p,
-                    quantity: (parseInt(p.quantity, 10) || 1) + 1,
-                  }))
-                }
+                className={`help-tab-btn ${
+                  helpTab === "active" ? "active" : ""
+                }`}
+                onClick={() => setHelpTab("active")}
               >
-                +
+                Active Bills ({activeTables.length})
               </button>
             </div>
-          </div>
-
-          <div className="form-group">
-            <button onClick={handleAddItem} disabled={loading}>
-              {loading ? "Adding..." : "Add Item"}
+            <button className="close-help" onClick={() => setShowHelp(false)}>
+              ×
             </button>
           </div>
-        </div>
-      </div>
 
-      {success && (
-        <div
-          className="success-message"
-          style={{
-            color: "green",
-            padding: "10px",
-            margin: "10px 0",
-            border: "1px solid green",
-            borderRadius: "4px",
-            backgroundColor: "#d4edda",
-          }}
-        >
-          {success}
-        </div>
-      )}
-
-      {error && (
-        <div
-          className="error-message"
-          style={{
-            color: "red",
-            padding: "10px",
-            margin: "10px 0",
-            border: "1px solid red",
-            borderRadius: "4px",
-            backgroundColor: "#f8d7da",
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      <div
-        className="table-container"
-        style={{
-          maxHeight: "400px",
-          overflowY: "auto",
-          marginTop: "20px",
-          border: "1px solid #ccc",
-        }}
-      >
-        <table
-          className="items-table"
-          style={{ width: "100%", borderCollapse: "collapse" }}
-        >
-          <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
-            <tr style={{ backgroundColor: "#f0f0f0" }}>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>No.</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Item</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Qty</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>Rate</th>
-              <th style={{ border: "1px solid #ccc", padding: "8px" }}>
-                Amount
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, index) => (
-              <tr
-                key={index}
-                className="table-row"
-                title="Double-click to remove item"
-                onDoubleClick={() => handleRemoveItem(index)}
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    const nextRow = e.currentTarget.nextElementSibling;
-                    if (nextRow) nextRow.focus();
-                  } else if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    const prevRow = e.currentTarget.previousElementSibling;
-                    if (prevRow) prevRow.focus();
-                  }
-                }}
-                style={{ cursor: "pointer" }}
-              >
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  {item.no}
-                </td>
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  {item.name}
-                </td>
-                <td
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  <button onClick={() => handleQuantityChange(index, -1)}>
-                    -
-                  </button>
-                  <input
-                    ref={(el) => (quantityInputRefs.current[index] = el)}
-                    type="number"
-                    value={item.qty}
-                    onChange={(e) => {
-                      const newQty = parseInt(e.target.value, 10);
-                      setItems((prev) =>
-                        prev.map((prevItem, i) =>
-                          i === index
-                            ? {
-                                ...prevItem,
-                                qty: newQty,
-                                amount: newQty * prevItem.rate,
-                              }
-                            : prevItem
-                        )
-                      );
-                    }}
-                    onKeyDown={(e) => handleQuantityKeyDown(e, index)}
-                    style={{ width: "50px", textAlign: "center" }}
-                  />
-                  <button onClick={() => handleQuantityChange(index, 1)}>
-                    +
-                  </button>
-                </td>
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  ₹{item.rate.toFixed(2)}
-                </td>
-                <td style={{ border: "1px solid #ccc", padding: "8px" }}>
-                  ₹{item.amount.toFixed(2)}
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
-              <tr>
-                <td
-                  colSpan="5"
-                  className="no-items"
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "20px",
-                    textAlign: "center",
-                    color: "#999",
-                  }}
-                >
-                  No items added yet
-                </td>
-              </tr>
+          <div className="help-content">
+            {helpTab === "shortcuts" ? (
+              <>
+                <p className="help-hint">
+                  Press F1 in Item Code to search for items.
+                </p>
+                {showHelp && (
+                  <div className="mb-4">
+                    <Input
+                      ref={searchInputRef}
+                      type="text"
+                      placeholder="Search by code or name..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={handleSearchKeyDown}
+                    />
+                    {searchQuery && filteredItems.length > 0 && (
+                      <div className="search-results-table">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Code</TableHead>
+                              <TableHead>Name</TableHead>
+                              <TableHead>Price</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredItems.map((item, index) => (
+                              <TableRow
+                                key={safeGet(item, "id", Math.random())}
+                                className={`cursor-pointer hover:bg-gray-100 ${
+                                  selectedHelpIndex === index
+                                    ? "bg-blue-100"
+                                    : ""
+                                }`}
+                                onClick={() => {
+                                  setEntryCode(
+                                    safeGet(item, "numeric_code", "") ||
+                                      safeGet(item, "alpha_code", ""),
+                                  );
+                                  setShowHelp(false);
+                                  if (qtyRef.current) {
+                                    qtyRef.current.focus();
+                                    qtyRef.current.select();
+                                  }
+                                }}
+                              >
+                                <TableCell>
+                                  {safeGet(item, "numeric_code", "") ||
+                                    safeGet(item, "alpha_code", "") ||
+                                    "-"}
+                                </TableCell>
+                                <TableCell>
+                                  {safeGet(item, "name", "Unknown")}
+                                </TableCell>
+                                <TableCell>
+                                  {Number(
+                                    safeGet(item, "price_general", 0),
+                                  ).toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                    {searchQuery && filteredItems.length === 0 && (
+                      <div className="text-center py-4 text-gray-500">
+                        No items found
+                      </div>
+                    )}
+                  </div>
+                )}
+                <h3>Keyboard Shortcuts</h3>
+                <ul className="shortcut-list">
+                  <li>
+                    <kbd>F1</kbd>: Open item search in Help Panel
+                  </li>
+                  <li>
+                    <kbd>F2</kbd>: Toggle Active Bills
+                  </li>
+                  <li>
+                    <kbd>Esc</kbd>: Go to Table No.
+                  </li>
+                  <li>
+                    <kbd>Enter</kbd>: Move between fields / Add item
+                  </li>
+                  <li>
+                    <kbd>Arrow Up/Down</kbd>: Navigate search results
+                  </li>
+                  <li>
+                    <kbd>PageDown</kbd>: Move from Table No. to Item Code
+                  </li>
+                  <li>
+                    <kbd>End</kbd> / <kbd>Home</kbd>: Finalize and Print Bill
+                  </li>
+                </ul>
+              </>
+            ) : (
+              <div className="active-bills-list">
+                {activeTables.length === 0 ? (
+                  <div className="no-active-bills">No active bills</div>
+                ) : (
+                  <table className="active-bills-table">
+                    <thead>
+                      <tr>
+                        <th>Table</th>
+                        <th>Items</th>
+                        <th>Total</th>
+                        <th>Running For</th>
+                        <th>Last Order</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeTables.map((t) => (
+                        <tr key={`${t.table_no}-${t.party_no}`}>
+                          <td>
+                            {t.table_no}{" "}
+                            {t.party_no !== "1" ? `(${t.party_no})` : ""}
+                          </td>
+                          <td>{t.item_count}</td>
+                          <td>₹{t.total_amount.toFixed(2)}</td>
+                          <td className="time-running">
+                            {formatDuration(now - t.first_order_at)}
+                          </td>
+                          <td className="time-ago">
+                            {formatDuration(now - t.last_order_at)} ago
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="form-actions" style={{ marginTop: "20px" }}>
-        <button
-          onClick={handleClearItems}
-          disabled={items.length === 0}
-          style={{
-            padding: "8px 16px",
-            marginRight: "10px",
-            cursor: "pointer",
-          }}
-        >
-          Clear All
-        </button>
-
-        <div className="help-text">
-          🔍 Help
-          <div
-            className="help-content"
-            style={{ fontSize: "12px", marginTop: "5px" }}
-          >
-            <p>Press F1 to Item Code to search for Items.</p>
-            <h4>Keyboard Shortcuts</h4>
-            <ul style={{ margin: "5px 0", paddingLeft: "20px" }}>
-              <li>
-                <strong>Esc:</strong> Go to Table No.
-              </li>
-              <li>
-                <strong>F1:</strong> Open Item search in Help Panel
-              </li>
-              <li>
-                <strong>Enter:</strong> Move between fields / Add Item
-              </li>
-              <li>
-                <strong>Arrow Up/Down:</strong> Navigate Item Code
-              </li>
-              <li>
-                <strong>PageDown:</strong> Move from Table No. to Item Code
-              </li>
-              <li>
-                <strong>End / Home:</strong> Finalize and Print Bill
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      <div
-        className="bill-totals"
-        style={{
-          marginTop: "30px",
-          padding: "20px",
-          border: "1px solid #ccc",
-          borderRadius: "8px",
-          backgroundColor: "#f9f9f9",
-        }}
-      >
-        <h3>Finalize Bill</h3>
-
-        <div className="totals-grid">
-          <div className="total-row" style={{ marginBottom: "10px" }}>
-            <span>Subtotal:</span>
-            <span style={{ float: "right", fontWeight: "bold" }}>
-              ₹{subtotal.toFixed(2)}
-            </span>
-          </div>
-          <div className="total-row" style={{ marginBottom: "10px" }}>
-            <span>SGST (2.5%):</span>
-            <span style={{ float: "right", fontWeight: "bold" }}>
-              ₹{sgst.toFixed(2)}
-            </span>
-          </div>
-          <div className="total-row" style={{ marginBottom: "10px" }}>
-            <span>CGST (2.5%):</span>
-            <span style={{ float: "right", fontWeight: "bold" }}>
-              ₹{cgst.toFixed(2)}
-            </span>
-          </div>
-          <hr />
-          <div
-            className="total-row grand-total"
-            style={{ marginBottom: "20px" }}
-          >
-            <span style={{ fontSize: "18px", fontWeight: "bold" }}>
-              Grand Total:
-            </span>
-            <span
-              style={{
-                float: "right",
-                fontSize: "18px",
-                fontWeight: "bold",
-                color: "#007bff",
-              }}
-            >
-              ₹{grandTotal.toFixed(2)}
-            </span>
           </div>
         </div>
 
-        <button
-          className="print-bill-btn"
-          onClick={handlePrintBill}
-          disabled={loading || items.length === 0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              handlePrintBill();
-            }
-          }}
-          style={{
-            width: "100%",
-            padding: "12px",
-            fontSize: "16px",
-            fontWeight: "bold",
-            backgroundColor: items.length === 0 || loading ? "#ccc" : "#007bff",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: items.length === 0 || loading ? "not-allowed" : "pointer",
-          }}
-        >
-          {loading ? "Creating Bill..." : "📱 Print Bill"}
-        </button>
+        <Card>
+          <CardHeader>
+            <CardTitle>Finalize Bill</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span>{subtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>SGST (2.5%):</span>
+                <span>{sgst.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>CGST (2.5%):</span>
+                <span>{cgst.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-bold text-lg border-t pt-2">
+                <span>Grand Total:</span>
+                <span>{total.toFixed(2)}</span>
+              </div>
+              <Button
+                onClick={handlePrintBill}
+                disabled={
+                  loading ||
+                  isShiftLoading ||
+                  safeArray(currentDraft.lines).length === 0
+                }
+                className="w-full"
+                size="lg"
+              >
+                {isShiftLoading ? (
+                  <Loader2 size={16} className="mr-2" />
+                ) : loading ? (
+                  <Loader2 size={16} className="mr-2" />
+                ) : (
+                  "Print Bill"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
 }
-
-export default BillingScreen;

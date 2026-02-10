@@ -1,411 +1,544 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import {
-  getItemWiseReport,
-  getTimeWiseReport,
-  getShiftWiseReport,
-} from "../services/api";
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Input,
+  Button,
+  Label,
+  Loader2,
+} from "./ui/UIComponents";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "./ui/Table";
+import { API, toast, safeGet, safeArray } from "../utils/helpers";
 
-function Reports({ billingDate }) {
-  const [reportData, setReportData] = useState(null);
-  const [reportType, setReportType] = useState(null);
+export function TimeRangeReport({ sessionId }) {
+  const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [filters, setFilters] = useState({
+    date: new Date().toISOString().split("T")[0],
+    startTime: "09:00",
+    endTime: "21:00",
+  });
 
-  const handleGenerateReport = async (type) => {
+  const generateReport = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      setReportType(type);
-      setReportData(null);
-      setError(null);
-
-      console.log(`Generating ${type} report for date: ${billingDate}`);
-
-      let response;
-      if (type === "item-wise") {
-        response = await getItemWiseReport(billingDate);
-      } else if (type === "time-wise") {
-        response = await getTimeWiseReport(billingDate);
-      } else if (type === "shift-wise") {
-        response = await getShiftWiseReport(billingDate);
-      }
-
-      console.log(`${type} report response:`, response);
-      const reportResult = response.report || response || [];
-      setReportData(reportResult);
-    } catch (err) {
-      console.error(`Error generating ${type} report:`, err);
-      setError(
-        `Failed to generate ${type} report: ` +
-          (err.response?.data?.detail || err.message)
+      const res = await axios.get(`${API}/reports/time-range`, {
+        params: {
+          date: filters.date,
+          startTime: filters.startTime,
+          endTime: filters.endTime,
+        },
+        headers: { Authorization: "admin" },
+      });
+      setReport(res.data);
+      toast.success("Time range report generated successfully");
+    } catch (e) {
+      console.error("Failed to generate time range report:", e);
+      toast.error(
+        safeGet(e, "response.data.detail", "Failed to generate report"),
       );
+      setReport(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const renderReport = () => {
-    if (loading) {
-      return (
-        <div
-          className="loading"
-          style={{ padding: "20px", textAlign: "center" }}
-        >
-          Generating report...
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <div
-          className="error-message"
-          style={{
-            color: "red",
-            padding: "10px",
-            margin: "10px 0",
-            border: "1px solid red",
-            borderRadius: "4px",
-            backgroundColor: "#f8d7da",
-          }}
-        >
-          {error}
-        </div>
-      );
-    }
-
-    if (!reportData) {
-      return (
-        <div
-          className="no-report"
-          style={{
-            padding: "20px",
-            textAlign: "center",
-            color: "#666",
-          }}
-        >
-          <p>Select a report type to generate.</p>
-        </div>
-      );
-    }
-
-    if (reportData.length === 0) {
-      return (
-        <div
-          className="no-data"
-          style={{
-            padding: "20px",
-            textAlign: "center",
-            border: "1px solid #ccc",
-            borderRadius: "4px",
-            backgroundColor: "#f9f9f9",
-          }}
-        >
-          <p>No data available for this report.</p>
-        </div>
-      );
-    }
-
-    // Render different tables based on report type
-    if (reportType === "item-wise") {
-      return (
-        <div style={{ overflowX: "auto" }}>
-          <h3>Item-wise Report</h3>
-          <table
-            className="report-table"
-            style={{ width: "100%", borderCollapse: "collapse" }}
-          >
-            <thead>
-              <tr style={{ backgroundColor: "#f0f0f0" }}>
-                <th
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "12px",
-                    textAlign: "left",
-                  }}
-                >
-                  Item Name
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "12px",
-                    textAlign: "right",
-                  }}
-                >
-                  Quantity Sold
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "12px",
-                    textAlign: "right",
-                  }}
-                >
-                  Total Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {reportData.map((row, index) => (
-                <tr
-                  key={index}
-                  style={{
-                    backgroundColor: index % 2 === 0 ? "#fff" : "#f9f9f9",
-                  }}
-                >
-                  <td style={{ border: "1px solid #ccc", padding: "10px" }}>
-                    {row.item_name}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "10px",
-                      textAlign: "right",
-                    }}
-                  >
-                    {row.total_quantity}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "10px",
-                      textAlign: "right",
-                    }}
-                  >
-                    ₹{parseFloat(row.total_amount || 0).toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-
-    if (reportType === "time-wise") {
-      return (
-        <div style={{ overflowX: "auto" }}>
-          <h3>Time-wise Report</h3>
-          <table
-            className="report-table"
-            style={{ width: "100%", borderCollapse: "collapse" }}
-          >
-            <thead>
-              <tr style={{ backgroundColor: "#f0f0f0" }}>
-                <th
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "12px",
-                    textAlign: "left",
-                  }}
-                >
-                  Time Slot
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "12px",
-                    textAlign: "right",
-                  }}
-                >
-                  Number of Bills
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "12px",
-                    textAlign: "right",
-                  }}
-                >
-                  Total Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {reportData.map((row, index) => (
-                <tr
-                  key={index}
-                  style={{
-                    backgroundColor: index % 2 === 0 ? "#fff" : "#f9f9f9",
-                  }}
-                >
-                  <td style={{ border: "1px solid #ccc", padding: "10px" }}>
-                    {row.time_slot}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "10px",
-                      textAlign: "right",
-                    }}
-                  >
-                    {row.bill_count}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "10px",
-                      textAlign: "right",
-                    }}
-                  >
-                    ₹{parseFloat(row.total_amount || 0).toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-
-    if (reportType === "shift-wise") {
-      return (
-        <div style={{ overflowX: "auto" }}>
-          <h3>Shift-wise Report</h3>
-          <table
-            className="report-table"
-            style={{ width: "100%", borderCollapse: "collapse" }}
-          >
-            <thead>
-              <tr style={{ backgroundColor: "#f0f0f0" }}>
-                <th
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "12px",
-                    textAlign: "left",
-                  }}
-                >
-                  Shift
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "12px",
-                    textAlign: "right",
-                  }}
-                >
-                  Number of Bills
-                </th>
-                <th
-                  style={{
-                    border: "1px solid #ccc",
-                    padding: "12px",
-                    textAlign: "right",
-                  }}
-                >
-                  Total Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {reportData.map((row, index) => (
-                <tr
-                  key={index}
-                  style={{
-                    backgroundColor: index % 2 === 0 ? "#fff" : "#f9f9f9",
-                  }}
-                >
-                  <td style={{ border: "1px solid #ccc", padding: "10px" }}>
-                    {row.shift_name}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "10px",
-                      textAlign: "right",
-                    }}
-                  >
-                    {row.bill_count}
-                  </td>
-                  <td
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: "10px",
-                      textAlign: "right",
-                    }}
-                  >
-                    ₹{parseFloat(row.total_amount || 0).toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
   return (
-    <div className="reports" style={{ padding: "20px" }}>
-      <div className="reports-header">
-        <h2>Reports for {billingDate}</h2>
-      </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Time Range Report</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={filters.date}
+                onChange={(e) =>
+                  setFilters({ ...filters, date: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Start Time</Label>
+              <Input
+                type="time"
+                value={filters.startTime}
+                onChange={(e) =>
+                  setFilters({ ...filters, startTime: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>End Time</Label>
+              <Input
+                type="time"
+                value={filters.endTime}
+                onChange={(e) =>
+                  setFilters({ ...filters, endTime: e.target.value })
+                }
+              />
+            </div>
+          </div>
 
-      <div className="report-buttons" style={{ marginBottom: "30px" }}>
-        <button
-          onClick={() => handleGenerateReport("item-wise")}
-          disabled={loading}
-          style={{
-            marginRight: "15px",
-            padding: "12px 20px",
-            cursor: loading ? "not-allowed" : "pointer",
-            backgroundColor:
-              loading && reportType === "item-wise" ? "#ccc" : "#007bff",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            fontWeight: "bold",
-          }}
-        >
-          {loading && reportType === "item-wise"
-            ? "Loading..."
-            : "Item-wise Report"}
-        </button>
-        <button
-          onClick={() => handleGenerateReport("time-wise")}
-          disabled={loading}
-          style={{
-            marginRight: "15px",
-            padding: "12px 20px",
-            cursor: loading ? "not-allowed" : "pointer",
-            backgroundColor:
-              loading && reportType === "time-wise" ? "#ccc" : "#28a745",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            fontWeight: "bold",
-          }}
-        >
-          {loading && reportType === "time-wise"
-            ? "Loading..."
-            : "Time-wise Report"}
-        </button>
-        <button
-          onClick={() => handleGenerateReport("shift-wise")}
-          disabled={loading}
-          style={{
-            marginRight: "15px",
-            padding: "12px 20px",
-            cursor: loading ? "not-allowed" : "pointer",
-            backgroundColor:
-              loading && reportType === "shift-wise" ? "#ccc" : "#ffc107",
-            color: "black",
-            border: "none",
-            borderRadius: "4px",
-            fontWeight: "bold",
-          }}
-        >
-          {loading && reportType === "shift-wise"
-            ? "Loading..."
-            : "Shift-wise Report"}
-        </button>
-      </div>
+          <Button onClick={generateReport} disabled={loading}>
+            {loading ? <Loader2 size={16} className="mr-2" /> : null}
+            Generate Report
+          </Button>
 
-      <div className="report-content">{renderReport()}</div>
-    </div>
+          {report && (
+            <div className="mt-6 space-y-4">
+              {report.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Bill No</TableHead>
+                      <TableHead>Table</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Time</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.map((bill) => (
+                      <TableRow key={bill.id}>
+                        <TableCell>{bill.bill_number}</TableCell>
+                        <TableCell>{bill.table_no}</TableCell>
+                        <TableCell>
+                          {Number(bill.grand_total).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(bill.created_at).toLocaleTimeString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No bills found for the selected time range
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-export default Reports;
+export function DateRangeReport({ sessionId }) {
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: new Date().toISOString().split("T")[0],
+  });
+
+  const generateReport = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/reports/date-range`, {
+        params: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+        },
+        headers: { Authorization: "admin" },
+      });
+      setReport(res.data);
+      toast.success("Date range report generated successfully");
+    } catch (e) {
+      console.error("Failed to generate date range report:", e);
+      toast.error(
+        safeGet(e, "response.data.detail", "Failed to generate report"),
+      );
+      setReport(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Date Range Report</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Start Date</Label>
+              <Input
+                type="date"
+                value={filters.startDate}
+                onChange={(e) =>
+                  setFilters({ ...filters, startDate: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>End Date</Label>
+              <Input
+                type="date"
+                value={filters.endDate}
+                onChange={(e) =>
+                  setFilters({ ...filters, endDate: e.target.value })
+                }
+              />
+            </div>
+          </div>
+
+          <Button onClick={generateReport} disabled={loading}>
+            {loading ? <Loader2 size={16} className="mr-2" /> : null}
+            Generate Report
+          </Button>
+
+          {report && (
+            <div className="mt-6 space-y-4">
+              {report.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Bill No</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Table</TableHead>
+                      <TableHead>Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.map((bill) => (
+                      <TableRow key={bill.id}>
+                        <TableCell>{bill.bill_number}</TableCell>
+                        <TableCell>
+                          {new Date(bill.bill_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>{bill.table_no}</TableCell>
+                        <TableCell>
+                          {Number(bill.grand_total).toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No bills found for the selected date range
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function ShiftReport({ sessionId }) {
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [filters, setFilters] = useState({
+    date: new Date().toISOString().split("T")[0],
+    shiftName: "`",
+  });
+
+  const generateReport = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/reports/by-shift`, {
+        params: {
+          date: filters.date,
+          shift_name: filters.shiftName,
+        },
+        headers: { Authorization: "admin" },
+      });
+      setReport(res.data);
+      toast.success("Shift report generated successfully");
+    } catch (e) {
+      console.error("Failed to generate shift report:", e);
+      toast.error(
+        safeGet(e, "response.data.detail", "Failed to generate report"),
+      );
+      setReport(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Shift Report</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={filters.date}
+                onChange={(e) =>
+                  setFilters({ ...filters, date: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Shift</Label>
+              <Input
+                type="text"
+                value={filters.shiftName}
+                onChange={(e) =>
+                  setFilters({ ...filters, shiftName: e.target.value })
+                }
+                placeholder="`, ``, RBS1, RBS2"
+              />
+            </div>
+          </div>
+
+          <Button onClick={generateReport} disabled={loading}>
+            {loading ? <Loader2 size={16} className="mr-2" /> : null}
+            Generate Report
+          </Button>
+
+          {report && (
+            <div className="mt-6 space-y-4">
+              {report.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Bill No</TableHead>
+                      <TableHead>Table</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Time</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.map((bill) => (
+                      <TableRow key={bill.id}>
+                        <TableCell>{bill.bill_number}</TableCell>
+                        <TableCell>{bill.table_no}</TableCell>
+                        <TableCell>
+                          {Number(bill.grand_total).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          {new Date(bill.created_at).toLocaleTimeString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  No bills found for the selected shift
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function ItemReport({ sessionId }) {
+  const [report, setReport] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [itemNames, setItemNames] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [dropdownsLoaded, setDropdownsLoaded] = useState(false);
+  const [filters, setFilters] = useState({
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: new Date().toISOString().split("T")[0],
+    item_name: "",
+    category: "",
+  });
+
+  useEffect(() => {
+    const fetchDropdownData = async () => {
+      try {
+        const [namesRes, categoriesRes] = await Promise.all([
+          axios.get(`${API}/items/names/all`),
+          axios.get(`${API}/items/categories/all`),
+        ]);
+        setItemNames(safeArray(namesRes.data));
+        setCategories(safeArray(categoriesRes.data));
+        setDropdownsLoaded(true);
+      } catch (e) {
+        console.error("Failed to fetch dropdown data:", e);
+        setDropdownsLoaded(false);
+      }
+    };
+    fetchDropdownData();
+  }, []);
+
+  const generateReport = async () => {
+    setLoading(true);
+    try {
+      const params = {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+      };
+      if (filters.item_name) params.item_name = filters.item_name;
+      if (filters.category) params.category = filters.category;
+
+      const res = await axios.get(`${API}/reports/by-item`, {
+        params,
+        headers: { Authorization: "admin" },
+      });
+      setReport(safeArray(res.data));
+      toast.success("Item report generated successfully");
+    } catch (e) {
+      console.error("Failed to generate item report:", e);
+      toast.error(
+        safeGet(e, "response.data.detail", "Failed to generate report"),
+      );
+      setReport([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Item Sales Report</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Start Date</Label>
+              <Input
+                type="date"
+                value={filters.startDate}
+                onChange={(e) =>
+                  setFilters({ ...filters, startDate: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>End Date</Label>
+              <Input
+                type="date"
+                value={filters.endDate}
+                onChange={(e) =>
+                  setFilters({ ...filters, endDate: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Item Name (optional)</Label>
+              {dropdownsLoaded && itemNames.length > 0 ? (
+                <select
+                  className="w-full p-2 border rounded"
+                  value={filters.item_name}
+                  onChange={(e) =>
+                    setFilters({ ...filters, item_name: e.target.value })
+                  }
+                >
+                  <option value="">All Items</option>
+                  {itemNames.map((name, index) => (
+                    <option key={index} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  type="text"
+                  placeholder="Type item name..."
+                  value={filters.item_name}
+                  onChange={(e) =>
+                    setFilters({ ...filters, item_name: e.target.value })
+                  }
+                />
+              )}
+            </div>
+            <div>
+              <Label>Category (optional)</Label>
+              {dropdownsLoaded && categories.length > 0 ? (
+                <select
+                  className="w-full p-2 border rounded"
+                  value={filters.category}
+                  onChange={(e) =>
+                    setFilters({ ...filters, category: e.target.value })
+                  }
+                >
+                  <option value="">All Categories</option>
+                  {categories.map((cat, index) => (
+                    <option key={index} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <Input
+                  type="text"
+                  placeholder="Type category..."
+                  value={filters.category}
+                  onChange={(e) =>
+                    setFilters({ ...filters, category: e.target.value })
+                  }
+                />
+              )}
+            </div>
+          </div>
+
+          <Button onClick={generateReport} disabled={loading}>
+            {loading ? <Loader2 size={16} className="mr-2" /> : null}
+            Generate Report
+          </Button>
+
+          {report.length > 0 && (
+            <div className="mt-6">
+              <h4 className="font-medium mb-4">Item Sales Breakdown</h4>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item Name</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Shift</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead>Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {report.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium">
+                        {item.itemName}
+                      </TableCell>
+                      <TableCell>{item.category || "N/A"}</TableCell>
+                      <TableCell>{item.shiftName}</TableCell>
+                      <TableCell className="font-bold">
+                        {item.totalQuantity}
+                      </TableCell>
+                      <TableCell>₹{item.totalAmount?.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {report.length === 0 && !loading && (
+            <div className="text-center py-8 text-gray-500">
+              No data available for the selected date range
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
