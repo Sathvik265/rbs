@@ -160,6 +160,73 @@ For a one-click setup experience on Windows, we have provided a PowerShell scrip
 
 The script will automatically launch the backend API on port 8000 and the frontend React app on port 3000.
 
+## Latest Updates (Version-1)
+
+- **Shifts Issue Fixed**: Resolved bugs related to shift tracking and management.
+- **Keyboard Shortcuts Added**:
+  - Global navigation shortcuts (Ctrl+Alt+1-4) for Dashboard, Reports, Reconciliation, Settings.
+  - Specific Report shortcuts (Ctrl+Shift+1-4).
+  - Billing Screen navigation enhanced (Tab/Enter moves Table -> Party -> Item Code).
+- **Bill Printing**:
+  - Fixed "Provisional bill not found" errors during printing.
+  - Added Party Number to the printed bill.
+  - Ensured correct Clerk Initials are recorded and displayed.
+
+## Keyboard Shortcuts
+
+### Global Navigation
+
+- **Alt + 1**: Go to Billing Screen
+- **Alt + 2**: Go to Recent Bills
+- **Alt + 3**: Go to Shifts
+- **Alt + 4**: Go to Food Menu
+- **Alt + 5**: Go to Admin Panel (Admin only)
+
+### Admin Panel Navigation (Admin Only)
+
+- **Ctrl + Alt + 1**: Dashboard
+- **Ctrl + Alt + 2**: Reports
+- **Ctrl + Alt + 3**: Reconciliation
+- **Ctrl + Alt + 4**: Settings
+
+### Report Shortcuts (Admin Only)
+
+- **Ctrl + Shift + 1**: Time Range Report
+- **Ctrl + Shift + 2**: Date Range Report
+- **Ctrl + Shift + 3**: Shift Report
+- **Ctrl + Shift + 4**: Item Report
+
+### Billing Screen
+
+- **F1**: Open Help Panel (Search Menu Items)
+- **PageDown**: Move focus to Item Code input
+- **End** or **Home**: Print Bill
+- **Ctrl + F**: Open Help Panel (Search Menu Items)
+- **Esc**:
+  - Close Help Panel
+  - Return focus to Table Number (if in Item Code)
+  - Cancel Quantity Edit
+- **Table Number Input**:
+  - **Enter** or **Tab**: Load table data and move to Party Number
+- **Party Number Input**:
+  - **Enter** or **Tab**: Move directly to Item Code (skipping Section)
+- **Item Code Input**:
+  - **ArrowDown**: Move focus to the first bill item row
+  - **Enter**: Add item to bill
+- **Bill Items (Grid)**:
+  - **ArrowUp / ArrowDown**: Navigate between rows
+  - **Enter**: Edit Quantity for selected row
+- **Quantity Input (Edit Mode)**:
+  - **Enter**: Save quantity and return to Item Code
+  - **Esc**: Cancel edit and return to Item Code
+
+### Recent Bills Screen
+
+- **ArrowUp / ArrowDown**: Navigate through bills list
+- **Enter** or **Space**: Expand/Collapse selected bill details
+- **F3**: Focus Search Box
+- **Esc**: Clear Search
+
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
