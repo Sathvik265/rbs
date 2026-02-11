@@ -7,6 +7,7 @@ import ShiftTab from "./components/ShiftManagement";
 import FoodMenu from "./components/FoodMenu";
 import Billing from "./components/BillingScreen";
 import EnhancedAdminPanel from "./components/AdminPanel";
+import { useUser } from "./context/UserContext";
 import {
   Button,
   Tabs,
@@ -18,18 +19,20 @@ import { toast } from "./utils/helpers";
 import "./styles/App.css";
 
 function App() {
+  // Use global user context
+  const {
+    userInitials,
+    setUserInitials,
+    track,
+    setTrack,
+    billingDate,
+    setBillingDate,
+    sessionId,
+    setSessionId,
+  } = useUser();
+
   const [mode, setMode] = useState(
     () => localStorage.getItem("mode") || "none",
-  );
-  const [billingDate, setBillingDate] = useState(
-    () => localStorage.getItem("billingDate") || null,
-  );
-  const [track, setTrack] = useState(() => localStorage.getItem("track") || "");
-  const [sessionId, setSessionId] = useState(
-    () => localStorage.getItem("sessionId") || null,
-  );
-  const [userInitials, setUserInitials] = useState(
-    () => localStorage.getItem("userInitials") || "CLK",
   );
   const [isVerifyingAdmin, setIsVerifyingAdmin] = useState(false);
 
@@ -175,10 +178,6 @@ function App() {
     setUserInitials(initials);
     setIsVerifyingAdmin(false);
     localStorage.setItem("mode", newMode);
-    localStorage.setItem("billingDate", date);
-    localStorage.setItem("track", newTrack);
-    localStorage.setItem("sessionId", newSessionId);
-    localStorage.setItem("userInitials", initials);
   };
 
   const handleStartAdminVerification = (date, newTrack) => {
@@ -189,7 +188,9 @@ function App() {
 
   const handleVerificationComplete = (adminMode) => {
     setMode(adminMode);
+    setUserInitials("SHI"); // Admin is always SHI
     setIsVerifyingAdmin(false);
+    localStorage.setItem("mode", adminMode);
     toast.success(`Logged in as ${adminMode}`);
   };
 
@@ -198,15 +199,11 @@ function App() {
     setBillingDate(null);
     setTrack("");
     setSessionId(null);
+    setUserInitials("CLK");
     setDrafts({});
     setCurrentTable("");
     setActiveTab("billing");
     localStorage.removeItem("mode");
-    localStorage.removeItem("billingDate");
-    localStorage.removeItem("track");
-    localStorage.removeItem("sessionId");
-    localStorage.removeItem("userInitials");
-    setUserInitials("CLK");
   };
 
   return (

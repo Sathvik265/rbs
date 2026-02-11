@@ -546,6 +546,7 @@ export default function Billing({
           item_code: newLine.alpha_code,
           numeric_item_code: newLine.numeric_code,
         };
+
         await createOrder(payload);
 
         if (focusItemCode && setDrafts) {
@@ -820,51 +821,55 @@ export default function Billing({
   };
 
   return (
-    <div className="grid grid-cols-12 gap-6">
-      <div className="col-span-8 space-y-6">
-        <Card>
-          <CardHeader>
+    <div className="grid grid-cols-12 gap-6 pb-4">
+      <div className="col-span-8 flex flex-col h-full">
+        <Card className="flex flex-col h-full">
+          <CardHeader className="flex-none">
             <CardTitle>Billing for {billingDate}</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-4 gap-4 mb-4">
-              <div>
-                <Label>Table No</Label>
-                <Input
-                  ref={tableNoRef}
-                  placeholder="Type & Enter"
-                  value={currentTable}
-                  onChange={(e) =>
-                    setCurrentTable && setCurrentTable(e.target.value)
-                  }
-                  onKeyDown={handleTableNoKeyDown}
-                />
-              </div>
-              <div>
-                <Label>Party No.</Label>
-                <Input
-                  ref={partyNoRef}
-                  value={safeGet(currentDraft, "header.party_no", "")}
-                  onChange={(e) => onHeaderChange({ party_no: e.target.value })}
-                  onKeyDown={handlePartyNoKeyDown}
-                />
-              </div>
-              <div>
-                <Label>Section</Label>
-                <Input
-                  ref={sectionRef}
-                  value={safeGet(currentDraft, "header.section", "G")}
-                  readOnly
-                  onKeyDown={handleSectionKeyDown}
-                />
-              </div>
-              <div>
-                <Label>Bill No.</Label>
-                <Input value={displayBillNumber || "..."} readOnly />
+          <CardContent className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex-none space-y-4 mb-4">
+              <div className="grid grid-cols-4 gap-4">
+                <div>
+                  <Label>Table No</Label>
+                  <Input
+                    ref={tableNoRef}
+                    placeholder="Type & Enter"
+                    value={currentTable}
+                    onChange={(e) =>
+                      setCurrentTable && setCurrentTable(e.target.value)
+                    }
+                    onKeyDown={handleTableNoKeyDown}
+                  />
+                </div>
+                <div>
+                  <Label>Party No.</Label>
+                  <Input
+                    ref={partyNoRef}
+                    value={safeGet(currentDraft, "header.party_no", "")}
+                    onChange={(e) =>
+                      onHeaderChange({ party_no: e.target.value })
+                    }
+                    onKeyDown={handlePartyNoKeyDown}
+                  />
+                </div>
+                <div>
+                  <Label>Section</Label>
+                  <Input
+                    ref={sectionRef}
+                    value={safeGet(currentDraft, "header.section", "G")}
+                    readOnly
+                    onKeyDown={handleSectionKeyDown}
+                  />
+                </div>
+                <div>
+                  <Label>Bill No.</Label>
+                  <Input value={displayBillNumber || "..."} readOnly />
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-3 gap-4 mb-4 flex-none">
               <div>
                 <Label>Item Code (F1 for Help)</Label>
                 <Input
@@ -889,9 +894,9 @@ export default function Billing({
               </div>
             </div>
 
-            <div className="mb-4">
+            <div className="h-[45vh] min-h-[300px] overflow-y-auto border rounded-md relative bg-white">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
                   <TableRow>
                     <TableHead>No.</TableHead>
                     <TableHead>Item</TableHead>
@@ -909,33 +914,54 @@ export default function Billing({
                       onKeyDown={(e) => handleRowKeyDown(e, idx)}
                       className="focus:bg-blue-50 outline-none ring-2 ring-transparent focus:ring-blue-300"
                     >
-                      <TableCell>{idx + 1}</TableCell>
-                      <TableCell>
-                        {safeGet(l, "name", "Unknown Item")}
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="ml-2"
-                          onClick={() => removeLine(idx)}
-                        >
-                          -
-                        </Button>
+                      <TableCell className="!py-2">{idx + 1}</TableCell>
+                      <TableCell className="!py-2">
+                        <div className="flex items-center">
+                          <span className="mr-2">
+                            {safeGet(l, "name", "Unknown Item")}
+                          </span>
+                          <div className="flex space-x-1">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() => removeLine(idx)}
+                              title="Remove Line"
+                            >
+                              -
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 w-6 p-0 bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
+                              onClick={() =>
+                                updateQty(
+                                  idx,
+                                  (Number(safeGet(l, "quantity", 0)) || 0) + 1,
+                                )
+                              }
+                              title="Increase Quantity"
+                            >
+                              +
+                            </Button>
+                          </div>
+                        </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="!py-2">
                         <Input
                           ref={(el) => (itemQtyRefs.current[idx] = el)}
                           type="number"
                           min="1"
-                          className="w-16"
+                          className="w-16 h-8"
                           value={safeGet(l, "quantity", "")}
                           onChange={(e) => updateQty(idx, e.target.value)}
                           onKeyDown={(e) => handleTableQtyKeyDown(e, idx)}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="!py-2">
                         {Number(safeGet(l, "unit_price", 0)).toFixed(2)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="!py-2">
                         {Number(safeGet(l, "line_total", 0)).toFixed(2)}
                       </TableCell>
                     </TableRow>

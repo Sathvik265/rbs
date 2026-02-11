@@ -31,6 +31,7 @@ import {
   ItemReport,
 } from "./Reports";
 import { API, toast, safeGet, safeArray, safeObject } from "../utils/helpers";
+import ClerkManagement from "./ClerkManagement";
 
 // ================== RECONCILIATION ==================
 
@@ -385,7 +386,7 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
     }
   }, [jumpTarget]);
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
       const res = await axios.get(`${API}/settings?clerk=${settingsClerk}`);
@@ -397,13 +398,20 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [settingsClerk]);
 
   useEffect(() => {
     if (mode === "admin-full") {
       loadSettings();
     }
-  }, [mode, settingsClerk]);
+  }, [mode, loadSettings]);
+
+  // Set default tab based on mode
+  useEffect(() => {
+    if (mode === "admin-limited" && adminActiveTab === "dashboard") {
+      setAdminActiveTab("reports");
+    }
+  }, [mode, adminActiveTab]);
 
   const isAdmin = mode && mode.includes("admin");
 
@@ -413,17 +421,22 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
     <div className="space-y-6">
       <Tabs value={adminActiveTab} onValueChange={setAdminActiveTab}>
         <TabsList>
-          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          {/* Dashboard tab only visible in admin-full mode */}
+          {mode === "admin-full" && (
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          )}
           <TabsTrigger value="reports">Reports</TabsTrigger>
           <TabsTrigger value="reconciliation">Reconciliation</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dashboard">
-          <div className="space-y-6">
-            <TopItemsDashboard sessionId={sessionId} />
-          </div>
-        </TabsContent>
+        {mode === "admin-full" && (
+          <TabsContent value="dashboard">
+            <div className="space-y-6">
+              <TopItemsDashboard sessionId={sessionId} />
+            </div>
+          </TabsContent>
+        )}
 
         <TabsContent value="reports">
           <div className="space-y-6">
@@ -459,30 +472,36 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
         </TabsContent>
 
         <TabsContent value="settings">
-          <div className="flex items-center gap-2 mb-4">
-            <Label>Settings for Clerk:</Label>
-            <Input
-              value={settingsClerk}
-              onChange={(e) => setSettingsClerk(e.target.value.toUpperCase())}
-              maxLength={3}
-              className="w-24"
-              placeholder="CLK"
-            />
+          <div className="space-y-6">
+            {/* Clerk Management Section */}
+            <ClerkManagement />
+
+            {/* Receipt Settings Section */}
+            <div className="flex items-center gap-2 mb-4">
+              <Label>Settings for Clerk:</Label>
+              <Input
+                value={settingsClerk}
+                onChange={(e) => setSettingsClerk(e.target.value.toUpperCase())}
+                maxLength={3}
+                className="w-24"
+                placeholder="CLK"
+              />
+            </div>
+            {loading ? (
+              <Card>
+                <CardContent className="text-center py-8">
+                  <Loader2 size={24} className="mb-2" />
+                  <span>Loading settings...</span>
+                </CardContent>
+              </Card>
+            ) : (
+              <SettingsEditor
+                settings={settings}
+                onChange={setSettings}
+                clerk={settingsClerk}
+              />
+            )}
           </div>
-          {loading ? (
-            <Card>
-              <CardContent className="text-center py-8">
-                <Loader2 size={24} className="mb-2" />
-                <span>Loading settings...</span>
-              </CardContent>
-            </Card>
-          ) : (
-            <SettingsEditor
-              settings={settings}
-              onChange={setSettings}
-              clerk={settingsClerk}
-            />
-          )}
         </TabsContent>
       </Tabs>
     </div>

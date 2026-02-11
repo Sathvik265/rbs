@@ -85,12 +85,34 @@ app.post("/api/auth/login", async (req, res) => {
       });
     }
 
+    // Check if clerk exists in settings table
+    const clerkCheck = await pool.query(
+      "SELECT clerk_initials FROM settings WHERE clerk_initials = $1",
+      [upperStaffCode],
+    );
+
+    console.log(`Clerk check for "${upperStaffCode}":`, clerkCheck.rows);
+
+    if (clerkCheck.rows.length === 0) {
+      console.log(`Clerk "${upperStaffCode}" not found in settings table`);
+      return res.status(401).json({
+        detail: "Invalid credentials. Clerk not found in system.",
+      });
+    }
+
+    console.log(`Clerk "${upperStaffCode}" found, proceeding with login`);
+
+    // Determine mode based on clerk initials
     let mode = "none";
 
-    if (upperStaffCode === "CLK") mode = "clerk";
-    else if (upperStaffCode === "SHI")
+    if (upperStaffCode === "CLK") {
+      mode = "clerk";
+    } else if (upperStaffCode === "SHI") {
       mode = is_root ? "admin-full" : "admin-limited";
-    else return res.status(401).json({ detail: "Invalid credentials" });
+    } else {
+      // Other clerks get clerk mode by default
+      mode = "clerk";
+    }
 
     // IMPORTANT: If the requested track/shift is CLOSED, do not allow login.
     // We check by shift_name only — session_date is a fixed creation date and
@@ -117,42 +139,42 @@ app.post("/api/auth/login", async (req, res) => {
         .json({ detail: "Shift is closed for this track/date" });
     }
 
-    // Find an existing open session for this clerk
+    // Find an existing open session for this track (regardless of clerk)
+    // The database constraint allows only ONE open session per shift_name
     let shiftSessionResult = await pool.query(
-      `SELECT session_id FROM sessions 
-             WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
-      [track, date, upperStaffCode],
+      `SELECT session_id, clerk_initials FROM sessions 
+             WHERE shift_name = $1 AND status = 'OPEN'`,
+      [track],
     );
 
     let shift_session_id;
 
-    if (shiftSessionResult.rows.length === 0) {
-      // Create a new shift session for this clerk (do NOT force-open existing closed sessions)
+    if (shiftSessionResult.rows.length > 0) {
+      // Reuse the existing open session for this track
+      shift_session_id = shiftSessionResult.rows[0].session_id;
+      console.log(
+        `Reusing existing open session ${shift_session_id} for track "${track}" (originally created by ${shiftSessionResult.rows[0].clerk_initials})`,
+      );
+    } else {
+      // No open session exists for this track, create a new one
+      console.log(
+        `Creating new session for track "${track}" and clerk "${upperStaffCode}"`,
+      );
       const createResult = await pool.query(
         `INSERT INTO sessions (shift_name, clerk_initials, session_date, status, start_time)
      VALUES ($1, $2, $3, 'OPEN', CURRENT_TIMESTAMP)
-     ON CONFLICT (shift_name, session_date, clerk_initials)
-     DO NOTHING
      RETURNING session_id`,
         [track, upperStaffCode, date],
       );
 
       if (createResult.rows.length > 0) {
         shift_session_id = createResult.rows[0].session_id;
+        console.log(`Created new session ${shift_session_id}`);
       } else {
-        // Conflict happened but no row returned (existing row present). Try to fetch it again.
-        const retry = await pool.query(
-          `SELECT session_id FROM sessions WHERE shift_name = $1 AND session_date = $2 AND clerk_initials = $3 AND status = 'OPEN'`,
-          [track, date, upperStaffCode],
-        );
-        if (retry.rows.length > 0) shift_session_id = retry.rows[0].session_id;
-        else
-          return res
-            .status(409)
-            .json({ detail: "Unable to create/open session for clerk" });
+        return res
+          .status(409)
+          .json({ detail: "Unable to create session for clerk" });
       }
-    } else {
-      shift_session_id = shiftSessionResult.rows[0].session_id;
     }
 
     // Ensure settings exist for this clerk (Auto-provisioning)
@@ -194,15 +216,44 @@ app.post("/api/menu", async (req, res) => {
       price_general,
       price_ac,
       category,
+      is_separate, // Add is_separate
     } = req.body;
 
     if (!name || (!alpha_code && !numeric_code)) {
       return res.status(400).json({ detail: "Name and code required" });
     }
 
+    // Ensure category is properly formatted as JSON for database
+    // The database constraint requires an ARRAY with objects containing 'qty' and 'name' fields
+    let categoryJson;
+    if (typeof category === "string" && category.trim()) {
+      // If it's a plain string, wrap it in JSON array format with qty
+      categoryJson = JSON.stringify([
+        {
+          qty: 1, // Default quantity
+          name: category.trim(),
+        },
+      ]);
+    } else if (typeof category === "object" && category !== null) {
+      // If it's already an object, wrap in array
+      if (Array.isArray(category)) {
+        categoryJson = JSON.stringify(category);
+      } else {
+        categoryJson = JSON.stringify([
+          {
+            qty: category.qty || 1,
+            name: category.name || "",
+          },
+        ]);
+      }
+    } else {
+      // Default empty category
+      categoryJson = JSON.stringify([{ qty: 1, name: "" }]);
+    }
+
     const result = await pool.query(
-      `INSERT INTO items (name, alpha_code, numeric_code, price_fixed, price_general, price_ac, category)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      `INSERT INTO items (name, alpha_code, numeric_code, price_fixed, price_general, price_ac, category, is_separate)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         name,
         alpha_code?.toUpperCase(),
@@ -210,15 +261,32 @@ app.post("/api/menu", async (req, res) => {
         parseFloat(price_fixed) || 0,
         parseFloat(price_general) || 0,
         parseFloat(price_ac) || 0,
-        category,
+        categoryJson,
+        is_separate || false,
       ],
     );
     res.json(result.rows[0]);
   } catch (error) {
     console.error("Add menu item error:", error);
-    if (error.constraint)
-      res.status(400).json({ detail: "Item code already exists" });
-    else res.status(500).json({ detail: "Failed to add menu item" });
+
+    // Better error handling based on constraint type
+    if (error.constraint) {
+      if (
+        error.constraint.includes("unique") ||
+        error.constraint.includes("pkey")
+      ) {
+        return res.status(400).json({ detail: "Item code already exists" });
+      } else if (error.constraint === "chk_category_format") {
+        return res.status(400).json({
+          detail: "Invalid category format. Category must be a string.",
+        });
+      } else {
+        return res
+          .status(400)
+          .json({ detail: `Constraint violation: ${error.constraint}` });
+      }
+    }
+    res.status(500).json({ detail: "Failed to add menu item" });
   }
 });
 
@@ -252,10 +320,35 @@ app.put("/api/menu/:id", async (req, res) => {
       price_ac,
       category,
       is_active,
+      is_separate, // Add is_separate
     } = req.body;
 
     if (!name || (!alpha_code && !numeric_code)) {
       return res.status(400).json({ detail: "Name and code required" });
+    }
+
+    // Ensure category is properly formatted as JSON for database (Same logic as POST)
+    let categoryJson;
+    if (typeof category === "string" && category.trim()) {
+      categoryJson = JSON.stringify([
+        {
+          qty: 1,
+          name: category.trim(),
+        },
+      ]);
+    } else if (typeof category === "object" && category !== null) {
+      if (Array.isArray(category)) {
+        categoryJson = JSON.stringify(category);
+      } else {
+        categoryJson = JSON.stringify([
+          {
+            qty: category.qty || 1,
+            name: category.name || "",
+          },
+        ]);
+      }
+    } else {
+      categoryJson = JSON.stringify([{ qty: 1, name: "" }]);
     }
 
     const result = await pool.query(
@@ -266,8 +359,9 @@ app.put("/api/menu/:id", async (req, res) => {
                 price_fixed = $4,
                 price_general = $5,
                 price_ac = $6,
-                category = $7
-             WHERE id = $8
+                category = $7,
+                is_separate = $8
+             WHERE id = $9
              RETURNING *`,
       [
         name,
@@ -276,7 +370,8 @@ app.put("/api/menu/:id", async (req, res) => {
         parseFloat(price_fixed) || 0,
         parseFloat(price_general) || 0,
         parseFloat(price_ac) || 0,
-        category,
+        categoryJson, // Use formatted category
+        is_separate || false,
         id,
       ],
     );

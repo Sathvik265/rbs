@@ -6,7 +6,7 @@ const SettingsModel = {
     const code = clerk_initials ? clerk_initials.toUpperCase() : "CLK";
     const result = await pool.query(
       "SELECT * FROM settings WHERE clerk_initials = $1",
-      [code]
+      [code],
     );
 
     if (result.rows.length === 0) {
@@ -25,7 +25,7 @@ const SettingsModel = {
     // Check if exists
     const check = await pool.query(
       "SELECT id FROM settings WHERE clerk_initials = $1",
-      [code]
+      [code],
     );
 
     if (check.rows.length === 0) {
@@ -38,7 +38,7 @@ const SettingsModel = {
          SET hotel_name = $1, address = $2, phone = $3, gstin = $4 
          WHERE clerk_initials = $5 
          RETURNING *`,
-      [hotel_name, address, phone, gstin, code]
+      [hotel_name, address, phone, gstin, code],
     );
     return result.rows[0];
   },
@@ -46,16 +46,20 @@ const SettingsModel = {
   // Ensure settings exist for a clerk (auto-provisioning)
   async ensureSettings(clerk_initials) {
     const code = clerk_initials ? clerk_initials.toUpperCase() : "CLK";
+    console.log(`ensureSettings called for clerk: "${code}"`);
 
     // 1. Check if exists
     const check = await pool.query(
       "SELECT * FROM settings WHERE clerk_initials = $1",
-      [code]
+      [code],
     );
 
     if (check.rows.length > 0) {
+      console.log(`Clerk "${code}" already exists in settings`);
       return check.rows[0];
     }
+
+    console.log(`Clerk "${code}" not found, creating new entry...`);
 
     // 2. If not, fetch 'CLK' template (or hardcoded defaults)
     let defaults = {
@@ -66,11 +70,12 @@ const SettingsModel = {
     };
 
     const template = await pool.query(
-      "SELECT * FROM settings WHERE clerk_initials = 'CLK'"
+      "SELECT * FROM settings WHERE clerk_initials = 'CLK'",
     );
 
     if (template.rows.length > 0) {
       defaults = { ...template.rows[0] };
+      console.log(`Using CLK template for new clerk "${code}"`);
     }
 
     // 3. Insert new row for this clerk
@@ -85,16 +90,17 @@ const SettingsModel = {
         defaults.phone,
         defaults.gstin,
         code,
-      ]
+      ],
     );
 
+    console.log(`Clerk "${code}" created successfully:`, result.rows[0]);
     return result.rows[0];
   },
 
   // Admin feature: List all clerks with settings
   async getAllClerks() {
     const res = await pool.query(
-      "SELECT clerk_initials, hotel_name FROM settings ORDER BY clerk_initials"
+      "SELECT clerk_initials, hotel_name FROM settings ORDER BY clerk_initials",
     );
     return res.rows;
   },

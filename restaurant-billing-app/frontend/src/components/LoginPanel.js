@@ -17,6 +17,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [track, setTrack] = useState("");
   const credentialInputRef = useRef(null);
+  const trackInputRef = useRef(null);
 
   // --- Shift status check state ---
   const [sessions, setSessions] = useState([]);
@@ -161,7 +162,14 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
                 className="col-span-2"
                 value={credential}
                 onChange={(e) => setCredential(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onKeyDown={(e) => {
+                  if (e.key === "Tab" && !e.shiftKey) {
+                    e.preventDefault();
+                    trackInputRef.current?.focus();
+                  } else {
+                    handleKeyDown(e);
+                  }
+                }}
               />
             </div>
             <div className="grid grid-cols-3 gap-4 items-center">
@@ -172,11 +180,14 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 onKeyDown={handleKeyDown}
+                readOnly
+                tabIndex={-1}
               />
             </div>
             <div className="grid grid-cols-3 gap-4 items-center">
               <Label>Track</Label>
               <Input
+                ref={trackInputRef}
                 type="text"
                 placeholder="Enter track"
                 className="col-span-2"

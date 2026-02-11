@@ -36,6 +36,8 @@ export default function FoodMenu({ mode }) {
     quantity: "", // Logic added to support quantity
   });
   const [searchTerm, setSearchTerm] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
   const searchInputRef = React.useRef(null);
 
   useEffect(() => {
@@ -79,6 +81,7 @@ export default function FoodMenu({ mode }) {
         price_general: editingItem.price_general,
         price_ac: editingItem.price_ac,
         category: editingItem.category,
+        is_separate: editingItem.is_separate || false,
       };
       await updateMenuItem(editingItem.id, payload);
       toast.success("Item updated");
@@ -208,6 +211,20 @@ export default function FoodMenu({ mode }) {
                   }
                 />
               </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={editingItem.is_separate || false}
+                  onChange={(e) =>
+                    setEditingItem({
+                      ...editingItem,
+                      is_separate: e.target.checked,
+                    })
+                  }
+                  id="edit_is_separate"
+                />
+                <Label htmlFor="edit_is_separate">Is Separate?</Label>
+              </div>
               <div>
                 <Label>Category</Label>
                 <Input
@@ -232,27 +249,129 @@ export default function FoodMenu({ mode }) {
     return ReactDOM.createPortal(modal, document.body);
   };
 
+  const validateField = (name, value) => {
+    const errors = {};
+
+    if (name === "name") {
+      if (!value || !value.trim()) {
+        errors.name = "Item name is required";
+      }
+    }
+
+    if (name === "alpha_code" && value) {
+      const alphaCode = value.trim().toUpperCase();
+      if (!/^[A-Z]{0,3}$/.test(alphaCode)) {
+        errors.alpha_code = "Only letters allowed (max 3)";
+      } else if (alphaCode.length > 0 && alphaCode.length < 3) {
+        errors.alpha_code = "Must be exactly 3 letters";
+      } else if (
+        alphaCode.length === 3 &&
+        items.some((item) => item.alpha_code === alphaCode)
+      ) {
+        errors.alpha_code = `"${alphaCode}" already exists`;
+      }
+    }
+
+    if (name === "numeric_code" && value) {
+      const numericCode = value.trim();
+      if (!/^\d{0,3}$/.test(numericCode)) {
+        errors.numeric_code = "Only digits allowed (max 3)";
+      } else if (numericCode.length > 0 && numericCode.length < 3) {
+        errors.numeric_code = "Must be exactly 3 digits";
+      } else if (
+        numericCode.length === 3 &&
+        items.some((item) => item.numeric_code === parseInt(numericCode))
+      ) {
+        errors.numeric_code = `"${numericCode}" already exists`;
+      }
+    }
+
+    return errors;
+  };
+
   const handleNewItemChange = (e) => {
-    const { name, value } = e.target;
-    setNewItem((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+
+    // Handle checkbox vs text input
+    const newValue = type === "checkbox" ? checked : value;
+
+    // Update the value
+    setNewItem((prev) => ({ ...prev, [name]: newValue }));
+
+    // Validate the field
+    const fieldErrors = validateField(name, value);
+    setValidationErrors((prev) => ({
+      ...prev,
+      ...fieldErrors,
+      // Clear error if field is now valid
+      [name]: fieldErrors[name] || undefined,
+    }));
   };
 
   const handleAddItem = async () => {
-    if (!newItem.name || (!newItem.alpha_code && !newItem.numeric_code)) {
-      toast.error("Please provide item name and at least one code");
+    // Check if there are any validation errors
+    const hasErrors = Object.values(validationErrors).some((error) => error);
+    if (hasErrors) {
+      toast.error("Please fix validation errors before submitting");
+      return;
+    }
+
+    // Validation
+    const errors = [];
+
+    // Name is required
+    if (!newItem.name || !newItem.name.trim()) {
+      errors.push("Item name is required");
+    }
+
+    // At least one code is required
+    if (!newItem.alpha_code && !newItem.numeric_code) {
+      errors.push("At least one code (Alpha or Numeric) is required");
+    }
+
+    // Alpha code validation: must be exactly 3 letters
+    if (newItem.alpha_code) {
+      const alphaCode = newItem.alpha_code.trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(alphaCode)) {
+        errors.push("Alpha code must be exactly 3 letters (e.g., DSA, TEA)");
+      }
+      // Check if alpha code already exists
+      if (items.some((item) => item.alpha_code === alphaCode)) {
+        errors.push(`Alpha code "${alphaCode}" already exists`);
+      }
+    }
+
+    // Numeric code validation: must be exactly 3 digits
+    if (newItem.numeric_code) {
+      const numericCode = newItem.numeric_code.trim();
+      if (!/^\d{3}$/.test(numericCode)) {
+        errors.push("Numeric code must be exactly 3 digits (e.g., 101, 204)");
+      }
+      // Check if numeric code already exists
+      if (items.some((item) => item.numeric_code === parseInt(numericCode))) {
+        errors.push(`Numeric code "${numericCode}" already exists`);
+      }
+    }
+
+    // Show all errors
+    if (errors.length > 0) {
+      toast.error(errors.join(". "));
       return;
     }
 
     try {
       await axios.post(`${API}/menu`, {
-        ...newItem,
+        name: newItem.name.trim(),
+        alpha_code: newItem.alpha_code?.trim().toUpperCase() || null,
+        numeric_code: newItem.numeric_code?.trim() || null,
         price_fixed: parseFloat(newItem.price_fixed) || 0,
         price_general: parseFloat(newItem.price_general) || 0,
         price_ac: parseFloat(newItem.price_ac) || 0,
-        category: JSON.stringify({
-          name: newItem.category,
-          qty: Number(newItem.quantity) || 1,
-        }),
+        category: {
+          qty: parseInt(newItem.quantity) || 1, // Use user input or default to 1
+          name: newItem.category?.trim() || "",
+        },
+        is_separate: newItem.is_separate || false,
       });
 
       toast.success("Item added successfully");
@@ -266,6 +385,8 @@ export default function FoodMenu({ mode }) {
         category: "",
         quantity: "",
       });
+      setValidationErrors({}); // Clear validation errors
+      setShowAddForm(false); // Hide form after adding
       load();
     } catch (e) {
       console.error("Add item error:", e);
@@ -326,65 +447,149 @@ export default function FoodMenu({ mode }) {
       </CardHeader>
       <CardContent>
         {mode === "admin-full" && (
-          <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
-            <Input
-              name="name"
-              placeholder="Item Name"
-              value={newItem.name}
-              onChange={handleNewItemChange}
-            />
-            <Input
-              name="alpha_code"
-              placeholder="Alpha Code"
-              value={newItem.alpha_code}
-              onChange={handleNewItemChange}
-            />
-            <Input
-              name="numeric_code"
-              placeholder="Numeric Code"
-              value={newItem.numeric_code}
-              onChange={handleNewItemChange}
-            />
-            <Input
-              name="category"
-              placeholder="Category"
-              value={newItem.category}
-              onChange={handleNewItemChange}
-            />
-            <Input
-              name="price_fixed"
-              type="number"
-              step="0.01"
-              placeholder="Fixed Price"
-              value={newItem.price_fixed}
-              onChange={handleNewItemChange}
-            />
-            <Input
-              name="price_general"
-              type="number"
-              step="0.01"
-              placeholder="General Price"
-              value={newItem.price_general}
-              onChange={handleNewItemChange}
-            />
-            <Input
-              name="price_ac"
-              type="number"
-              step="0.01"
-              placeholder="AC Price"
-              value={newItem.price_ac}
-              onChange={handleNewItemChange}
-            />
-            <Input
-              name="quantity"
-              type="number"
-              placeholder="Qty (for Category JSON)"
-              value={newItem.quantity || ""}
-              onChange={handleNewItemChange}
-            />
-            <Button onClick={handleAddItem} className="col-span-4">
-              + Add Item
-            </Button>
+          <div className="mb-6">
+            {!showAddForm ? (
+              <Button onClick={() => setShowAddForm(true)} className="w-full">
+                + Add New Item
+              </Button>
+            ) : (
+              <div className="p-4 bg-gray-50 rounded-lg space-y-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="font-semibold text-lg">Add New Item</h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setValidationErrors({});
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Item Name *</Label>
+                    <Input
+                      name="name"
+                      placeholder="e.g., Dosa Plain"
+                      value={newItem.name}
+                      onChange={handleNewItemChange}
+                      className={validationErrors.name ? "border-red-500" : ""}
+                    />
+                    {validationErrors.name && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {validationErrors.name}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Alpha Code</Label>
+                    <Input
+                      name="alpha_code"
+                      placeholder="e.g., DSA"
+                      value={newItem.alpha_code}
+                      onChange={handleNewItemChange}
+                      maxLength={3}
+                      className={
+                        validationErrors.alpha_code ? "border-red-500" : ""
+                      }
+                    />
+                    {validationErrors.alpha_code && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {validationErrors.alpha_code}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Numeric Code *</Label>
+                    <Input
+                      name="numeric_code"
+                      placeholder="e.g., 204"
+                      value={newItem.numeric_code}
+                      onChange={handleNewItemChange}
+                      maxLength={3}
+                      className={
+                        validationErrors.numeric_code ? "border-red-500" : ""
+                      }
+                    />
+                    {validationErrors.numeric_code && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {validationErrors.numeric_code}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Category</Label>
+                    <Input
+                      name="category"
+                      placeholder="e.g., South Indian"
+                      value={newItem.category}
+                      onChange={handleNewItemChange}
+                    />
+                  </div>
+                  <div>
+                    <Label>Category Qty (optional)</Label>
+                    <Input
+                      name="quantity"
+                      type="number"
+                      min="1"
+                      placeholder="1"
+                      value={newItem.quantity}
+                      onChange={handleNewItemChange}
+                    />
+                    <p className="text-gray-500 text-xs mt-1">Default: 1</p>
+                  </div>
+                  <div>
+                    <Label>Fixed Price</Label>
+                    <Input
+                      name="price_fixed"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={newItem.price_fixed}
+                      onChange={handleNewItemChange}
+                    />
+                  </div>
+                  <div>
+                    <Label>General Price</Label>
+                    <Input
+                      name="price_general"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={newItem.price_general}
+                      onChange={handleNewItemChange}
+                    />
+                  </div>
+                  <div>
+                    <Label>AC Price</Label>
+                    <Input
+                      name="price_ac"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={newItem.price_ac}
+                      onChange={handleNewItemChange}
+                    />
+                  </div>
+                  <div className="flex items-center space-x-2 pt-8">
+                    <input
+                      type="checkbox"
+                      id="is_separate"
+                      name="is_separate"
+                      checked={newItem.is_separate || false}
+                      onChange={handleNewItemChange}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <Label htmlFor="is_separate">Is Separate?</Label>
+                  </div>
+                </div>
+                <Button onClick={handleAddItem} className="w-full">
+                  Add Item
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
@@ -510,6 +715,11 @@ export default function FoodMenu({ mode }) {
                                 ),
                                 price_ac: safeGet(item, "price_ac", 0),
                                 category: safeGet(item, "category", ""),
+                                is_separate: safeGet(
+                                  item,
+                                  "is_separate",
+                                  false,
+                                ),
                               });
                             }}
                           >
