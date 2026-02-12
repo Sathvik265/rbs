@@ -8,17 +8,27 @@
 
 body {
   margin: 0;
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
-    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Roboto",
+    "Oxygen",
+    "Ubuntu",
+    "Cantarell",
+    "Fira Sans",
+    "Droid Sans",
+    "Helvetica Neue",
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8fafc;
+  background-color: #000000;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
-    monospace;
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
 /* ==================== UI COLOR INVERSION (PHASE 3) ==================== */
@@ -39,9 +49,9 @@ input[type="month"],
 input[type="week"],
 select,
 textarea {
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  border: 1px solid #d1d5db !important;
+  background-color: #262626 !important;
+  color: #ffffff !important;
+  border: 1px solid #404040 !important;
 }
 
 /* Focus states for inverted inputs */
@@ -59,8 +69,8 @@ input[type="month"]:focus,
 input[type="week"]:focus,
 select:focus,
 textarea:focus {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+  background-color: #262626 !important;
+  color: #ffffff !important;
   border-color: #3b82f6 !important;
   outline: 2px solid #3b82f6;
   outline-offset: 2px;
@@ -69,23 +79,23 @@ textarea:focus {
 /* Placeholder text should be visible on white background */
 input::placeholder,
 textarea::placeholder {
-  color: #6b7280 !important;
+  color: #9ca3af !important;
   opacity: 1;
 }
 
 /* Select dropdown styling */
 select option {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+  background-color: #262626 !important;
+  color: #ffffff !important;
 }
 
 /* Disabled input states */
 input:disabled,
 textarea:disabled,
 select:disabled {
-  background-color: #f9fafb !important;
+  background-color: #171717 !important;
   color: #6b7280 !important;
-  border-color: #e5e7eb !important;
+  border-color: #404040 !important;
 }
 
 /* Ensure readonly inputs also follow the color scheme */
@@ -268,16 +278,16 @@ textarea[readonly] {
   text-transform: uppercase;
 }
 .text-gray-500 {
-  color: rgb(107 114 128);
+  color: #9ca3af;
 }
 .text-gray-600 {
-  color: rgb(75 85 99);
+  color: #d1d5db;
 }
 .text-gray-700 {
-  color: rgb(55 65 81);
+  color: #e5e5e5;
 }
 .text-gray-900 {
-  color: rgb(17 24 39);
+  color: #ffffff;
 }
 .text-white {
   color: rgb(255 255 255);
@@ -289,16 +299,16 @@ textarea[readonly] {
   color: rgb(37 99 235);
 }
 .bg-white {
-  background-color: rgb(255 255 255);
+  background-color: #1a1a1a;
 }
 .bg-gray-50 {
-  background-color: rgb(249 250 251);
+  background-color: #000000;
 }
 .bg-gray-100 {
-  background-color: rgb(243 244 246);
+  background-color: #262626;
 }
 .bg-gray-200 {
-  background-color: rgb(229 231 235);
+  background-color: #404040;
 }
 .bg-blue-600 {
   background-color: rgb(37 99 235);
@@ -313,10 +323,10 @@ textarea[readonly] {
   background-color: rgb(185 28 28);
 }
 .hover\\:bg-gray-50:hover {
-  background-color: rgb(249 250 251);
+  background-color: #000000;
 }
 .hover\\:bg-gray-200:hover {
-  background-color: rgb(229 231 235);
+  background-color: #404040;
 }
 .hover\\:bg-blue-700:hover {
   background-color: rgb(29 78 216);
@@ -325,7 +335,7 @@ textarea[readonly] {
   background-color: rgb(185 28 28);
 }
 .hover\\:text-gray-900:hover {
-  color: rgb(17 24 39);
+  color: #ffffff;
 }
 .border {
   border-width: 1px;
@@ -334,16 +344,16 @@ textarea[readonly] {
   border-bottom-width: 1px;
 }
 .border-gray-200 {
-  border-color: rgb(229 231 235);
+  border-color: #333333;
 }
 .border-gray-300 {
-  border-color: rgb(209 213 219);
+  border-color: #444444;
 }
 .divide-y > * + * {
   border-top-width: 1px;
 }
 .divide-gray-200 > * + * {
-  border-color: rgb(229 231 235);
+  border-color: #333333;
 }
 .rounded-md {
   border-radius: 0.375rem;
@@ -355,10 +365,13 @@ textarea[readonly] {
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 .shadow-md {
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
 .shadow-xl {
-  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1),
+  box-shadow:
+    0 20px 25px -5px rgb(0 0 0 / 0.1),
     0 8px 10px -6px rgb(0 0 0 / 0.1);
 }
 .focus\\:outline-none:focus {
@@ -375,7 +388,9 @@ textarea[readonly] {
   box-shadow: 0 0 0 3px rgb(239 68 68 / 0.5);
 }
 .focus\\:ring-offset-2:focus {
-  box-shadow: 0 0 0 2px rgb(255 255 255), 0 0 0 4px rgb(59 130 246 / 0.5);
+  box-shadow:
+    0 0 0 2px rgb(255 255 255),
+    0 0 0 4px rgb(59 130 246 / 0.5);
 }
 .focus\\:border-blue-500:focus {
   border-color: rgb(59 130 246);

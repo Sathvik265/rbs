@@ -8,18 +8,19 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-    sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #fef7cd 0%, #fed7aa 100%);
+  background-color: #000000;
+  color: #ffffff;
   min-height: 100vh;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
-    monospace;
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
 /* ==================== COMPREHENSIVE UI COLOR INVERSION ==================== */
@@ -43,11 +44,11 @@ input[type="color"],
 input[type="file"],
 select,
 textarea {
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  border: 1px solid #d1d5db !important;
+  background-color: #262626 !important;
+  color: #ffffff !important;
+  border: 1px solid #404040 !important;
   padding: 8px 12px !important;
-  border-radius: 4px !important;
+  border-radius: 8px !important;
 }
 
 /* Specific class-based selectors for React components */
@@ -61,9 +62,9 @@ input.px-3,
 input.py-2,
 select.w-full,
 textarea.w-full {
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  border: 1px solid #d1d5db !important;
+  background-color: #262626 !important;
+  color: #ffffff !important;
+  border: 1px solid #404040 !important;
 }
 
 /* Focus states - maintain white background */
@@ -86,8 +87,8 @@ textarea:focus,
 input.w-full:focus,
 select.w-full:focus,
 textarea.w-full:focus {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+  background-color: #262626 !important;
+  color: #ffffff !important;
   border-color: #3b82f6 !important;
   outline: 2px solid #3b82f6 !important;
   outline-offset: 2px !important;
@@ -101,42 +102,42 @@ input::-webkit-input-placeholder,
 input::-moz-placeholder,
 input:-ms-input-placeholder,
 input:-moz-placeholder {
-  color: #6b7280 !important;
+  color: #9ca3af !important;
   opacity: 1 !important;
 }
 
 /* Select dropdown options */
 select option,
 select optgroup {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+  background-color: #262626 !important;
+  color: #ffffff !important;
 }
 
 /* Disabled states */
 input:disabled,
 textarea:disabled,
 select:disabled {
-  background-color: #f9fafb !important;
+  background-color: #171717 !important;
   color: #6b7280 !important;
-  border-color: #e5e7eb !important;
+  border-color: #404040 !important;
   cursor: not-allowed !important;
 }
 
 /* Readonly states */
 input[readonly],
 textarea[readonly] {
-  background-color: #f3f4f6 !important;
-  color: #374151 !important;
-  border-color: #d1d5db !important;
+  background-color: #171717 !important;
+  color: #9ca3af !important;
+  border-color: #404040 !important;
 }
 
 /* Hover states for inputs */
 input:hover:not(:disabled):not([readonly]),
 select:hover:not(:disabled),
 textarea:hover:not(:disabled):not([readonly]) {
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  border-color: #9ca3af !important;
+  background-color: #333333 !important;
+  color: #ffffff !important;
+  border-color: #6b7280 !important;
 }
 
 /* ================= END COMPREHENSIVE UI COLOR INVERSION ================= */
@@ -459,23 +460,23 @@ textarea:hover:not(:disabled):not([readonly]) {
 
 /* Color Classes */
 .text-gray-500 {
-  color: #6b7280;
+  color: #9ca3af;
 }
 
 .text-gray-600 {
-  color: #4b5563;
+  color: #d1d5db;
 }
 
 .text-gray-700 {
-  color: #374151;
+  color: #e5e5e5;
 }
 
 .text-gray-800 {
-  color: #1f2937;
+  color: #f3f4f6;
 }
 
 .text-gray-900 {
-  color: #111827;
+  color: #ffffff;
 }
 
 .text-white {
@@ -499,31 +500,31 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .text-blue-900 {
-  color: #1e3a8a;
+  color: #60a5fa;
 }
 
 .text-green-600 {
-  color: #16a34a;
+  color: #4ade80;
 }
 
 .text-green-700 {
-  color: #15803d;
+  color: #22c55e;
 }
 
 .text-green-800 {
-  color: #166534;
+  color: #86efac;
 }
 
 .text-red-600 {
-  color: #dc2626;
+  color: #f87171;
 }
 
 .text-red-700 {
-  color: #b91c1c;
+  color: #fca5a5;
 }
 
 .text-red-800 {
-  color: #991b1b;
+  color: #fecaca;
 }
 
 .text-orange-500 {
@@ -539,27 +540,27 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .bg-white {
-  background-color: #ffffff;
+  background-color: #1a1a1a;
 }
 
 .bg-gray-50 {
-  background-color: #f9fafb;
+  background-color: #000000;
 }
 
 .bg-gray-100 {
-  background-color: #f3f4f6;
+  background-color: #262626;
 }
 
 .bg-gray-200 {
-  background-color: #e5e7eb;
+  background-color: #404040;
 }
 
 .bg-blue-50 {
-  background-color: #eff6ff;
+  background-color: #0f172a;
 }
 
 .bg-blue-100 {
-  background-color: #dbeafe;
+  background-color: #172554;
 }
 
 .bg-blue-600 {
@@ -567,11 +568,11 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .bg-green-50 {
-  background-color: #f0fdf4;
+  background-color: #052e16;
 }
 
 .bg-green-100 {
-  background-color: #dcfce7;
+  background-color: #064e3b;
 }
 
 .bg-green-600 {
@@ -579,11 +580,11 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .bg-red-50 {
-  background-color: #fef2f2;
+  background-color: #450a0a;
 }
 
 .bg-red-100 {
-  background-color: #fee2e2;
+  background-color: #7f1d1d;
 }
 
 .bg-red-600 {
@@ -591,11 +592,11 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .bg-yellow-50 {
-  background-color: #fefce8;
+  background-color: #422006;
 }
 
 .bg-yellow-100 {
-  background-color: #fef3c7;
+  background-color: #713f12;
 }
 
 /* Border Classes */
@@ -616,11 +617,20 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .border-gray-200 {
-  border-color: #e5e7eb;
+  border-color: #333333;
 }
 
 .border-gray-300 {
-  border-color: #d1d5db;
+  border-color: #444444;
+}
+
+/* Added for Dark Mode Compatibility */
+.border-blue-200 {
+  border-color: #1e40af;
+}
+
+.border-red-200 {
+  border-color: #991b1b;
 }
 
 .divide-y > * + * {
@@ -628,24 +638,24 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .divide-gray-200 > * + * {
-  border-color: #e5e7eb;
+  border-color: #333333;
 }
 
 /* Border Radius */
 .rounded {
-  border-radius: 0.25rem;
-}
-
-.rounded-md {
-  border-radius: 0.375rem;
-}
-
-.rounded-lg {
   border-radius: 0.5rem;
 }
 
+.rounded-md {
+  border-radius: 0.75rem;
+}
+
+.rounded-lg {
+  border-radius: 1rem;
+}
+
 .rounded-text-xs {
-  border-radius: 0.125rem;
+  border-radius: 0.25rem;
 }
 
 /* Shadow */
@@ -654,12 +664,14 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .shadow-md {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
     0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .shadow-xl {
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
     0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
@@ -714,7 +726,9 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .focus\\:ring-offset-2:focus {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(59, 130, 246, 0.5);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px rgba(59, 130, 246, 0.5);
 }
 
 .focus\\:border-blue-500:focus {
@@ -887,13 +901,13 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .from-amber-50 {
-  --tw-gradient-from: #fffbeb;
-  --tw-gradient-stops: var(--tw-gradient-from),
-    var(--tw-gradient-to, rgba(255, 251, 235, 0));
+  --tw-gradient-from: #1c1917;
+  --tw-gradient-stops:
+    var(--tw-gradient-from), var(--tw-gradient-to, rgba(28, 25, 23, 0));
 }
 
 .to-orange-50 {
-  --tw-gradient-to: #fff7ed;
+  --tw-gradient-to: #0c0a09;
 }
 
 /* Responsive Design */
@@ -961,10 +975,10 @@ textarea:hover:not(:disabled):not([readonly]) {
 
 /* Help Panel Styles */
 .help-panel {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
   overflow: hidden;
   transition: all 0.3s ease;
 }
@@ -974,8 +988,8 @@ textarea:hover:not(:disabled):not([readonly]) {
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f9fafb;
+  border-bottom: 1px solid #333;
+  background: #262626;
 }
 
 .help-tabs {
@@ -985,10 +999,10 @@ textarea:hover:not(:disabled):not([readonly]) {
 
 .help-tab-btn {
   padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #6b7280;
+  color: #d1d5db;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -996,14 +1010,14 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 .help-tab-btn:hover {
-  background: #e5e7eb;
-  color: #111827;
+  background: #404040;
+  color: #ffffff;
 }
 
 .help-tab-btn.active {
-  background: white;
-  color: #2563eb;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  background: #404040;
+  color: #60a5fa;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
   font-weight: 600;
 }
 
@@ -1027,7 +1041,7 @@ textarea:hover:not(:disabled):not([readonly]) {
 
 .help-hint {
   font-size: 0.875rem;
-  color: #6b7280;
+  color: #9ca3af;
   margin-bottom: 1rem;
 }
 
@@ -1042,9 +1056,9 @@ textarea:hover:not(:disabled):not([readonly]) {
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem 0;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid #333;
   font-size: 0.875rem;
-  color: #4b5563;
+  color: #e5e5e5;
 }
 
 .shortcut-list li:last-child {
@@ -1052,13 +1066,13 @@ textarea:hover:not(:disabled):not([readonly]) {
 }
 
 kbd {
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
+  background: #333;
+  border: 1px solid #555;
   border-radius: 0.25rem;
   padding: 0.125rem 0.375rem;
   font-family: monospace;
   font-size: 0.75rem;
-  color: #111827;
+  color: #ffffff;
 }
 
 /* Active Bills Styles */
@@ -1081,19 +1095,19 @@ kbd {
 .active-bills-table th {
   text-align: left;
   padding: 0.5rem;
-  color: #6b7280;
+  color: #9ca3af;
   font-weight: 500;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #333;
 }
 
 .active-bills-table td {
   padding: 0.75rem 0.5rem;
-  border-bottom: 1px solid #f3f4f6;
-  color: #111827;
+  border-bottom: 1px solid #333;
+  color: #ffffff;
 }
 
 .time-running {
-  color: #2563eb;
+  color: #60a5fa;
   font-weight: 500;
   font-family: monospace;
 }
@@ -1105,7 +1119,7 @@ kbd {
 
 .search-results-table {
   margin-top: 0.5rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.375rem;
+  border: 1px solid #333;
+  border-radius: 0.5rem;
   overflow: hidden;
 }

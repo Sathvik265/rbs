@@ -207,14 +207,14 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 p-4">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-black text-white p-4 flex flex-col">
+      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col">
         <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
+          <h1 className="text-3xl font-bold text-white tracking-tight">
             Udupi Anand Bhavan — Billing System
           </h1>
           {mode !== "none" && billingDate && (
-            <div className="mt-2 text-sm text-gray-600">
+            <div className="mt-2 text-sm text-gray-300">
               Mode: {mode} | Date: {billingDate} | Track: {track || "Default"}
               <Button
                 variant="outline"
@@ -230,11 +230,13 @@ function App() {
 
         {mode === "none" ? (
           isVerifyingAdmin ? (
-            <AdminVerificationScreen
-              onVerificationComplete={handleVerificationComplete}
-            />
+            <div className="flex-1 flex items-center justify-center">
+              <AdminVerificationScreen
+                onVerificationComplete={handleVerificationComplete}
+              />
+            </div>
           ) : (
-            <div className="flex justify-center">
+            <div className="flex-1 flex items-center justify-center">
               <LoginPanel
                 onLogin={handleLogin}
                 onStartAdminVerification={handleStartAdminVerification}

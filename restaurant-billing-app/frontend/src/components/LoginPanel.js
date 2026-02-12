@@ -147,7 +147,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-amber-50 to-orange-50">
+    <div className="flex items-center justify-center py-10">
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-center">Staff Access</CardTitle>
@@ -267,7 +267,7 @@ export function AdminVerificationScreen({ onVerificationComplete }) {
   }, [onVerificationComplete]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-amber-50 to-orange-50">
+    <div className="flex items-center justify-center py-10">
       <Card>
         <CardContent className="text-center p-8">
           <div className="animate-spin inline-block mb-4">
