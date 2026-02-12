@@ -37,6 +37,9 @@ function RecentBills({ billingDate }) {
       (bill.bill_number || "").toString().includes(searchTerm) ||
       String(bill.table_no || "")
         .toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      String(bill.track || "")
+        .toLowerCase()
         .includes(searchTerm.toLowerCase()),
   );
 
@@ -270,7 +273,10 @@ function RecentBills({ billingDate }) {
             >
               <div className="card-top">
                 <div className="card-left">
-                  <div className="bill-title">Bill #{bill.bill_number}</div>
+                  <div className="bill-title">
+                    Bill #{bill.bill_number} — T:{bill.table_no} P:
+                    {bill.party_no} S:{bill.track}
+                  </div>
                   <div className="bill-time">
                     {new Date(bill.created_at).toLocaleString()}
                   </div>

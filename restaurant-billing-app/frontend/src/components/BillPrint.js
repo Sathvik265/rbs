@@ -86,9 +86,12 @@ const BillContent = ({ data, settings }) => {
           display: "flex",
           justifyContent: "space-between",
           marginBottom: "4px",
+          fontSize: "11px",
         }}
       >
-        <span>{printTime}</span>
+        <span>
+          {printTime} {billNumber !== "N/A" ? `#${billNumber}` : ""}
+        </span>
         <span>{printDate}</span>
       </div>
 
