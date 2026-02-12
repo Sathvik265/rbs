@@ -141,26 +141,35 @@ export default function Billing({
     }));
   };
 
-  const setSectionByTable = (tableNo) => {
+  const getSectionForTable = (tableNo) => {
     const table = parseInt(tableNo, 10);
-    if (isNaN(table)) return;
+    if (isNaN(table)) return "G";
+    if (table === 1) return "P";
+    if (table >= 15 && table <= 30) return "AC";
+    return "G";
+  };
 
-    let section = "G";
-    if (table === 1) {
-      section = "P";
-    } else if (table >= 15 && table <= 30) {
-      section = "AC";
+  const setSectionByTable = (tableNo) => {
+    const section = getSectionForTable(tableNo);
+    // Ensure we trigger the update on the CURRENT draft if it exists
+    if (onHeaderChange) {
+      onHeaderChange({ section });
     }
-    onHeaderChange({ section });
   };
 
   const loadDataForTable = async (tableNo) => {
     if (!tableNo || !setDrafts) return;
+
+    // First, try to update existing draft if any (might be redundant if we overwrite below, but good for UI consistency)
     setSectionByTable(tableNo);
+
     if (drafts && drafts[tableNo]) return;
 
     let initialLines = [];
     let modifiedFromBillId = null;
+
+    // Calculate section for new draft
+    const initialSection = getSectionForTable(tableNo);
 
     try {
       const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, "1");
@@ -189,7 +198,7 @@ export default function Billing({
         header: {
           table_no: tableNo,
           party_no: "1",
-          section: "G",
+          section: initialSection, // Use the correct section
           bill_number: null,
         },
         lines: initialLines,
@@ -836,9 +845,25 @@ export default function Billing({
                     ref={tableNoRef}
                     placeholder="Type & Enter"
                     value={currentTable}
-                    onChange={(e) =>
-                      setCurrentTable && setCurrentTable(e.target.value)
-                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "") {
+                        if (setCurrentTable) setCurrentTable("");
+                        return;
+                      }
+
+                      const num = parseInt(val, 10);
+
+                      // Validation: Allow only numbers, max 30
+                      if (!isNaN(num) && num >= 1 && num <= 30) {
+                        if (setCurrentTable) setCurrentTable(val);
+                        // Trigger section update IMMEDIATELY on change
+                        setSectionByTable(val);
+                      } else {
+                        // Optional: Show toast or just ignore invalid input
+                        // toast.error("Table number must be between 1 and 30");
+                      }
+                    }}
                     onKeyDown={handleTableNoKeyDown}
                   />
                 </div>

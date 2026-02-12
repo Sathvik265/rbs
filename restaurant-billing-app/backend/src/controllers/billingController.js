@@ -384,6 +384,41 @@ const billingController = {
         .json({ error: "Failed to get orders total", details: error.message });
     }
   },
+  // Purge bills for a track
+  async purgeBills(req, res) {
+    try {
+      const { track, date } = req.body;
+      if (!track) {
+        return res.status(400).json({ error: "Track is required" });
+      }
+
+      // Default to "today" if no date provided
+      // Note: Using local date string logic similar to other parts of app might be needed if timezone is critical,
+      // but for local deployment, new Date() is usually sufficient.
+      // Ideally use the format YYYY-MM-DD.
+      let targetDate = date;
+      if (!targetDate) {
+        // Adjust for timezone offset to get local YYYY-MM-DD
+        const now = new Date();
+        const offset = now.getTimezoneOffset() * 60000;
+        targetDate = new Date(now.getTime() - offset)
+          .toISOString()
+          .split("T")[0];
+      }
+
+      const count = await BillingModel.deleteBillsByTrack(track, targetDate);
+
+      res.status(200).json({
+        message: `Purged ${count} bills for track ${track} on ${targetDate}`,
+        count,
+      });
+    } catch (error) {
+      console.error("Purge error:", error);
+      res
+        .status(500)
+        .json({ error: "Failed to purge bills", details: error.message });
+    }
+  },
 };
 
 module.exports = billingController;

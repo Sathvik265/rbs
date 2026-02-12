@@ -19,7 +19,7 @@ exports.getTimeRangeReport = async (req, res) => {
       FROM bills b
       WHERE b.created_at >= $1 AND b.created_at <= $2 AND b.bill_number > 0
       ORDER BY b.created_at`,
-      [startTimestamp, endTimestamp]
+      [startTimestamp, endTimestamp],
     );
 
     res.json(result.rows);
@@ -45,7 +45,7 @@ exports.getDateRangeReport = async (req, res) => {
       FROM bills b
       WHERE b.bill_date >= $1 AND b.bill_date <= $2 AND b.bill_number > 0
       ORDER BY b.bill_date, b.bill_number`,
-      [startDate, endDate]
+      [startDate, endDate],
     );
 
     res.json(result.rows);
@@ -71,7 +71,7 @@ exports.getShiftReport = async (req, res) => {
       FROM bills b
       WHERE b.bill_date = $1 AND b.track = $2 AND b.bill_number > 0
       ORDER BY b.bill_number`,
-      [date, shiftName]
+      [date, shiftName],
     );
 
     res.json(result.rows);
@@ -101,7 +101,7 @@ exports.getShiftWiseReport = async (req, res) => {
       WHERE bill_date = $1 AND bill_number > 0
       GROUP BY track
       ORDER BY track`,
-      [bill_date]
+      [bill_date],
     );
 
     console.log("Shift-wise report result:", result.rows);
@@ -132,7 +132,7 @@ exports.getTimeWiseReport = async (req, res) => {
       WHERE bill_date = $1 AND bill_number > 0
       GROUP BY time_slot
       ORDER BY time_slot`,
-      [bill_date]
+      [bill_date],
     );
 
     console.log("Time-wise report result:", result.rows);
@@ -164,7 +164,7 @@ exports.getItemWiseReport = async (req, res) => {
       WHERE b.bill_date = $1 AND b.bill_number > 0
       GROUP BY item->>'item_name'
       ORDER BY total_quantity DESC`,
-      [bill_date]
+      [bill_date],
     );
 
     console.log("Item-wise report result:", result.rows);
@@ -221,7 +221,7 @@ exports.getItemReport = async (req, res) => {
       WHERE ${whereClause}
       GROUP BY item->>'item_name', item->>'category', b.track
       ORDER BY total_quantity DESC`,
-      params
+      params,
     );
 
     const formattedResult = result.rows.map((row) => ({
@@ -275,7 +275,7 @@ exports.getRunningBills = async (req, res) => {
       FROM orders o
       GROUP BY o.table_no, o.party_no
       ORDER BY MAX(o.created_at) DESC
-      `
+      `,
     );
 
     res.json(result.rows);
@@ -333,7 +333,7 @@ exports.updateSettings = async (req, res) => {
     // Update for specific clerk or 'CLK'
     const settings = await SettingsModel.updateSettings(
       clerk || "CLK",
-      req.body
+      req.body,
     );
     res.json(settings);
   } catch (err) {
@@ -342,29 +342,87 @@ exports.updateSettings = async (req, res) => {
   }
 };
 
+const BillingModel = require("../models/billingModel");
+
 // GET /api/dashboard/top-items
 exports.getTopItems = async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
+    console.log("Fetching top items for date:", today);
 
+    // Fetch raw bills data
+    // Using loose date matching to be safe
     const result = await pool.query(
-      `
-      SELECT   
-        bi.item_name,   
-        SUM(bi.quantity) as total_quantity
-      FROM bill_items bi
-      JOIN bills b ON bi.bill_id = b.id
-      WHERE b.bill_date = $1
-      GROUP BY bi.item_name
-      ORDER BY total_quantity DESC
-      LIMIT 5`,
-      [today]
+      `SELECT items_json FROM bills 
+       WHERE bill_date::text LIKE $1 || '%' AND bill_number > 0`,
+      [today],
     );
 
-    res.json(result.rows);
+    console.log(`Found ${result.rows.length} bills for top items calculation`);
+    if (result.rows.length > 0) {
+      console.log(
+        "First bill items sample:",
+        JSON.stringify(result.rows[0].items_json, null, 2),
+      );
+    }
+
+    // Manually aggregate items
+    const itemCounts = {};
+
+    result.rows.forEach((row) => {
+      const items = row.items_json || [];
+      // items should be an array of objects
+      if (Array.isArray(items)) {
+        items.forEach((item) => {
+          const name = item.item_name || item.name || "Unknown";
+          const qty = parseInt(item.quantity || item.qty) || 0;
+
+          if (name !== "Unknown" && qty > 0) {
+            if (itemCounts[name]) {
+              itemCounts[name] += qty;
+            } else {
+              itemCounts[name] = qty;
+            }
+          }
+        });
+      }
+    });
+
+    // Convert to array and sort
+    const sortedItems = Object.entries(itemCounts)
+      .map(([name, qty]) => ({
+        item_name: name,
+        total_quantity: qty,
+      }))
+      .sort((a, b) => b.total_quantity - a.total_quantity)
+      .slice(0, 5);
+
+    console.log("Top items calculated:", sortedItems);
+    res.json(sortedItems);
   } catch (error) {
     console.error("Top items error:", error);
     res.status(500).json({ detail: "Failed to fetch top items" });
+  }
+};
+
+// GET /api/dashboard/clerk-stats
+exports.getClerkStats = async (req, res) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date || new Date().toISOString().slice(0, 10);
+
+    const [sales, history] = await Promise.all([
+      BillingModel.getClerkSales(targetDate),
+      BillingModel.getClerkLoginHistory(targetDate),
+    ]);
+
+    res.json({
+      sales,
+      history,
+    });
+  } catch (error) {
+    console.error("Clerk stats error:", error);
+    res.status(500).json({ detail: "Failed to fetch clerk stats" });
   }
 };
 
@@ -378,7 +436,7 @@ exports.getCategoryTotals = async (req, res) => {
 
     const result = await pool.query(
       "SELECT * FROM get_category_totals_for_date($1)",
-      [date]
+      [date],
     );
 
     res.json(result.rows);

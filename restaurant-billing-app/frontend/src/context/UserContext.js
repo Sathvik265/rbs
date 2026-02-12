@@ -18,9 +18,16 @@ export const UserProvider = ({ children }) => {
     () => localStorage.getItem("userInitials") || "CLK",
   );
   const [track, setTrack] = useState(() => localStorage.getItem("track") || "");
-  const [billingDate, setBillingDate] = useState(
-    () => localStorage.getItem("billingDate") || null,
-  );
+  const [billingDate, setBillingDate] = useState(() => {
+    const stored = localStorage.getItem("billingDate");
+    const today = new Date().toISOString().split("T")[0];
+    // If we have a stored date but it's not today, assume a new day has started
+    // and default to today to ensure Recent Bills shows relevant data.
+    if (stored && stored !== today) {
+      return today;
+    }
+    return stored || null;
+  });
   const [sessionId, setSessionId] = useState(
     () => localStorage.getItem("sessionId") || null,
   );

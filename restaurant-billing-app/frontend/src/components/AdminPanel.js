@@ -428,12 +428,23 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
           <TabsTrigger value="reports">Reports</TabsTrigger>
           <TabsTrigger value="reconciliation">Reconciliation</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
+          {mode === "admin-full" && (
+            <TabsTrigger
+              value="purge"
+              className="text-red-600 data-[state=active]:text-red-800"
+            >
+              Purge
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {mode === "admin-full" && (
           <TabsContent value="dashboard">
             <div className="space-y-6">
-              <TopItemsDashboard sessionId={sessionId} />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <TopItemsDashboard sessionId={sessionId} />
+                <ClerkStatsDashboard sessionId={sessionId} />
+              </div>
             </div>
           </TabsContent>
         )}
@@ -471,6 +482,12 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
           <EnhancedReconciliation sessionId={sessionId} mode={mode} />
         </TabsContent>
 
+        {mode === "admin-full" && (
+          <TabsContent value="purge">
+            <PurgeBillsSection />
+          </TabsContent>
+        )}
+
         <TabsContent value="settings">
           <div className="space-y-6">
             {/* Clerk Management Section */}
@@ -505,5 +522,180 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function ClerkStatsDashboard({ sessionId }) {
+  const [stats, setStats] = useState({ sales: [], history: [] });
+  const [loading, setLoading] = useState(false);
+
+  const loadStats = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/dashboard/clerk-stats`, {
+        headers: { Authorization: "admin" },
+      });
+      setStats(safeObject(res.data));
+    } catch (e) {
+      console.error("Failed to load clerk stats:", e);
+      toast.error("Failed to load clerk stats");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStats();
+    // Refresh every 5 minutes
+    const interval = setInterval(loadStats, 300000);
+    return () => clearInterval(interval);
+  }, [loadStats]);
+
+  const { sales = [], history = [] } = stats;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Clerk Performance (Today)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading && !sales.length && !history.length ? (
+          <div className="text-center py-8">
+            <Loader2 size={24} className="mb-2" />
+            <p>Loading stats...</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-sm font-semibold text-gray-500 mb-2 border-b pb-1">
+                Top Sales by Clerk
+              </h4>
+              {sales.length > 0 ? (
+                <div className="space-y-2">
+                  {sales.map((s, i) => (
+                    <div key={i} className="flex justify-between text-sm">
+                      <span>
+                        {s.clerk_initials} ({s.track})
+                      </span>
+                      <span className="font-bold">
+                        ₹{parseFloat(s.total_sales).toFixed(2)} ({s.bill_count}{" "}
+                        bills)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400">No sales yet today.</div>
+              )}
+            </div>
+
+            <div>
+              <h4 className="text-sm font-semibold text-gray-500 mb-2 border-b pb-1">
+                Login History
+              </h4>
+              {history.length > 0 ? (
+                <div className="max-h-40 overflow-y-auto space-y-2">
+                  {history.map((h, i) => (
+                    <div key={i} className="text-xs flex justify-between">
+                      <span>
+                        <span className="font-bold">{h.clerk_initials}</span> @{" "}
+                        {h.shift_name}
+                      </span>
+                      <span className="text-gray-500">
+                        {new Date(h.login_time).toLocaleTimeString()} -{" "}
+                        {h.logout_time
+                          ? new Date(h.logout_time).toLocaleTimeString()
+                          : "Active"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-gray-400">
+                  No login history today.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PurgeBillsSection() {
+  const [track, setTrack] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handlePurge = async () => {
+    if (!track) {
+      toast.error("Please enter a track");
+      return;
+    }
+
+    const validTracks = ["`", "``", "RBS1", "RBS2"];
+    if (!validTracks.includes(track)) {
+      toast.error("Invalid track. Allowed: ` | `` | RBS1 | RBS2");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `DANGER: Are you sure you want to DELETE ALL bills for track "${track}" for TODAY?\n\nThis cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Create a specific API call without importing specific function
+      // Using the default export 'api' which is axios instance
+      const res = await api.post("/billing/bills/purge", { track });
+      toast.success(res.data.message);
+      setTrack("");
+    } catch (e) {
+      console.error("Purge failed", e);
+      toast.error(safeGet(e, "response.data.error", "Purge failed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className="border-red-200 bg-red-50 mt-8">
+      <CardHeader>
+        <CardTitle className="text-red-800">Danger Zone: Purge Bills</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <p className="text-sm text-red-600">
+            Enter the exact track (e.g. <strong>`</strong>, <strong>``</strong>,{" "}
+            <strong>RBS1</strong>, or <strong>RBS2</strong>) to delete ALL bills
+            created TODAY for that track.
+            <br />
+            Bills from previous dates are NOT affected.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              value={track}
+              onChange={(e) => setTrack(e.target.value)}
+              placeholder="Enter exact track to purge"
+              className="bg-white max-w-xs"
+            />
+            <Button
+              variant="destructive"
+              onClick={handlePurge}
+              disabled={loading}
+            >
+              {loading ? (
+                <Loader2 className="animate-spin mr-2" size={16} />
+              ) : null}
+              Purge Bills
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

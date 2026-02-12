@@ -260,6 +260,62 @@ const BillingModel = {
       client.release();
     }
   },
+  // Delete all bills (and associated orders) for a track on a given date
+  async deleteBillsByTrack(track, date) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // 1. Delete orders first
+      await client.query(
+        "DELETE FROM orders WHERE track = $1 AND bill_date = $2",
+        [track, date],
+      );
+
+      // 2. Delete bills
+      const result = await client.query(
+        "DELETE FROM bills WHERE track = $1 AND bill_date = $2",
+        [track, date],
+      );
+
+      await client.query("COMMIT");
+      return result.rowCount; // Number of bills deleted
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Get total sales per clerk for a specific date
+  async getClerkSales(date) {
+    const result = await pool.query(
+      `SELECT clerk_initials, track, COUNT(*) as bill_count, COALESCE(SUM(CAST(grand_total AS NUMERIC)), 0) as total_sales 
+       FROM bills 
+       WHERE bill_date::text LIKE $1 || '%' AND bill_number > 0
+       GROUP BY clerk_initials, track
+       ORDER BY total_sales DESC`,
+      [date],
+    );
+    return result.rows;
+  },
+
+  // Get clerk login/logout history by joining shifts and sessions
+  async getClerkLoginHistory(date) {
+    // Assuming 'sessions' or 'shift_log' table tracks login/logout.
+    // If sessions table is used for active state, we might need to check how history is stored.
+    // Based on previous context, there is a 'shift_sessions' or similar table.
+    // Let's use the 'sessions' table which seems to track this.
+    const result = await pool.query(
+      `SELECT s.shift_name, s.clerk_initials, s.created_at as login_time, NULL as logout_time 
+        FROM sessions s
+        WHERE DATE(s.created_at) = $1
+        ORDER BY s.created_at DESC`,
+      [date],
+    );
+    return result.rows;
+  },
 };
 
 module.exports = BillingModel;

@@ -7,15 +7,17 @@ router.get("/bills", billingController.getAllBills);
 router.get("/bills/:billId", billingController.getBillById);
 router.get(
   "/bills/number/:billNumber/date/:billDate",
-  billingController.getBillByNumber
+  billingController.getBillByNumber,
 );
 router.get("/bills/:billId/items", billingController.getBillItems);
 router.get("/bills/last-number/:date", billingController.getLastBillNumber);
 router.post("/bills", billingController.createBill);
 
+router.post("/bills/purge", billingController.purgeBills);
+
 router.get(
   "/bills/date-range/:startDate/:endDate",
-  billingController.getBillsByDateRange
+  billingController.getBillsByDateRange,
 );
 
 // Order routes
@@ -23,14 +25,14 @@ router.get("/orders", billingController.getAllPendingOrders);
 router.get("/orders/table/:tableNo", billingController.getOrdersByTable);
 router.get(
   "/orders/table/:tableNo/party/:partyNo",
-  billingController.getOrdersByTableAndParty
+  billingController.getOrdersByTableAndParty,
 );
 router.post("/orders", billingController.createOrder);
 router.put("/orders/:orderId", billingController.updateOrder);
 router.delete("/orders/:orderId", billingController.deleteOrder);
 router.delete(
   "/orders/table/:tableNo/party/:partyNo",
-  billingController.clearOrders
+  billingController.clearOrders,
 );
 router.get("/orders/total/:tableNo/:partyNo", billingController.getOrdersTotal);
 
