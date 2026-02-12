@@ -50,6 +50,7 @@ export default function Billing({
   const [entryCode, setEntryCode] = useState("");
   const [qty, setQty] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [isSplitBillMode, setIsSplitBillMode] = useState(false);
 
   // --- REFS FOR NAVIGATION ---
   const tableNoRef = useRef(null);
@@ -182,6 +183,7 @@ export default function Billing({
           line_total: order.line_total,
           numeric_code: order.numeric_item_code,
           alpha_code: order.item_code,
+          is_separate: !!order.is_separate,
         }));
         toast.success(
           `Loaded ${pendingOrders.length} pending items for Table ${tableNo}`,
@@ -427,18 +429,99 @@ export default function Billing({
 
         if (billId) {
           const fullBillData = await getBillById(billId);
+
+          // --- SPLIT BILL PRINTING LOGIC ---
+          let printPayload = fullBillData;
+
+          if (isSplitBillMode) {
+            const allItems = safeArray(
+              fullBillData.items_json || fullBillData.items,
+            );
+            const splitItems = allItems.filter(
+              (i) =>
+                i.is_separate === true ||
+                String(i.is_separate) === "true" ||
+                i.is_separate === 1,
+            );
+            const regularItems = allItems.filter(
+              (i) =>
+                !i.is_separate ||
+                String(i.is_separate) === "false" ||
+                i.is_separate === 0,
+            );
+
+            if (splitItems.length > 0 || regularItems.length > 0) {
+              // Changed condition
+              const billsToPrint = [];
+
+              if (regularItems.length > 0) {
+                billsToPrint.push({
+                  ...fullBillData,
+                  split: false,
+                  bills: null,
+                  items: regularItems,
+                  items_json: regularItems,
+                  titleSuffix: splitItems.length > 0 ? "(Main)" : "", // Add suffix only if there are split items
+                  subtotal: regularItems.reduce(
+                    (s, i) => s + Number(i.line_total || 0),
+                    0,
+                  ),
+                  grand_total: regularItems.reduce(
+                    (s, i) => s + Number(i.line_total || 0),
+                    0,
+                  ),
+                  sgst: 0,
+                  cgst: 0,
+                });
+              }
+
+              if (splitItems.length > 0) {
+                billsToPrint.push({
+                  ...fullBillData,
+                  split: false,
+                  bills: null,
+                  items: splitItems,
+                  items_json: splitItems,
+                  titleSuffix: regularItems.length > 0 ? "(Split)" : "", // Add suffix only if there are regular items
+                  subtotal: splitItems.reduce(
+                    (s, i) => s + Number(i.line_total || 0),
+                    0,
+                  ),
+                  grand_total: splitItems.reduce(
+                    (s, i) => s + Number(i.line_total || 0),
+                    0,
+                  ),
+                  sgst: 0,
+                  cgst: 0,
+                });
+              }
+
+              printPayload = {
+                ...fullBillData,
+                split: true,
+                bills: billsToPrint,
+              };
+            }
+          }
+          // ---------------------------------
+
           if (typeof window !== "undefined") {
-            window.printBillData = fullBillData;
+            window.printBillData = printPayload;
           }
           if (setPrintData) {
-            setPrintData(fullBillData);
+            setPrintData(printPayload);
           }
           setTimeout(() => {
-            window.print();
+            const iframe = document.getElementById("print-iframe");
+            if (iframe && iframe.contentWindow) {
+              iframe.contentWindow.print();
+            } else {
+              window.print();
+            }
             if (tableNoRef.current) {
               tableNoRef.current.focus();
             }
-          }, 200);
+          }, 500);
         }
 
         if (setDrafts) {
@@ -482,6 +565,7 @@ export default function Billing({
       setQty,
       tableNoRef,
       setPrintData,
+      isSplitBillMode,
     ],
   );
 
@@ -540,6 +624,7 @@ export default function Billing({
           line_total: Number((unitPrice * (qty || 1)).toFixed(2)),
           numeric_code: itemNumericCode,
           alpha_code: itemAlphaCode,
+          is_separate: !!item.is_separate,
         };
 
         const payload = {
@@ -610,15 +695,98 @@ export default function Billing({
       try {
         setLoading(true);
         const fullBillData = await getBillById(billIdToPrint);
+
+        // --- SPLIT BILL PRINTING LOGIC ---
+        let printPayload = fullBillData;
+
+        if (isSplitBillMode) {
+          const allItems = safeArray(
+            fullBillData.items_json || fullBillData.items,
+          );
+          const splitItems = allItems.filter(
+            (i) =>
+              i.is_separate === true ||
+              String(i.is_separate) === "true" ||
+              i.is_separate === 1,
+          );
+          const regularItems = allItems.filter(
+            (i) =>
+              !i.is_separate ||
+              String(i.is_separate) === "false" ||
+              i.is_separate === 0,
+          );
+
+          if (splitItems.length > 0 || regularItems.length > 0) {
+            const billsToPrint = [];
+
+            if (regularItems.length > 0) {
+              billsToPrint.push({
+                ...fullBillData,
+                split: false,
+                bills: null,
+                items: regularItems,
+                items_json: regularItems,
+                titleSuffix: splitItems.length > 0 ? "(Main)" : "",
+                subtotal: regularItems.reduce(
+                  (s, i) => s + Number(i.line_total || 0),
+                  0,
+                ),
+                grand_total: regularItems.reduce(
+                  (s, i) => s + Number(i.line_total || 0),
+                  0,
+                ),
+                sgst: 0,
+                cgst: 0,
+              });
+            }
+
+            if (splitItems.length > 0) {
+              billsToPrint.push({
+                ...fullBillData,
+                split: false,
+                bills: null,
+                items: splitItems,
+                items_json: splitItems,
+                titleSuffix: regularItems.length > 0 ? "(Split)" : "",
+                subtotal: splitItems.reduce(
+                  (s, i) => s + Number(i.line_total || 0),
+                  0,
+                ),
+                grand_total: splitItems.reduce(
+                  (s, i) => s + Number(i.line_total || 0),
+                  0,
+                ),
+                sgst: 0,
+                cgst: 0,
+              });
+            }
+
+            printPayload = {
+              ...fullBillData,
+              split: true,
+              bills: billsToPrint,
+            };
+          }
+        }
+        // ---------------------------------
+
         if (typeof window !== "undefined") {
-          window.printBillData = fullBillData;
+          window.printBillData = printPayload;
+        }
+        if (setPrintData) {
+          setPrintData(printPayload);
         }
         setTimeout(() => {
-          window.print();
+          const iframe = document.getElementById("print-iframe");
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.print();
+          } else {
+            window.print();
+          }
           if (tableNoRef.current) {
             tableNoRef.current.focus();
           }
-        }, 200);
+        }, 500);
       } catch (e) {
         console.error("Error fetching bill for reprint:", e);
         toast.error("Failed to load bill for printing");
@@ -653,6 +821,7 @@ export default function Billing({
     createBill,
     setLoading,
     tableNoRef,
+    isSplitBillMode,
   ]);
 
   // --- Active Bills Logic ---
@@ -1183,6 +1352,18 @@ export default function Billing({
               <div className="flex justify-between font-bold text-lg border-t pt-2">
                 <span>Grand Total:</span>
                 <span>{total.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center space-x-2 py-2 my-2 bg-gray-50 p-2 rounded border border-gray-100">
+                <Input
+                  type="checkbox"
+                  id="splitBillMode"
+                  checked={isSplitBillMode}
+                  onChange={(e) => setIsSplitBillMode(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto"
+                />
+                <Label htmlFor="splitBillMode" className="!mb-0 cursor-pointer">
+                  Split Bill Mode
+                </Label>
               </div>
               <Button
                 onClick={handlePrintBill}

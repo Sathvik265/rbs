@@ -32,6 +32,7 @@ import {
 } from "./Reports";
 import { API, toast, safeGet, safeArray, safeObject } from "../utils/helpers";
 import ClerkManagement from "./ClerkManagement";
+import SplitBillSettings from "./Admin/SplitBillSettings";
 
 // ================== RECONCILIATION ==================
 
@@ -428,6 +429,7 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
           <TabsTrigger value="reports">Reports</TabsTrigger>
           <TabsTrigger value="reconciliation">Reconciliation</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="split-bill">Split Bill</TabsTrigger>
           {mode === "admin-full" && (
             <TabsTrigger
               value="purge"
@@ -519,6 +521,10 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
               />
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="split-bill">
+          <SplitBillSettings />
         </TabsContent>
       </Tabs>
     </div>

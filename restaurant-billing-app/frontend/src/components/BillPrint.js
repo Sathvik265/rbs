@@ -3,53 +3,36 @@ import axios from "axios";
 import { API, safeGet, safeArray, safeObject } from "../utils/helpers";
 import { useUser } from "../context/UserContext";
 
-export default function BillPrint({ billData = null }) {
-  const [fetchedSettings, setFetchedSettings] = useState(null);
-  const { userInitials: loggedInClerk } = useUser(); // Get logged-in clerk from context
-
-  useEffect(() => {
-    // If settings are missing in props, fetch them
-    if (!billData?.hotel_name) {
-      // Use clerk from bill data if available, otherwise use logged-in clerk
-      const clerk = billData?.clerk_initials || loggedInClerk || "CLK";
-      axios
-        .get(`${API}/settings?clerk=${clerk}`)
-        .then((res) => {
-          setFetchedSettings(res.data);
-        })
-        .catch((err) =>
-          console.error("Failed to fetch settings for print", err),
-        );
-    }
-  }, [billData, loggedInClerk]);
-
-  const propsData =
-    billData || (typeof window !== "undefined" && window.printBillData) || null;
-
-  const data = { ...fetchedSettings, ...propsData };
-
-  if (!data) {
-    console.log("BillPrint: No bill data available");
-    return <div>No bill data</div>;
-  }
-
+const BillContent = ({ data, settings }) => {
   const header = safeObject(data.header);
   const items = safeArray(data.items || data.items_json);
+
+  // Merge settings into data for easier access, but prioritize data
+  const mergedData = { ...settings, ...data };
+
   const billNumber =
     safeGet(data, "bill_number") || safeGet(header, "bill_number", "N/A");
   const tableNo =
     safeGet(data, "table_no") || safeGet(header, "table_no", "N/A");
   const partyNo = safeGet(data, "party_no") || safeGet(header, "party_no", "0");
-  const hotelName = safeGet(data, "hotel_name", "Restaurant");
-  const address = safeGet(data, "address", "");
-  const phone = safeGet(data, "phone", "");
-  const gstin = safeGet(data, "gstin", "");
-  const clerkInitials = safeGet(data, "clerk_initials", loggedInClerk || "CLK"); // Use logged-in clerk as fallback
+
+  const hotelName = safeGet(mergedData, "hotel_name", "Restaurant");
+  const address = safeGet(mergedData, "address", "");
+  const phone = safeGet(mergedData, "phone", "");
+  const gstin = safeGet(mergedData, "gstin", "");
+
+  // Use clerk from data, fallback to settings/context or default
+  const clerkInitials =
+    safeGet(data, "clerk_initials") ||
+    safeGet(settings, "clerk_initials") ||
+    "CLK";
+
   const createdAt = safeGet(data, "created_at", null);
   const subtotal = safeGet(data, "subtotal", 0);
   const sgst = safeGet(data, "sgst", 0);
   const cgst = safeGet(data, "cgst", 0);
   const grandTotal = safeGet(data, "grand_total", 0);
+  const titleSuffix = safeGet(data, "titleSuffix", "");
 
   // Format time for printing
   const printTime = new Date().toLocaleTimeString("en-IN", {
@@ -73,13 +56,16 @@ export default function BillPrint({ billData = null }) {
         color: "black",
         background: "white",
         padding: "10px",
+        position: "relative", // PREVENT OVERLAPPING
+        display: "block",
+        margin: "0 auto",
       }}
     >
       {/* Header - Hotel Name and GST */}
       <div
         style={{ textAlign: "center", fontWeight: "bold", marginBottom: "2px" }}
       >
-        {hotelName}({clerkInitials})
+        {hotelName} {titleSuffix} ({clerkInitials})
       </div>
       {address && (
         <div
@@ -206,6 +192,61 @@ export default function BillPrint({ billData = null }) {
       <div style={{ textAlign: "center", fontSize: "11px" }}>
         Table:{tableNo} Party: {partyNo || "1"}
       </div>
+    </div>
+  );
+};
+
+export default function BillPrint({ billData = null }) {
+  const [fetchedSettings, setFetchedSettings] = useState(null);
+  const { userInitials: loggedInClerk } = useUser();
+
+  useEffect(() => {
+    // If settings are missing in props, fetch them
+    if (!billData?.hotel_name) {
+      // Use clerk from bill data if available, otherwise use logged-in clerk
+      const clerk = billData?.clerk_initials || loggedInClerk || "CLK";
+      axios
+        .get(`${API}/settings?clerk=${clerk}`)
+        .then((res) => {
+          setFetchedSettings(res.data);
+        })
+        .catch((err) =>
+          console.error("Failed to fetch settings for print", err),
+        );
+    }
+  }, [billData, loggedInClerk]);
+
+  const propsData =
+    billData || (typeof window !== "undefined" && window.printBillData) || null;
+
+  const data = { ...fetchedSettings, ...propsData };
+
+  if (!data) {
+    console.log("BillPrint: No bill data available");
+    return <div>No bill data</div>;
+  }
+
+  // Use a ref-like approach to decide if we rendering multiple bills
+  const bills = safeArray(data.bills);
+
+  if (bills.length > 0) {
+    return (
+      <div className="print-receipt-container print-area">
+        {bills.map((bill, index) => (
+          <div key={index}>
+            <BillContent data={bill} settings={fetchedSettings || data} />
+            {index < bills.length - 1 && (
+              <div style={{ height: "40px", width: "100%", clear: "both" }} />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="print-receipt-container print-area">
+      <BillContent data={data} settings={fetchedSettings || data} />
     </div>
   );
 }

@@ -17,7 +17,7 @@ const ItemModel = {
   async getItemByCode(code) {
     const result = await pool.query(
       "SELECT * FROM items WHERE alpha_code = $1 OR numeric_code = $1",
-      [code]
+      [code],
     );
     return result.rows[0];
   },
@@ -54,7 +54,7 @@ const ItemModel = {
         price_ac,
         category,
         is_separate,
-      ]
+      ],
     );
     return result.rows[0];
   },
@@ -89,7 +89,16 @@ const ItemModel = {
         category,
         is_separate,
         id,
-      ]
+      ],
+    );
+    return result.rows[0];
+  },
+
+  // Update item separate status
+  async updateItemSeparate(id, is_separate) {
+    const result = await pool.query(
+      `UPDATE items SET is_separate = $1 WHERE id = $2 RETURNING *`,
+      [is_separate, id],
     );
     return result.rows[0];
   },
@@ -108,7 +117,7 @@ const ItemModel = {
     // Example JSON: [{"name": "Idli", "qty": 1}]
     const result = await pool.query(
       "SELECT * FROM items WHERE category @> $1::jsonb ORDER BY name",
-      [JSON.stringify([{ name: category }])]
+      [JSON.stringify([{ name: category }])],
       // This assumes we are looking for an exact match of an object in the array
       // A better approach might be needed depending on frontend usage
     );
@@ -118,7 +127,7 @@ const ItemModel = {
   // Get separate items
   async getSeparateItems() {
     const result = await pool.query(
-      "SELECT * FROM items WHERE is_separate = true ORDER BY name"
+      "SELECT * FROM items WHERE is_separate = true ORDER BY name",
     );
     return result.rows;
   },
@@ -126,7 +135,7 @@ const ItemModel = {
   // Get regular items
   async getRegularItems() {
     const result = await pool.query(
-      "SELECT * FROM items WHERE is_separate = false ORDER BY name"
+      "SELECT * FROM items WHERE is_separate = false ORDER BY name",
     );
     return result.rows;
   },
@@ -139,7 +148,7 @@ const ItemModel = {
           OR alpha_code ILIKE $1 
           OR numeric_code ILIKE $1
        ORDER BY name`,
-      [`%${searchTerm}%`]
+      [`%${searchTerm}%`],
     );
     return result.rows;
   },
@@ -147,7 +156,7 @@ const ItemModel = {
   // Get all unique item names for dropdown
   async getAllItemNames() {
     const result = await pool.query(
-      `SELECT DISTINCT name FROM items ORDER BY name`
+      `SELECT DISTINCT name FROM items ORDER BY name`,
     );
     return result.rows.map((row) => row.name);
   },
@@ -158,7 +167,7 @@ const ItemModel = {
       `SELECT DISTINCT category::text as category 
        FROM items 
        WHERE category IS NOT NULL AND category::text != 'null'
-       ORDER BY category`
+       ORDER BY category`,
     );
     // Extract category names from JSON if needed
     const categories = result.rows.map((row) => {

@@ -7,6 +7,7 @@ import ShiftTab from "./components/ShiftManagement";
 import FoodMenu from "./components/FoodMenu";
 import Billing from "./components/BillingScreen";
 import EnhancedAdminPanel from "./components/AdminPanel";
+import PrintPortal from "./components/PrintPortal";
 import { useUser } from "./context/UserContext";
 import {
   Button,
@@ -303,8 +304,12 @@ function App() {
       </div>
 
       {/* Hidden print area */}
-      <div className="hidden print-area">
-        <BillPrint billData={printData} />
+      <div className="hidden">
+        <PrintPortal>
+          <div className="bill-print-area print-receipt print-area">
+            <BillPrint billData={printData} />
+          </div>
+        </PrintPortal>
       </div>
     </div>
   );
