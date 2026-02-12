@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import PrintPortal from "./components/PrintPortal";
 import { getShiftStatus } from "./services/api";
 import RecentBills from "./components/RecentBills";
 import { LoginPanel, AdminVerificationScreen } from "./components/LoginPanel";
@@ -99,7 +100,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 p-4">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto no-print">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
             Udupi Anand Bhavan — Billing System
@@ -182,13 +183,14 @@ function App() {
                 </TabsContent>
               )}
             </Tabs>
+            {/* Print area - Rendered via Portal outside main root */}
+            <PrintPortal>
+              <div className="bill-print-area">
+                <BillPrint billData={printData} />
+              </div>
+            </PrintPortal>
           </div>
         )}
-      </div>
-
-      {/* Hidden print area */}
-      <div className="hidden print-area">
-        <BillPrint billData={printData} />
       </div>
     </div>
   );

@@ -196,19 +196,19 @@ textarea:hover:not(:disabled):not([readonly]) {
   gap: 1.5rem;
 }
 
-.space-y-1 > * + * {
+.space-y-1>*+* {
   margin-top: 0.25rem;
 }
 
-.space-y-2 > * + * {
+.space-y-2>*+* {
   margin-top: 0.5rem;
 }
 
-.space-y-3 > * + * {
+.space-y-3>*+* {
   margin-top: 0.75rem;
 }
 
-.space-y-4 > * + * {
+.space-y-4>*+* {
   margin-top: 1rem;
 }
 
@@ -623,11 +623,11 @@ textarea:hover:not(:disabled):not([readonly]) {
   border-color: #d1d5db;
 }
 
-.divide-y > * + * {
+.divide-y>*+* {
   border-top-width: 1px;
 }
 
-.divide-gray-200 > * + * {
+.divide-gray-200>*+* {
   border-color: #e5e7eb;
 }
 
@@ -754,7 +754,7 @@ textarea:hover:not(:disabled):not([readonly]) {
   white-space: nowrap;
 }
 
-.divide-y > * + * {
+.divide-y>*+* {
   border-top-width: 1px;
 }
 
@@ -816,6 +816,7 @@ textarea:hover:not(:disabled):not([readonly]) {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }

@@ -30,6 +30,7 @@ import {
   ItemReport,
 } from "./Reports";
 import { API, toast, safeGet, safeArray, safeObject } from "../utils/helpers";
+import SplitBillSettings from "./Admin/SplitBillSettings";
 
 // ================== RECONCILIATION ==================
 
@@ -361,6 +362,8 @@ function SettingsEditor({ settings, onChange }) {
   );
 }
 
+
+
 // ================== ENHANCED ADMIN PANEL ==================
 
 export default function EnhancedAdminPanel({ mode, sessionId }) {
@@ -400,6 +403,7 @@ export default function EnhancedAdminPanel({ mode, sessionId }) {
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="reports">Reports</TabsTrigger>
           <TabsTrigger value="reconciliation">Reconciliation</TabsTrigger>
+          <TabsTrigger value="split-bill">Split Bill</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
@@ -440,6 +444,10 @@ export default function EnhancedAdminPanel({ mode, sessionId }) {
 
         <TabsContent value="reconciliation">
           <EnhancedReconciliation sessionId={sessionId} mode={mode} />
+        </TabsContent>
+
+        <TabsContent value="split-bill">
+          <SplitBillSettings />
         </TabsContent>
 
         <TabsContent value="settings">

@@ -13,6 +13,10 @@ export const toast = {
     console.error("Error:", message);
     alert(message);
   },
+  info: (message) => {
+    console.info("Info:", message);
+    alert(message);
+  },
 };
 
 // Safe utility functions

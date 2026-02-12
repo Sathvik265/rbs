@@ -144,6 +144,15 @@ const ItemModel = {
     return result.rows;
   },
 
+  // Update item separate status
+  async updateItemSeparate(id, is_separate) {
+    const result = await pool.query(
+      `UPDATE items SET is_separate = $1 WHERE id = $2 RETURNING *`,
+      [is_separate, id]
+    );
+    return result.rows[0];
+  },
+
   // Get all unique item names for dropdown
   async getAllItemNames() {
     const result = await pool.query(

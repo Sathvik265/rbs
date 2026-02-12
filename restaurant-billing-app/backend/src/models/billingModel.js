@@ -181,10 +181,10 @@ const BillingModel = {
       // Actually, standard move logic deletes orders.
       // Deleting orders is fine, that's what we want.
 
-      await client.query("SELECT move_orders_to_bill_json($1, $2, $3)", [
+      await client.query("SELECT move_orders_to_bill_json($1::INTEGER, $2::TEXT, $3::TEXT)", [
         billId,
         table_no.toString(),
-        party_no,
+        party_no.toString(),
       ]);
 
       await client.query("COMMIT");

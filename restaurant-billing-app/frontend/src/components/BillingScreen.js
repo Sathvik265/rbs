@@ -50,6 +50,15 @@ export default function Billing({
   const [qty, setQty] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  // --- Split Bill Logic ---
+  const [isSplitBillMode, setIsSplitBillMode] = useState(() => {
+    return localStorage.getItem("isSplitBillMode") === "true";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("isSplitBillMode", isSplitBillMode);
+  }, [isSplitBillMode]);
+
   // --- REFS FOR NAVIGATION ---
   const tableNoRef = useRef(null);
   const partyNoRef = useRef(null);
@@ -241,7 +250,7 @@ export default function Billing({
         (i) =>
           safeGet(i, "numeric_code") === entryCode ||
           safeGet(i, "alpha_code", "").toLowerCase() ===
-            entryCode.toLowerCase(),
+          entryCode.toLowerCase(),
       );
       if (item) {
         if (qtyRef.current) {
@@ -371,12 +380,89 @@ export default function Billing({
         toast.success(`Bill #${billNumber} created`);
 
         if (billId) {
+          // Fetch full bill data immediately using the new ID
           const fullBillData = await getBillById(billId);
+          console.log("DEBUG: createBill - Created Bill ID:", billId);
+          console.log("DEBUG: createBill - Fetched Full Bill:", fullBillData);
+          console.log("DEBUG: createBill - Fetched Items:", fullBillData.items || fullBillData.items_json);
+
+          // --- SPLIT BILL PRINTING LOGIC ---
+          let printPayload = fullBillData;
+
+          if (isSplitBillMode) {
+            // FIXED LOGIC: Match handlePrintBill
+
+            // FIX: Handle truthy empty array [] from legacy items column
+            let rawItems = fullBillData.items_json;
+            if (!rawItems || rawItems.length === 0) {
+              rawItems = fullBillData.items;
+            }
+            const allItems = safeArray(rawItems);
+
+            const splitItems = allItems.filter(
+              (item) => item.is_separate === true
+            );
+            const regularItems = allItems.filter(
+              (item) => item.is_separate !== true
+            );
+
+            // Debug alert for verification
+            if (typeof window !== "undefined") {
+              alert(`NEW BILL DEBUG: All: ${allItems.length}, Split: ${splitItems.length}, Regular: ${regularItems.length}`);
+            }
+
+            if (splitItems.length > 0 && regularItems.length > 0) {
+              printPayload = {
+                ...fullBillData,
+                split: true,
+                bills: [
+                  {
+                    ...fullBillData,
+                    items: regularItems,
+                    items_json: regularItems, // FORCE override
+                    titleSuffix: "(Main)",
+                    subtotal: regularItems.reduce(
+                      (sum, item) => sum + Number(item.line_total || 0),
+                      0
+                    ),
+                    grand_total: regularItems.reduce(
+                      (sum, item) => sum + Number(item.line_total || 0),
+                      0
+                    ),
+                    sgst: 0,
+                    cgst: 0,
+                  },
+                  {
+                    ...fullBillData,
+                    items: splitItems,
+                    items_json: splitItems, // FORCE override
+                    titleSuffix: "(Split)",
+                    subtotal: splitItems.reduce(
+                      (sum, item) => sum + Number(item.line_total || 0),
+                      0
+                    ),
+                    grand_total: splitItems.reduce(
+                      (sum, item) => sum + Number(item.line_total || 0),
+                      0
+                    ),
+                    sgst: 0,
+                    cgst: 0,
+                  },
+                ],
+              };
+            } else if (splitItems.length > 0) {
+              toast.info("All items are split items. Printing normally.");
+            } else {
+              toast.info("No split items found. Printing normally.");
+            }
+          }
+          // ---------------------------------
+
           if (typeof window !== "undefined") {
-            window.printBillData = fullBillData;
+            window.printBillData = printPayload;
           }
           if (setPrintData) {
-            setPrintData(fullBillData);
+            setPrintData(printPayload);
           }
           setTimeout(() => {
             window.print();
@@ -426,6 +512,7 @@ export default function Billing({
       setQty,
       tableNoRef,
       setPrintData,
+      isSplitBillMode, // Added dependency
     ],
   );
 
@@ -538,6 +625,9 @@ export default function Billing({
     ],
   );
 
+
+
+
   const handlePrintBill = useCallback(async () => {
     if (!currentTable) {
       toast.error("Please enter a table number before printing.");
@@ -552,15 +642,86 @@ export default function Billing({
       try {
         setLoading(true);
         const fullBillData = await getBillById(billIdToPrint);
+        console.log("DEBUG: handlePrintBill - Fetched Bill:", fullBillData);
+        console.log("DEBUG: handlePrintBill - Items JSON:", fullBillData.items_json);
+        console.log("DEBUG: handlePrintBill - Items:", fullBillData.items);
+
+        // --- SPLIT BILL PRINTING LOGIC ---
+        let printPayload = fullBillData;
+
+        if (isSplitBillMode) {
+          console.log("DEBUG: Split Bill Mode is ON");
+          const allItems = safeArray(
+            fullBillData.items_json || fullBillData.items
+          );
+
+          const splitItems = allItems.filter(
+            (item) => item.is_separate === true || item.is_separate === "true" || item.is_separate === 1
+          );
+          const regularItems = allItems.filter(
+            (item) => !item.is_separate || item.is_separate === "false" || item.is_separate === 0
+          );
+
+          if (splitItems.length > 0 && regularItems.length > 0) {
+            printPayload = {
+              ...fullBillData,
+              split: true,
+              bills: [
+                {
+                  ...fullBillData,
+                  split: false, // PREVENT RECURSION
+                  bills: null,  // PREVENT RECURSION
+                  items: regularItems,
+                  items_json: regularItems, // FORCE: Override parent's items_json
+                  titleSuffix: "(Main)",
+                  subtotal: regularItems.reduce(
+                    (sum, item) => sum + Number(item.line_total || 0),
+                    0
+                  ),
+                  grand_total: regularItems.reduce(
+                    (sum, item) => sum + Number(item.line_total || 0),
+                    0
+                  ), // Simplify total calc for split
+                  sgst: 0, // Recalculate if needed, simplified for now
+                  cgst: 0,
+                },
+                {
+                  ...fullBillData,
+                  split: false, // PREVENT RECURSION
+                  bills: null,  // PREVENT RECURSION
+                  items: splitItems,
+                  items_json: splitItems, // FORCE: Override parent's items_json
+                  titleSuffix: "(Split)",
+                  subtotal: splitItems.reduce(
+                    (sum, item) => sum + Number(item.line_total || 0),
+                    0
+                  ),
+                  grand_total: splitItems.reduce(
+                    (sum, item) => sum + Number(item.line_total || 0),
+                    0
+                  ),
+                  sgst: 0,
+                  cgst: 0,
+                },
+              ],
+            };
+          } else if (splitItems.length > 0) {
+            toast.info("All items are split items. Printing normally.");
+          } else {
+            toast.info("No split items found. Printing normally.");
+          }
+        }
+        // ---------------------------------
+
         if (typeof window !== "undefined") {
-          window.printBillData = fullBillData;
+          window.printBillData = printPayload;
         }
         setTimeout(() => {
           window.print();
           if (tableNoRef.current) {
             tableNoRef.current.focus();
           }
-        }, 200);
+        }, 500);
       } catch (e) {
         console.error("Error fetching bill for reprint:", e);
         toast.error("Failed to load bill for printing");
@@ -595,6 +756,7 @@ export default function Billing({
     createBill,
     setLoading,
     tableNoRef,
+    isSplitBillMode, // Added dependency
   ]);
 
   // --- Active Bills Logic ---
@@ -661,6 +823,13 @@ export default function Billing({
           if (helpTab === "active") return false;
           setHelpTab("active");
           return true;
+        });
+      } else if (e.key === "F3") {
+        e.preventDefault();
+        setIsSplitBillMode((prev) => {
+          const newState = !prev;
+          toast.info(`Split Bill Mode: ${newState ? "ON" : "OFF"}`);
+          return newState;
         });
       }
     };
@@ -742,7 +911,7 @@ export default function Billing({
         const selectedItem = filteredItems[selectedHelpIndex];
         setEntryCode(
           safeGet(selectedItem, "numeric_code", "") ||
-            safeGet(selectedItem, "alpha_code", ""),
+          safeGet(selectedItem, "alpha_code", ""),
         );
         setShowHelp(false);
         if (qtyRef.current) {
@@ -764,7 +933,14 @@ export default function Billing({
       <div className="col-span-8 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle>Billing for {billingDate}</CardTitle>
+            <CardTitle>
+              Billing for {billingDate}
+              {isSplitBillMode && (
+                <span className="ml-4 text-sm bg-green-100 text-green-800 px-2 py-1 rounded-full border border-green-200">
+                  Split Bill Mode ON
+                </span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-4 gap-4 mb-4">
@@ -886,17 +1062,15 @@ export default function Billing({
           <div className="help-header">
             <div className="help-tabs">
               <button
-                className={`help-tab-btn ${
-                  helpTab === "shortcuts" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "shortcuts" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("shortcuts")}
               >
                 Shortcuts
               </button>
               <button
-                className={`help-tab-btn ${
-                  helpTab === "active" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "active" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("active")}
               >
                 Active Bills ({activeTables.length})
@@ -937,15 +1111,14 @@ export default function Billing({
                             {filteredItems.map((item, index) => (
                               <TableRow
                                 key={safeGet(item, "id", Math.random())}
-                                className={`cursor-pointer hover:bg-gray-100 ${
-                                  selectedHelpIndex === index
-                                    ? "bg-blue-100"
-                                    : ""
-                                }`}
+                                className={`cursor-pointer hover:bg-gray-100 ${selectedHelpIndex === index
+                                  ? "bg-blue-100"
+                                  : ""
+                                  }`}
                                 onClick={() => {
                                   setEntryCode(
                                     safeGet(item, "numeric_code", "") ||
-                                      safeGet(item, "alpha_code", ""),
+                                    safeGet(item, "alpha_code", ""),
                                   );
                                   setShowHelp(false);
                                   if (qtyRef.current) {

@@ -1,0 +1,16 @@
+--- ORDERS TABLE SCHEMA ---
+id | integer | Nullable: NO | Default: nextval('orders_id_seq'::regclass)
+track | character varying | Nullable: NO | Default: null
+clerk_initials | character varying | Nullable: NO | Default: null
+table_no | character varying | Nullable: NO | Default: null
+party_no | character varying | Nullable: NO | Default: '1'::character varying
+bill_number | integer | Nullable: NO | Default: null
+item_code | character varying | Nullable: YES | Default: null
+numeric_item_code | character varying | Nullable: YES | Default: null
+item_name | character varying | Nullable: YES | Default: null
+quantity | integer | Nullable: YES | Default: 1
+unit_price | numeric | Nullable: YES | Default: 0
+line_total | numeric | Nullable: YES | Default: 0
+created_at | timestamp with time zone | Nullable: YES | Default: CURRENT_TIMESTAMP
+updated_at | timestamp with time zone | Nullable: YES | Default: CURRENT_TIMESTAMP
+bill_date | date | Nullable: YES | Default: CURRENT_DATE

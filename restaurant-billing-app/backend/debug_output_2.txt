@@ -1,0 +1,24 @@
+Checking for Table 1, Party 1
+Bills count for table 1: 8
+Orders count for table 1, party 1: 2
+Latest Bill:
+{
+  "id": 24,
+  "bill_number": 11,
+  "table_no": "1",
+  "party_no": "1",
+  "track": "RBS1",
+  "clerk_initials": "SHI",
+  "created_at": "2026-01-26T09:34:48.317Z"
+}
+Latest Order:
+{
+  "id": 41,
+  "table_no": "1",
+  "party_no": "1",
+  "track": "RBS1",
+  "clerk_initials": "SHI",
+  "created_at": "2026-01-26T17:23:13.590Z",
+  "bill_number": 0,
+  "bill_date": "2026-01-25T18:30:00.000Z"
+}
