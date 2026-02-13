@@ -42,7 +42,10 @@ export default function FoodMenu({ mode }) {
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.code === "KeyF")) {
+      if (
+        ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.code === "KeyF")) ||
+        (e.altKey && e.key.toLowerCase() === "s")
+      ) {
         e.preventDefault();
         searchInputRef.current?.focus();
       }

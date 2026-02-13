@@ -634,7 +634,7 @@ export default function Billing({
           quantity: newLine.quantity,
           unit_price: newLine.unit_price,
           line_total: newLine.line_total,
-          track: activeShift?.shift_name || track || "`",
+          track: activeShift?.shift_name || track || "SYS",
           clerk_initials: userInitials || activeShift?.clerk_initials || "CLK",
           bill_number: 0,
           item_code: newLine.alpha_code,
@@ -1088,7 +1088,10 @@ export default function Billing({
               </div>
             </div>
 
-            <div className="h-[45vh] min-h-[300px] overflow-y-auto border rounded-md relative bg-white">
+            <div
+              className="overflow-y-auto border rounded-md relative bg-white"
+              style={{ height: "500px", minHeight: "300px" }}
+            >
               <Table>
                 <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
                   <TableRow>

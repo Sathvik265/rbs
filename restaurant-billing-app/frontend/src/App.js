@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getShiftStatus } from "./services/api";
 import RecentBills from "./components/RecentBills";
-import { LoginPanel, AdminVerificationScreen } from "./components/LoginPanel";
+import { LoginPanel } from "./components/LoginPanel";
 import BillPrint from "./components/BillPrint";
 import ShiftTab from "./components/ShiftManagement";
 import FoodMenu from "./components/FoodMenu";
@@ -35,7 +35,6 @@ function App() {
   const [mode, setMode] = useState(
     () => localStorage.getItem("mode") || "none",
   );
-  const [isVerifyingAdmin, setIsVerifyingAdmin] = useState(false);
 
   const isAdmin = mode && mode.includes("admin");
 
@@ -177,22 +176,7 @@ function App() {
     setTrack(newTrack);
     setSessionId(newSessionId);
     setUserInitials(initials);
-    setIsVerifyingAdmin(false);
     localStorage.setItem("mode", newMode);
-  };
-
-  const handleStartAdminVerification = (date, newTrack) => {
-    setBillingDate(date);
-    setTrack(newTrack);
-    setIsVerifyingAdmin(true);
-  };
-
-  const handleVerificationComplete = (adminMode) => {
-    setMode(adminMode);
-    setUserInitials("SHI"); // Admin is always SHI
-    setIsVerifyingAdmin(false);
-    localStorage.setItem("mode", adminMode);
-    toast.success(`Logged in as ${adminMode}`);
   };
 
   const handleLogout = () => {
@@ -230,20 +214,9 @@ function App() {
         </div>
 
         {mode === "none" ? (
-          isVerifyingAdmin ? (
-            <div className="flex-1 flex items-center justify-center">
-              <AdminVerificationScreen
-                onVerificationComplete={handleVerificationComplete}
-              />
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <LoginPanel
-                onLogin={handleLogin}
-                onStartAdminVerification={handleStartAdminVerification}
-              />
-            </div>
-          )
+          <div className="flex-1 flex items-center justify-center">
+            <LoginPanel onLogin={handleLogin} />
+          </div>
         ) : (
           <div className="space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab}>

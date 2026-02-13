@@ -133,6 +133,26 @@ docker-compose up
 - The application allows you to create, view, and delete billing records.
 - Access the frontend application in your browser at `http://localhost:3000`.
 
+## Login Instructions
+
+The application uses a shift-based login system. You must log in with a valid credential and track.
+
+1. **Credential**:
+   - Enter `CLK` for **Clerk** access (standard billing).
+   - Enter `SHI` for **Admin** access (full management).
+
+2. **Date**:
+   - Automatically set to the current date (read-only).
+
+3. **Track**:
+   - Required to identify the terminal or location.
+   - Valid options: `` ` ``, ` ` ``, `RBS1`, `RBS2`.
+   - **Note**: If a shift for the selected track is **CLOSED**, access will be denied. An admin must re-open it.
+
+4. **Admin Verification**:
+   - If logging in as `SHI`, you will be prompted for a password.
+   - Enter your admin password to proceed.
+
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request for any improvements or features.
@@ -224,8 +244,13 @@ The script will automatically launch the backend API on port 8000 and the fronte
 
 - **ArrowUp / ArrowDown**: Navigate through bills list
 - **Enter** or **Space**: Expand/Collapse selected bill details
-- **F3**: Focus Search Box
+- **Enter** or **Space**: Expand/Collapse selected bill details
+- **F3** or **Alt + S**: Focus Search Box
 - **Esc**: Clear Search
+
+### Food Menu Screen
+
+- **Alt + S**: Focus Search Box
 
 ## License
 

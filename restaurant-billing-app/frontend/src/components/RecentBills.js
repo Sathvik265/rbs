@@ -127,6 +127,14 @@ function RecentBills({ billingDate }) {
 
   useEffect(() => {
     const handleKeyDown = (event) => {
+      // Global shortcuts (work even if list is empty)
+      if (event.altKey && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        const searchEl = document.getElementById("recent-bills-search");
+        if (searchEl) searchEl.focus();
+        return;
+      }
+
       if (filteredBills.length === 0) return;
 
       switch (event.key) {

@@ -23,6 +23,9 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [isShiftClosed, setIsShiftClosed] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [password, setPassword] = useState("");
+  const passwordInputRef = useRef(null);
 
   // Fetch all sessions on mount to know which shifts are open/closed
   useEffect(() => {
@@ -75,21 +78,27 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
   }, [track, date, sessions]);
 
   useEffect(() => {
-    if (credentialInputRef.current) {
+    if (credentialInputRef.current && !showPwd) {
       credentialInputRef.current.focus();
+    } else if (showPwd && passwordInputRef.current) {
+      passwordInputRef.current.focus();
     }
-  }, []);
+  }, [showPwd]);
 
   const handleKeyDown = (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       if (!isShiftClosed) {
-        submit(event.shiftKey);
+        submit();
       }
+    } else if (event.key === "Escape" && showPwd) {
+      setShowPwd(false);
+      setPassword("");
+      setTimeout(() => credentialInputRef.current?.focus(), 0);
     }
   };
 
-  const submit = async (isRoot = false) => {
+  const submit = async () => {
     if (!date || !track) {
       toast.error("Please enter date and track.");
       return;
@@ -108,17 +117,30 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
       return;
     }
 
-    if (credential.toUpperCase() === "SHI" && isRoot) {
-      if (onStartAdminVerification) {
-        onStartAdminVerification(date, track);
+    // Admin Access Flow
+    if (credential.toUpperCase() === "SHI") {
+      if (!showPwd) {
+        setShowPwd(true);
+        return;
       }
-      return;
+
+      if (password === "SHRIDAR") {
+        if (onLogin) onLogin("admin-restricted", date, track, null, "SHI");
+        return;
+      } else if (password === "SHRIDAR123") {
+        if (onLogin) onLogin("admin-full", date, track, null, "SHI");
+        return;
+      } else {
+        toast.error("Invalid Admin Password");
+        return;
+      }
     }
 
+    // Normal Login Flow
     try {
       const res = await axios.post(`${API}/auth/login`, {
         staff_code: credential,
-        is_root: isRoot,
+        is_root: false,
         date: date,
         track: track,
       });
@@ -154,48 +176,65 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4 items-center">
-              <Label>Credential</Label>
-              <Input
-                ref={credentialInputRef}
-                placeholder="Enter credential"
-                className="col-span-2"
-                value={credential}
-                onChange={(e) => setCredential(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Tab" && !e.shiftKey) {
-                    e.preventDefault();
-                    trackInputRef.current?.focus();
-                  } else {
-                    handleKeyDown(e);
-                  }
-                }}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-4 items-center">
-              <Label>Date</Label>
-              <Input
-                type="date"
-                className="col-span-2"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                onKeyDown={handleKeyDown}
-                readOnly
-                tabIndex={-1}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-4 items-center">
-              <Label>Track</Label>
-              <Input
-                ref={trackInputRef}
-                type="text"
-                placeholder="Enter track"
-                className="col-span-2"
-                value={track}
-                onChange={(e) => setTrack(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
-            </div>
+            {!showPwd ? (
+              <>
+                <div className="grid grid-cols-3 gap-4 items-center">
+                  <Label>Credential</Label>
+                  <Input
+                    ref={credentialInputRef}
+                    placeholder="Enter credential"
+                    className="col-span-2"
+                    value={credential}
+                    onChange={(e) => setCredential(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab" && !e.shiftKey) {
+                        e.preventDefault();
+                        trackInputRef.current?.focus();
+                      } else {
+                        handleKeyDown(e);
+                      }
+                    }}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-4 items-center">
+                  <Label>Date</Label>
+                  <Input
+                    type="date"
+                    className="col-span-2"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    readOnly
+                    tabIndex={-1}
+                  />
+                </div>
+                <div className="grid grid-cols-3 gap-4 items-center">
+                  <Label>Track</Label>
+                  <Input
+                    ref={trackInputRef}
+                    type="text"
+                    placeholder="Enter track"
+                    className="col-span-2"
+                    value={track}
+                    onChange={(e) => setTrack(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="grid grid-cols-3 gap-4 items-center">
+                <Label>Password</Label>
+                <Input
+                  ref={passwordInputRef}
+                  type="password"
+                  placeholder="Enter Admin Password"
+                  className="col-span-2"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                />
+              </div>
+            )}
 
             {isShiftClosed && (
               <div
@@ -222,63 +261,32 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-col">
               <Button
-                onClick={() => submit(false)}
+                onClick={() => submit()}
                 className="w-full"
                 disabled={isShiftClosed}
               >
-                Login
+                {showPwd ? "Verify" : "Login"}
               </Button>
+              {showPwd && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setShowPwd(false);
+                    setPassword("");
+                  }}
+                >
+                  Back
+                </Button>
+              )}
             </div>
             <div className="text-xs text-gray-600 text-center">
               Hint: Use 'CLK' for clerk, 'SHI' for admin. Track: '`', '``',
               'RBS1', 'RBS2'
             </div>
           </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-export function AdminVerificationScreen({ onVerificationComplete }) {
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.altKey && event.key.toLowerCase() === "a") {
-        event.preventDefault();
-        if (onVerificationComplete) {
-          onVerificationComplete("admin-full");
-        }
-      }
-    };
-
-    const timer = setTimeout(() => {
-      if (onVerificationComplete) {
-        onVerificationComplete("admin-limited");
-      }
-    }, 5000);
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onVerificationComplete]);
-
-  return (
-    <div className="flex items-center justify-center py-10">
-      <Card>
-        <CardContent className="text-center p-8">
-          <div className="animate-spin inline-block mb-4">
-            <Loader2 size={32} />
-          </div>
-          <h2 className="text-lg font-semibold mb-2">
-            Verifying Admin Access...
-          </h2>
-          <p className="text-sm text-gray-600">
-            Press Alt+A now for full access
-          </p>
         </CardContent>
       </Card>
     </div>

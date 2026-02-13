@@ -113,35 +113,66 @@ const billingController = {
         `SELECT * FROM bills WHERE table_no = $1 AND party_no = $2 AND bill_number = 0 ORDER BY created_at DESC LIMIT 1`,
         [parseInt(table_no), party_no],
       );
-      const provisionalBill = provisionalRes.rows[0];
+      let provisionalBill = provisionalRes.rows[0];
 
       console.log(`Provisional bill found:`, provisionalBill);
 
       if (!provisionalBill) {
-        // ENHANCED ERROR: Query all provisional bills to see what exists
-        const allProvisionalBills = await pool.query(
-          `SELECT * FROM bills WHERE bill_number = 0 ORDER BY created_at DESC LIMIT 10`,
-        );
-        console.log(
-          `All provisional bills in database:`,
-          allProvisionalBills.rows,
-        );
-
-        return res.status(404).json({
-          error: "No active provisional bill found to finalize.",
-          searched_for: {
+        // RECOVERY LOGIC: If orders exist but bill is missing, create a new one on the fly.
+        if (existingOrders && existingOrders.length > 0) {
+          console.log(
+            "Orphaned orders found without provisional bill. Attempting recovery...",
+          );
+          const now = new Date();
+          const provisionalBillData = {
+            bill_date:
+              billData.bill_date || new Date().toISOString().split("T")[0],
             table_no: parseInt(table_no),
-            party_no,
-            track,
-            clerk_initials,
-          },
-          available_provisional_bills: allProvisionalBills.rows.map((b) => ({
-            table_no: b.table_no,
-            party_no: b.party_no,
-            track: b.track,
-            clerk_initials: b.clerk_initials,
-          })),
-        });
+            party_no: party_no,
+            section: billData.section || "G",
+            track: track,
+            clerk_initials: clerk_initials,
+            created_at: now,
+          };
+
+          provisionalBill =
+            await BillingModel.createProvisionalBill(provisionalBillData);
+
+          // Update orders to link to this new bill (using created_at as FK)
+          await pool.query(
+            `UPDATE orders SET created_at = $1 WHERE table_no = $2 AND party_no = $3`,
+            [provisionalBill.created_at, parseInt(table_no), party_no],
+          );
+
+          console.log(
+            "Recovery successful. New provisional bill created and orders linked.",
+          );
+        } else {
+          // ENHANCED ERROR: Query all provisional bills to see what exists
+          const allProvisionalBills = await pool.query(
+            `SELECT * FROM bills WHERE bill_number = 0 ORDER BY created_at DESC LIMIT 10`,
+          );
+          console.log(
+            `All provisional bills in database:`,
+            allProvisionalBills.rows,
+          );
+
+          return res.status(404).json({
+            error: "No active provisional bill found to finalize.",
+            searched_for: {
+              table_no: parseInt(table_no),
+              party_no,
+              track,
+              clerk_initials,
+            },
+            available_provisional_bills: allProvisionalBills.rows.map((b) => ({
+              table_no: b.table_no,
+              party_no: b.party_no,
+              track: b.track,
+              clerk_initials: b.clerk_initials,
+            })),
+          });
+        }
       }
 
       const bill_date = new Date().toISOString().split("T")[0];
