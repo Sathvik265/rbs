@@ -14,7 +14,16 @@ import { API, toast, safeGet, safeArray } from "../utils/helpers";
 
 export function LoginPanel({ onLogin, onStartAdminVerification }) {
   const [credential, setCredential] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  // Helper to get local YYYY-MM-DD
+  const getLocalDate = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const [date, setDate] = useState(getLocalDate());
   const [track, setTrack] = useState("");
   const credentialInputRef = useRef(null);
   const trackInputRef = useRef(null);
@@ -29,6 +38,11 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
 
   // Fetch all sessions on mount to know which shifts are open/closed
   useEffect(() => {
+    // Update date every minute to handle overnight open app
+    const dateInterval = setInterval(() => {
+      setDate(getLocalDate());
+    }, 60000);
+
     const fetchSessions = async () => {
       setSessionsLoading(true);
       try {
@@ -42,6 +56,8 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
       }
     };
     fetchSessions();
+
+    return () => clearInterval(dateInterval);
   }, []);
 
   // Whenever track changes, check if that shift is closed
