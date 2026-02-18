@@ -20,7 +20,14 @@ export const UserProvider = ({ children }) => {
   const [track, setTrack] = useState(() => localStorage.getItem("track") || "");
   const [billingDate, setBillingDate] = useState(() => {
     const stored = localStorage.getItem("billingDate");
-    const today = new Date().toISOString().split("T")[0];
+
+    // Helper for local date YYYY-MM-DD
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const today = `${year}-${month}-${day}`;
+
     // If we have a stored date but it's not today, assume a new day has started
     // and default to today to ensure Recent Bills shows relevant data.
     if (stored && stored !== today) {

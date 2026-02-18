@@ -565,6 +565,10 @@ export default function Billing({
           setCurrentTable("");
         }
 
+        // Refresh numbers
+        fetchLastBillNumber();
+        fetchActiveTables();
+
         setEntryCode("");
         setQty(1);
       } catch (e) {
@@ -668,9 +672,13 @@ export default function Billing({
           bill_number: 0,
           item_code: newLine.alpha_code,
           numeric_item_code: newLine.numeric_code,
+          bill_date: billingDate, // Use the session date for the order
         };
 
         await createOrder(payload);
+
+        // Refresh active tables to update sequences
+        fetchActiveTables();
 
         if (focusItemCode && setDrafts) {
           const updatedLines = [...safeArray(currentDraft.lines), newLine];
@@ -857,12 +865,44 @@ export default function Billing({
   const [helpTab, setHelpTab] = useState("shortcuts");
   const [activeTables, setActiveTables] = useState([]);
   const [now, setNow] = useState(new Date());
+  const [lastBillNumber, setLastBillNumber] = useState(0);
+
+  const fetchLastBillNumber = useCallback(async () => {
+    try {
+      const res = await getLastBillNumber(billingDate);
+      // res is { last_bill_number: ... }
+      setLastBillNumber(parseInt(safeGet(res, "last_bill_number", 0)) || 0);
+    } catch (e) {
+      console.error("Failed to fetch last bill number", e);
+    }
+  }, [billingDate]);
 
   const fetchActiveTables = useCallback(async () => {
     try {
       const orders = await getAllPendingOrders();
       const groups = {};
       orders.forEach((o) => {
+        // Filter by billing date to exclude stale orders from previous days
+        // Note: o.bill_date might be ISO string or date object depending on driver, usually string YYYY-MM-DD or full ISO
+        if (billingDate) {
+          let rawDate = safeGet(o, "bill_date");
+          let orderDateStr = "";
+
+          if (rawDate) {
+            const d = new Date(rawDate);
+            // Construct local YYYY-MM-DD
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            orderDateStr = `${year}-${month}-${day}`;
+          }
+
+          // If we have a valid order date string, compare it
+          if (orderDateStr && orderDateStr !== billingDate) {
+            return;
+          }
+        }
+
         const key = `${o.table_no}-${o.party_no}`;
         if (!groups[key]) {
           groups[key] = {
@@ -887,23 +927,32 @@ export default function Billing({
         g.item_count += 1;
         g.total_amount += parseFloat(o.line_total || 0);
       });
-      setActiveTables(Object.values(groups));
+      // Sort by first_order_at to ensure consistent temporary bill numbering
+      const sortedTables = Object.values(groups).sort(
+        (a, b) => a.first_order_at - b.first_order_at,
+      );
+      setActiveTables(sortedTables);
     } catch (err) {
       console.error("Failed to fetch active tables", err);
     }
   }, []);
 
+  // Initial load and Polling
   useEffect(() => {
-    let interval;
-    if (showHelp) {
-      fetchActiveTables();
-      interval = setInterval(() => {
-        setNow(new Date());
-        if (new Date().getSeconds() === 0) fetchActiveTables();
-      }, 1000);
-    }
+    fetchActiveTables();
+    fetchLastBillNumber();
+
+    const interval = setInterval(() => {
+      setNow(new Date());
+      // Poll every 5 seconds for updates
+      if (new Date().getSeconds() % 5 === 0) {
+        fetchActiveTables();
+        fetchLastBillNumber();
+      }
+    }, 1000);
+
     return () => clearInterval(interval);
-  }, [showHelp, fetchActiveTables]);
+  }, [fetchActiveTables, fetchLastBillNumber]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -971,10 +1020,39 @@ export default function Billing({
     };
   }, [handlePrintBill]);
 
+  const tempBillNumber = useMemo(() => {
+    const existingBillNum = safeGet(currentDraft, "header.bill_number");
+    if (existingBillNum !== null && existingBillNum !== undefined)
+      return existingBillNum;
+
+    // Calculate temporary number
+    // Logic: lastBillNumber + position_of_current_table_in_activeTables + 1
+    // Position is 0-indexed, so +1
+
+    // Identify current table in activeTables
+    const idx = activeTables.findIndex(
+      (t) =>
+        String(t.table_no) === String(currentTable) &&
+        String(t.party_no) ===
+          String(safeGet(currentDraft, "header.party_no", "1")),
+    );
+
+    if (idx !== -1) {
+      return lastBillNumber + idx + 1;
+    }
+
+    // If not found in active tables (newly started draft), assume it comes next
+    return lastBillNumber + activeTables.length + 1;
+  }, [currentDraft, activeTables, lastBillNumber, currentTable]);
+
   const displayBillNumber =
     safeGet(currentDraft, "header.bill_number") !== null
       ? safeGet(currentDraft, "header.bill_number")
+<<<<<<< HEAD
       : nextBillNumber || "...";
+=======
+      : tempBillNumber;
+>>>>>>> 96cbae3b8b35cb46b30c3d6896fbe4ff56699754
 
   useEffect(() => {
     if (showHelp) {
