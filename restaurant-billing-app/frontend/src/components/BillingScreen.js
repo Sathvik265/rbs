@@ -30,6 +30,7 @@ import {
   getBillById,
   getPendingOrdersByTableAndParty,
   getAllPendingOrders,
+  getLastBillNumber,
 } from "../services/api";
 import { API, toast, safeGet, safeArray, safeObject } from "../utils/helpers";
 
@@ -51,6 +52,7 @@ export default function Billing({
   const [qty, setQty] = useState(1);
   const [loading, setLoading] = useState(false);
   const [isSplitBillMode, setIsSplitBillMode] = useState(false);
+  const [nextBillNumber, setNextBillNumber] = useState(null);
 
   // --- REFS FOR NAVIGATION ---
   const tableNoRef = useRef(null);
@@ -116,6 +118,33 @@ export default function Billing({
     };
     loadMenu();
   }, []);
+
+  useEffect(() => {
+    const fetchLastBillNumber = async () => {
+      try {
+        console.log("Fetching last bill number for date:", billingDate);
+        const res = await getLastBillNumber(billingDate);
+        console.log("Last bill number response:", res);
+
+        // The API returns the *last* bill number. We want to show the *next* one.
+        const lastNum = parseInt(res.last_bill_number, 10);
+        console.log("Parsed last number:", lastNum);
+
+        if (!isNaN(lastNum)) {
+          setNextBillNumber(lastNum + 1);
+        } else {
+          setNextBillNumber(1); // Default to 1 if no bills exist
+        }
+      } catch (e) {
+        console.error("Failed to fetch last bill number:", e);
+        // Fallback or leave as null
+      }
+    };
+
+    if (activeTab === "billing" || activeTab === "home") {
+      fetchLastBillNumber();
+    }
+  }, [billingDate, activeTab, drafts]); // Re-fetch when drafts change (bill created) or tab/date changes
 
   useEffect(() => {
     if (activeTab === "billing" && tableNoRef.current) {
@@ -256,7 +285,7 @@ export default function Billing({
         (i) =>
           safeGet(i, "numeric_code") === entryCode ||
           safeGet(i, "alpha_code", "").toLowerCase() ===
-            entryCode.toLowerCase(),
+          entryCode.toLowerCase(),
       );
       if (item) {
         if (qtyRef.current) {
@@ -926,6 +955,13 @@ export default function Billing({
         // Override standard ctrl+f
         event.preventDefault();
         setShowHelp(true);
+      } else if (event.key === "F3") {
+        event.preventDefault();
+        setIsSplitBillMode((prev) => {
+          const newState = !prev;
+          toast.success(`Split Bill Mode ${newState ? "Enabled" : "Disabled"}`);
+          return newState;
+        });
       }
     };
 
@@ -938,7 +974,7 @@ export default function Billing({
   const displayBillNumber =
     safeGet(currentDraft, "header.bill_number") !== null
       ? safeGet(currentDraft, "header.bill_number")
-      : "Auto";
+      : nextBillNumber || "...";
 
   useEffect(() => {
     if (showHelp) {
@@ -981,7 +1017,7 @@ export default function Billing({
         const selectedItem = filteredItems[selectedHelpIndex];
         setEntryCode(
           safeGet(selectedItem, "numeric_code", "") ||
-            safeGet(selectedItem, "alpha_code", ""),
+          safeGet(selectedItem, "alpha_code", ""),
         );
         setShowHelp(false);
         if (qtyRef.current) {
@@ -1003,7 +1039,33 @@ export default function Billing({
       <div className="col-span-8 flex flex-col h-full">
         <Card className="flex flex-col h-full">
           <CardHeader className="flex-none">
-            <CardTitle>Billing for {billingDate}</CardTitle>
+            <CardTitle className="flex justify-between items-center">
+              <span>Billing for {billingDate}</span>
+              <div className="flex items-center whitespace-nowrap">
+                <Input
+                  type="checkbox"
+                  id="splitBillModeHeader"
+                  checked={isSplitBillMode}
+                  onChange={(e) => setIsSplitBillMode(e.target.checked)}
+                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
+                    }`}
+                />
+                <Label
+                  htmlFor="splitBillModeHeader"
+                  className={`!mb-0 cursor-pointer text-xs font-medium ${isSplitBillMode ? "text-green-700" : "text-gray-600"
+                    }`}
+                >
+                  SPLIT BILL
+                </Label>
+
+                {isSplitBillMode && (
+                  <span className="ml-2 bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded border border-green-200 animate-pulse">
+                    ACTIVE
+                  </span>
+                )}
+
+              </div>
+            </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col flex-1 overflow-hidden">
             <div className="flex-none space-y-4 mb-4">
@@ -1095,11 +1157,11 @@ export default function Billing({
               <Table>
                 <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
                   <TableRow>
-                    <TableHead>No.</TableHead>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Rate</TableHead>
-                    <TableHead>Amount</TableHead>
+                    <TableHead className="text-lg font-bold py-3 text-black">No.</TableHead>
+                    <TableHead className="text-lg font-bold py-3 text-black">Item</TableHead>
+                    <TableHead className="text-lg font-bold py-3 text-black">Qty</TableHead>
+                    <TableHead className="text-lg font-bold py-3 text-black">Rate</TableHead>
+                    <TableHead className="text-lg font-bold py-3 text-black">Amount</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1109,19 +1171,19 @@ export default function Billing({
                       ref={(el) => (itemRowRefs.current[idx] = el)}
                       tabIndex={0}
                       onKeyDown={(e) => handleRowKeyDown(e, idx)}
-                      className="focus:bg-blue-50 outline-none ring-2 ring-transparent focus:ring-blue-300"
+                      className="focus:bg-blue-50 outline-none ring-2 ring-transparent focus:ring-blue-300 border-b border-gray-200"
                     >
-                      <TableCell className="!py-2">{idx + 1}</TableCell>
-                      <TableCell className="!py-2">
+                      <TableCell className="!py-4 text-xl font-bold text-gray-800">{idx + 1}</TableCell>
+                      <TableCell className="!py-4">
                         <div className="flex items-center">
-                          <span className="mr-2">
+                          <span className="mr-3 text-2xl font-bold text-black tracking-wide">
                             {safeGet(l, "name", "Unknown Item")}
                           </span>
-                          <div className="flex space-x-1">
+                          <div className="flex space-x-2 ml-4">
                             <Button
                               variant="destructive"
                               size="sm"
-                              className="h-6 w-6 p-0"
+                              className="h-10 w-10 p-0 text-xl font-bold"
                               onClick={() => removeLine(idx)}
                               title="Remove Line"
                             >
@@ -1130,7 +1192,7 @@ export default function Billing({
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-6 w-6 p-0 bg-green-50 text-green-600 border-green-200 hover:bg-green-100"
+                              className="h-10 w-10 p-0 bg-green-50 text-green-700 border-green-300 hover:bg-green-100 text-xl font-bold"
                               onClick={() =>
                                 updateQty(
                                   idx,
@@ -1144,21 +1206,21 @@ export default function Billing({
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="!py-2">
+                      <TableCell className="!py-4">
                         <Input
                           ref={(el) => (itemQtyRefs.current[idx] = el)}
                           type="number"
                           min="1"
-                          className="w-16 h-8"
+                          className="w-24 h-12 text-2xl font-bold text-center border-2 border-gray-300 focus:border-blue-500"
                           value={safeGet(l, "quantity", "")}
                           onChange={(e) => updateQty(idx, e.target.value)}
                           onKeyDown={(e) => handleTableQtyKeyDown(e, idx)}
                         />
                       </TableCell>
-                      <TableCell className="!py-2">
+                      <TableCell className="!py-4 text-xl font-semibold text-gray-700">
                         {Number(safeGet(l, "unit_price", 0)).toFixed(2)}
                       </TableCell>
-                      <TableCell className="!py-2">
+                      <TableCell className="!py-4 text-xl font-bold text-black">
                         {Number(safeGet(l, "line_total", 0)).toFixed(2)}
                       </TableCell>
                     </TableRow>
@@ -1175,17 +1237,15 @@ export default function Billing({
           <div className="help-header">
             <div className="help-tabs">
               <button
-                className={`help-tab-btn ${
-                  helpTab === "shortcuts" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "shortcuts" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("shortcuts")}
               >
                 Shortcuts
               </button>
               <button
-                className={`help-tab-btn ${
-                  helpTab === "active" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "active" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("active")}
               >
                 Active Bills ({activeTables.length})
@@ -1226,15 +1286,14 @@ export default function Billing({
                             {filteredItems.map((item, index) => (
                               <TableRow
                                 key={safeGet(item, "id", Math.random())}
-                                className={`cursor-pointer hover:bg-gray-100 ${
-                                  selectedHelpIndex === index
-                                    ? "bg-blue-100"
-                                    : ""
-                                }`}
+                                className={`cursor-pointer hover:bg-gray-100 ${selectedHelpIndex === index
+                                  ? "bg-blue-100"
+                                  : ""
+                                  }`}
                                 onClick={() => {
                                   setEntryCode(
                                     safeGet(item, "numeric_code", "") ||
-                                      safeGet(item, "alpha_code", ""),
+                                    safeGet(item, "alpha_code", ""),
                                   );
                                   setShowHelp(false);
                                   if (qtyRef.current) {
@@ -1276,6 +1335,9 @@ export default function Billing({
                   </li>
                   <li>
                     <kbd>F2</kbd>: Toggle Active Bills
+                  </li>
+                  <li>
+                    <kbd>F3</kbd>: Toggle Split Bill Mode
                   </li>
                   <li>
                     <kbd>Esc</kbd>: Go to Table No.
@@ -1352,21 +1414,9 @@ export default function Billing({
                 <span>CGST (2.5%):</span>
                 <span>{cgst.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between font-bold text-lg border-t pt-2">
+              <div className="flex justify-between font-bold text-lg border-t pt-2 my-2">
                 <span>Grand Total:</span>
                 <span>{total.toFixed(2)}</span>
-              </div>
-              <div className="flex items-center space-x-2 py-2 my-2 bg-gray-50 p-2 rounded border border-gray-100">
-                <Input
-                  type="checkbox"
-                  id="splitBillMode"
-                  checked={isSplitBillMode}
-                  onChange={(e) => setIsSplitBillMode(e.target.checked)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto"
-                />
-                <Label htmlFor="splitBillMode" className="!mb-0 cursor-pointer">
-                  Split Bill Mode
-                </Label>
               </div>
               <Button
                 onClick={handlePrintBill}

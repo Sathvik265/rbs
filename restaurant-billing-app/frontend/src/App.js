@@ -196,7 +196,7 @@ function App() {
       <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-white tracking-tight">
-            Udupi Anand Bhavan — Billing System
+            Kamalanatha Vitthala Prasid
           </h1>
           {mode !== "none" && billingDate && (
             <div className="mt-2 text-sm text-gray-300">

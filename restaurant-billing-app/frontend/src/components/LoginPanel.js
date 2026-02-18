@@ -8,7 +8,6 @@ import {
   Input,
   Button,
   Label,
-  Loader2,
 } from "./ui/UIComponents";
 import { API, toast, safeGet, safeArray } from "../utils/helpers";
 
