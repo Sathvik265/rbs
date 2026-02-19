@@ -260,22 +260,22 @@ const BillingModel = {
       client.release();
     }
   },
-  // Delete all bills (and associated orders) for a track on a given date
-  async deleteBillsByTrack(track, date) {
+  // Delete all bills (and associated orders) for a given date range
+  async deleteBillsByDateRange(startDate, endDate) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
 
       // 1. Delete orders first
       await client.query(
-        "DELETE FROM orders WHERE track = $1 AND bill_date = $2",
-        [track, date],
+        "DELETE FROM orders WHERE bill_date BETWEEN $1 AND $2",
+        [startDate, endDate],
       );
 
       // 2. Delete bills
       const result = await client.query(
-        "DELETE FROM bills WHERE track = $1 AND bill_date = $2",
-        [track, date],
+        "DELETE FROM bills WHERE bill_date BETWEEN $1 AND $2",
+        [startDate, endDate],
       );
 
       await client.query("COMMIT");

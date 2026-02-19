@@ -3,8 +3,9 @@
     Automated Setup and Run Script for Restaurant Billing App
     
 .DESCRIPTION
-    This script installs necessary dependencies (Node.js, PostgreSQL 17, pgAdmin 4),
-    configures the database, installs project packages, and starts the application.
+    This script installs Git, clones/updates the repo, installs dependencies 
+    (Node.js, PostgreSQL 17, pgAdmin 4), configures the database, 
+    installs project packages, and starts the application.
     
     WARNING: This script should be run as Administrator.
 #>
@@ -27,12 +28,6 @@ Write-Host "==========================================================" -Foregro
 Write-Host "   RESTAURANT BILLING APP - AUTOMATED SETUP & RUN" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-# ==============================================================================
-# 1. INSTALL DEPENDENCIES (Node.js, PostgreSQL, pgAdmin 4)
-# ==============================================================================
-
-Write-Host "`n[1/5] Checking and Installing Dependencies..." -ForegroundColor Yellow
-
 # Function to check command availability
 function Test-CommandExists {
     param ($command)
@@ -43,6 +38,53 @@ function Test-CommandExists {
     return $path -ne $null
 }
 
+# ==============================================================================
+# 1. GIT INSTALLATION & REPOSITORY SETUP
+# ==============================================================================
+
+Write-Host "`n[1/6] Setting up Git and Repository..." -ForegroundColor Yellow
+
+# Install Git
+if (Test-CommandExists "git") {
+    Write-Host "   - Git is already installed." -ForegroundColor Green
+} else {
+    Write-Host "   - Installing Git..." -ForegroundColor Cyan
+    winget install Git.Git --accept-source-agreements --accept-package-agreements --silent --force
+    if ($LASTEXITCODE -ne 0) { Write-Error "Failed to install Git." }
+    
+    # Refresh env for current session
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+}
+
+# Clone or Update Repository
+Write-Host "   - Checking Repository Status..." -ForegroundColor Cyan
+if (Test-Path -Path (Join-Path $scriptPath ".git")) {
+    Write-Host "   - Git repository detected. Pulling latest changes..." -ForegroundColor Cyan
+    try {
+        git pull origin main
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "   - Repository updated successfully." -ForegroundColor Green
+        } else {
+            Write-Warning "   - Failed to pull latest changes (possibly not on a tracked branch)."
+        }
+    } catch {
+        Write-Warning "   - 'git pull' encountered an issue. Proceeding with current files."
+    }
+} else {
+    Write-Host "   - Not a git repository root." -ForegroundColor Yellow
+    # Logic to clone if meaningful. Since the script is running, we are likely in the folder.
+    # If the folder is otherwise empty (except this script), we could clone.
+    # For now, we assume the user has placed the files correctly or downloaded the zip.
+    # Uncomment below to force clone into a subdir if needed.
+    # git clone https://github.com/Sathvik265/rbs.git
+}
+
+# ==============================================================================
+# 2. SYSTEM DEPENDENCIES (Node.js, PostgreSQL, pgAdmin 4)
+# ==============================================================================
+
+Write-Host "`n[2/6] Installing System Dependencies..." -ForegroundColor Yellow
+
 # Install Node.js
 if (Test-CommandExists "node") {
     Write-Host "   - Node.js is already installed." -ForegroundColor Green
@@ -50,7 +92,7 @@ if (Test-CommandExists "node") {
     Write-Host "   - Installing Node.js (LTS)..." -ForegroundColor Cyan
     winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent
     if ($LASTEXITCODE -ne 0) { Write-Error "Failed to install Node.js." }
-    # Refresh env for current session
+    # Refresh env
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 }
 
@@ -82,10 +124,10 @@ winget install PostgreSQL.pgAdmin --accept-source-agreements --accept-package-ag
 Write-Host "   - pgAdmin 4 check/install complete." -ForegroundColor Green
 
 # ==============================================================================
-# 2. DATABASE CONFIGURATION
+# 3. DATABASE CONFIGURATION
 # ==============================================================================
 
-Write-Host "`n[2/5] Configuring Database..." -ForegroundColor Yellow
+Write-Host "`n[3/6] Configuring Database..." -ForegroundColor Yellow
 
 # Prompt for DB Password
 Write-Host "`n----------------------------------------------------------"
@@ -99,26 +141,27 @@ $env:PGPASSWORD = $pgPasswordPlain
 Write-Host "   - Creating database '$dbName'..." -ForegroundColor Cyan
 try {
     # Check if DB exists first, if not create
-    psql -U $dbUser -h $dbHost -p $dbPort -tc "SELECT 1 FROM pg_database WHERE datname = '$dbName'" | grep -q 1
-    if ($LASTEXITCODE -ne 0) {
+    # We use a trick: try select 1. If it fails (bad DB), create it.
+    psql -U $dbUser -h $dbHost -p $dbPort -lqt | Select-String $dbName | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+       Write-Host "   - Database '$dbName' already exists." -ForegroundColor Yellow
+    } else {
        createdb -U $dbUser -h $dbHost -p $dbPort $dbName
        Write-Host "   - Database created successfully." -ForegroundColor Green
-    } else {
-       Write-Host "   - Database '$dbName' already exists." -ForegroundColor Yellow
     }
 } catch {
-    # createdb might throw if exists or connection fails, try proceeding or catch error
-    Write-Host "   - Attempting to create database (ignore error if exists)..." -ForegroundColor DarkGray
+    # Fallback attempt
+    Write-Host "   - Attempting to create database..." -ForegroundColor DarkGray
     createdb -U $dbUser -h $dbHost -p $dbPort $dbName 2>$null
 }
 
-# Run Final.sql script
+# Run Final.sql script (Create schema and Populate DB)
 $sqlFile = Join-Path $scriptPath "Final.sql"
 if (Test-Path $sqlFile) {
-    Write-Host "   - Executing schema script ($sqlFile)..." -ForegroundColor Cyan
+    Write-Host "   - Executing schema & population script ($sqlFile)..." -ForegroundColor Cyan
     psql -U $dbUser -h $dbHost -p $dbPort -d $dbName -f $sqlFile
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "   - Schema applied successfully." -ForegroundColor Green
+        Write-Host "   - Database populated successfully." -ForegroundColor Green
     } else {
         Write-Error "Failed to apply schema script. Please check connection/password."
     }
@@ -127,15 +170,16 @@ if (Test-Path $sqlFile) {
 }
 
 # ==============================================================================
-# 3. BACKEND SETUP
+# 4. BACKEND SETUP
 # ==============================================================================
 
-Write-Host "`n[3/5] Setting up Backend..." -ForegroundColor Yellow
+Write-Host "`n[4/6] Setting up Backend..." -ForegroundColor Yellow
 $backendPath = Join-Path $scriptPath "backend"
 
-# Create .env
-$backendEnv = Join-Path $backendPath ".env"
-$backendEnvContent = @"
+if (Test-Path $backendPath) {
+    # Create .env
+    $backendEnv = Join-Path $backendPath ".env"
+    $backendEnvContent = @"
 PORT=8000
 DB_USER=$dbUser
 DB_HOST=$dbHost
@@ -144,54 +188,65 @@ DB_PASSWORD=$pgPasswordPlain
 DB_PORT=$dbPort
 NODE_ENV=development
 "@
-Set-Content -Path $backendEnv -Value $backendEnvContent
-Write-Host "   - Backend .env file created." -ForegroundColor Green
+    Set-Content -Path $backendEnv -Value $backendEnvContent
+    Write-Host "   - Backend .env file created." -ForegroundColor Green
 
-# Install Dependencies
-Write-Host "   - Installing backend NPM packages..." -ForegroundColor Cyan
-Push-Location $backendPath
-npm install
-if ($LASTEXITCODE -ne 0) { Write-Error "Backend npm install failed." }
-Pop-Location
+    # Install Dependencies
+    Write-Host "   - Installing backend NPM packages..." -ForegroundColor Cyan
+    Push-Location $backendPath
+    npm install
+    if ($LASTEXITCODE -ne 0) { Write-Error "Backend npm install failed." }
+    Pop-Location
+} else {
+    Write-Error "Backend directory not found at $backendPath"
+}
 
 # ==============================================================================
-# 4. FRONTEND SETUP
+# 5. FRONTEND SETUP
 # ==============================================================================
 
-Write-Host "`n[4/5] Setting up Frontend..." -ForegroundColor Yellow
+Write-Host "`n[5/6] Setting up Frontend..." -ForegroundColor Yellow
 $frontendPath = Join-Path $scriptPath "frontend"
 
-# Create .env
-$frontendEnv = Join-Path $frontendPath ".env"
-$frontendEnvContent = @"
+if (Test-Path $frontendPath) {
+    # Create .env
+    $frontendEnv = Join-Path $frontendPath ".env"
+    $frontendEnvContent = @"
 REACT_APP_API_URL=http://localhost:8000/api
 "@
-Set-Content -Path $frontendEnv -Value $frontendEnvContent
-Write-Host "   - Frontend .env file created." -ForegroundColor Green
+    Set-Content -Path $frontendEnv -Value $frontendEnvContent
+    Write-Host "   - Frontend .env file created." -ForegroundColor Green
 
-# Install Dependencies
-Write-Host "   - Installing frontend NPM packages..." -ForegroundColor Cyan
-Push-Location $frontendPath
-npm install
-if ($LASTEXITCODE -ne 0) { Write-Error "Frontend npm install failed." }
-Pop-Location
+    # Install Dependencies
+    Write-Host "   - Installing frontend NPM packages..." -ForegroundColor Cyan
+    Push-Location $frontendPath
+    npm install
+    if ($LASTEXITCODE -ne 0) { Write-Error "Frontend npm install failed." }
+    Pop-Location
+} else {
+    Write-Error "Frontend directory not found at $frontendPath"
+}
 
 # ==============================================================================
-# 5. START APPLICATION
+# 6. START APPLICATION
 # ==============================================================================
 
-Write-Host "`n[5/5] Starting Application..." -ForegroundColor Yellow
+Write-Host "`n[6/6] Starting Application..." -ForegroundColor Yellow
 
 # Start Backend
-Write-Host "   - Starting Backend Server..." -ForegroundColor Green
-Start-Process -FilePath "npm" -ArgumentList "start" -WorkingDirectory $backendPath -WindowStyle Normal
+if (Test-Path $backendPath) {
+    Write-Host "   - Starting Backend Server..." -ForegroundColor Green
+    Start-Process -FilePath "npm" -ArgumentList "start" -WorkingDirectory $backendPath -WindowStyle Normal
+}
 
 # Start Frontend
-Write-Host "   - Starting Frontend Client..." -ForegroundColor Green
-Start-Process -FilePath "npm" -ArgumentList "start" -WorkingDirectory $frontendPath -WindowStyle Normal
+if (Test-Path $frontendPath) {
+    Write-Host "   - Starting Frontend Client..." -ForegroundColor Green
+    Start-Process -FilePath "npm" -ArgumentList "start" -WorkingDirectory $frontendPath -WindowStyle Normal
+}
 
 Write-Host "`n==========================================================" -ForegroundColor Cyan
 Write-Host "   SETUP COMPLETE!" -ForegroundColor Green
-Write-Host "   Backend is running on port 8000."
-Write-Host "   Frontend is launching on port 3000."
+Write-Host "   Backend should be running on port 8000."
+Write-Host "   Frontend should be launching on port 3000."
 Write-Host "==========================================================" -ForegroundColor Cyan

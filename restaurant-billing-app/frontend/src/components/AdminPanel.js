@@ -630,24 +630,18 @@ function ClerkStatsDashboard({ sessionId }) {
 }
 
 function PurgeBillsSection() {
-  const [track, setTrack] = useState("");
   const [loading, setLoading] = useState(false);
+  const [startDate, setStartDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
+  const [endDate, setEndDate] = useState(
+    new Date().toISOString().split("T")[0],
+  );
 
   const handlePurge = async () => {
-    if (!track) {
-      toast.error("Please enter a track");
-      return;
-    }
-
-    const validTracks = ["`", "``", "RBS1", "RBS2"];
-    if (!validTracks.includes(track)) {
-      toast.error("Invalid track. Allowed: ` | `` | RBS1 | RBS2");
-      return;
-    }
-
     if (
       !window.confirm(
-        `DANGER: Are you sure you want to DELETE ALL bills for track "${track}" for TODAY?\n\nThis cannot be undone.`,
+        `DANGER: Are you sure you want to DELETE ALL bills from ${startDate} to ${endDate}?\n\nThis will delete records for ALL tracks. This cannot be undone.`,
       )
     ) {
       return;
@@ -655,11 +649,11 @@ function PurgeBillsSection() {
 
     setLoading(true);
     try {
-      // Create a specific API call without importing specific function
-      // Using the default export 'api' which is axios instance
-      const res = await api.post("/billing/bills/purge", { track });
+      const res = await api.post("/billing/bills/purge", {
+        startDate,
+        endDate,
+      });
       toast.success(res.data.message);
-      setTrack("");
     } catch (e) {
       console.error("Purge failed", e);
       toast.error(safeGet(e, "response.data.error", "Purge failed"));
@@ -676,19 +670,32 @@ function PurgeBillsSection() {
       <CardContent>
         <div className="space-y-4">
           <p className="text-sm text-red-600">
-            Enter the exact track (e.g. <strong>`</strong>, <strong>``</strong>,{" "}
-            <strong>RBS1</strong>, or <strong>RBS2</strong>) to delete ALL bills
-            created TODAY for that track.
-            <br />
-            Bills from previous dates are NOT affected.
+            Select a date range to delete <strong>ALL</strong> bills created
+            within that period (inclusive).
           </p>
-          <div className="flex gap-2">
-            <Input
-              value={track}
-              onChange={(e) => setTrack(e.target.value)}
-              placeholder="Enter exact track to purge"
-              className="bg-white max-w-xs"
-            />
+
+          <div className="flex gap-4 items-center">
+            <div className="flex flex-col gap-1">
+              <Label className="text-red-800">Start Date</Label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-white"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label className="text-red-800">End Date</Label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-white"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-2">
             <Button
               variant="destructive"
               onClick={handlePurge}

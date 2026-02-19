@@ -201,7 +201,14 @@ exports.getItemReport = async (req, res) => {
     }
 
     if (category) {
-      whereConditions.push(`item->>'category' ILIKE $${paramIndex}`);
+      // Check both top-level category (legacy) and inside categories array
+      whereConditions.push(`(
+        item->>'category' ILIKE $${paramIndex} OR
+        EXISTS (
+          SELECT 1 FROM jsonb_array_elements(item->'categories') cat
+          WHERE cat->>'name' ILIKE $${paramIndex}
+        )
+      )`);
       params.push(`%${category}%`);
       paramIndex++;
     }
@@ -212,14 +219,25 @@ exports.getItemReport = async (req, res) => {
       `
       SELECT   
         item->>'item_name' as item_name,
-        item->>'category' as category,
-        SUM((item->>'quantity')::integer) as total_quantity,
+        -- Extract category name (prefer from categories array, fallback to legacy field)
+        COALESCE(
+          (SELECT cat->>'name' FROM jsonb_array_elements(item->'categories') cat LIMIT 1),
+          item->>'category'
+        ) as category,
+        -- Calculate Total Quantity: Item Qty * Category Qty (Multiplier)
+        SUM(
+          (item->>'quantity')::integer * 
+          COALESCE(
+            (SELECT SUM((cat->>'qty')::integer) FROM jsonb_array_elements(item->'categories') cat),
+            1
+          )
+        ) as total_quantity,
         SUM((item->>'line_total')::decimal) as total_amount,
         b.track as shift_name
       FROM bills b,
       jsonb_array_elements(b.items_json) as item
       WHERE ${whereClause}
-      GROUP BY item->>'item_name', item->>'category', b.track
+      GROUP BY item->>'item_name', item->'categories', item->>'category', b.track
       ORDER BY total_quantity DESC`,
       params,
     );

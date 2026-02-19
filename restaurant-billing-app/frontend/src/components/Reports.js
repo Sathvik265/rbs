@@ -20,6 +20,68 @@ import {
 } from "./ui/Table";
 import { API, toast, safeGet, safeArray } from "../utils/helpers";
 
+const printReport = (title, columns, data) => {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    toast.error("Please allow popups to print reports");
+    return;
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: monospace; padding: 20px; }
+          h1 { text-align: center; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          th { background-color: #f2f2f2; }
+          .text-right { text-align: right; }
+          @media print {
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>${title}</h1>
+        <table>
+          <thead>
+            <tr>
+              ${columns.map((col) => `<th>${col.header}</th>`).join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${data
+              .map(
+                (row) => `
+              <tr>
+                ${columns
+                  .map(
+                    (col) =>
+                      `<td class="${col.align === "right" ? "text-right" : ""}">
+                    ${col.accessor(row)}
+                  </td>`,
+                  )
+                  .join("")}
+              </tr>
+            `,
+              )
+              .join("")}
+          </tbody>
+        </table>
+        <script>
+          window.onload = function() { window.print(); window.close(); }
+        </script>
+      </body>
+    </html>
+  `;
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+};
+
 export function TimeRangeReport({ sessionId }) {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -51,6 +113,27 @@ export function TimeRangeReport({ sessionId }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePrint = () => {
+    if (!report || report.length === 0) return;
+    printReport(
+      `Time Range Report (${filters.date} ${filters.startTime} - ${filters.endTime})`,
+      [
+        { header: "Bill No", accessor: (r) => r.bill_number },
+        { header: "Table", accessor: (r) => r.table_no },
+        {
+          header: "Amount",
+          accessor: (r) => Number(r.grand_total).toFixed(2),
+          align: "right",
+        },
+        {
+          header: "Time",
+          accessor: (r) => new Date(r.created_at).toLocaleTimeString(),
+        },
+      ],
+      report,
+    );
   };
 
   return (
@@ -93,10 +176,17 @@ export function TimeRangeReport({ sessionId }) {
             </div>
           </div>
 
-          <Button onClick={generateReport} disabled={loading}>
-            {loading ? <Loader2 size={16} className="mr-2" /> : null}
-            Generate Report
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={generateReport} disabled={loading}>
+              {loading ? <Loader2 size={16} className="mr-2" /> : null}
+              Generate Report
+            </Button>
+            {report && report.length > 0 && (
+              <Button onClick={handlePrint} variant="outline">
+                Print Report
+              </Button>
+            )}
+          </div>
 
           {report && (
             <div className="mt-6 space-y-4">
@@ -169,6 +259,27 @@ export function DateRangeReport({ sessionId }) {
     }
   };
 
+  const handlePrint = () => {
+    if (!report || report.length === 0) return;
+    printReport(
+      `Date Range Report (${filters.startDate} - ${filters.endDate})`,
+      [
+        { header: "Bill No", accessor: (r) => r.bill_number },
+        {
+          header: "Date",
+          accessor: (r) => new Date(r.bill_date).toLocaleDateString(),
+        },
+        { header: "Table", accessor: (r) => r.table_no },
+        {
+          header: "Amount",
+          accessor: (r) => Number(r.grand_total).toFixed(2),
+          align: "right",
+        },
+      ],
+      report,
+    );
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -199,10 +310,17 @@ export function DateRangeReport({ sessionId }) {
             </div>
           </div>
 
-          <Button onClick={generateReport} disabled={loading}>
-            {loading ? <Loader2 size={16} className="mr-2" /> : null}
-            Generate Report
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={generateReport} disabled={loading}>
+              {loading ? <Loader2 size={16} className="mr-2" /> : null}
+              Generate Report
+            </Button>
+            {report && report.length > 0 && (
+              <Button onClick={handlePrint} variant="outline">
+                Print Report
+              </Button>
+            )}
+          </div>
 
           {report && (
             <div className="mt-6 space-y-4">
@@ -275,6 +393,27 @@ export function ShiftReport({ sessionId }) {
     }
   };
 
+  const handlePrint = () => {
+    if (!report || report.length === 0) return;
+    printReport(
+      `Shift Report (${filters.date} - ${filters.shiftName})`,
+      [
+        { header: "Bill No", accessor: (r) => r.bill_number },
+        { header: "Table", accessor: (r) => r.table_no },
+        {
+          header: "Amount",
+          accessor: (r) => Number(r.grand_total).toFixed(2),
+          align: "right",
+        },
+        {
+          header: "Time",
+          accessor: (r) => new Date(r.created_at).toLocaleTimeString(),
+        },
+      ],
+      report,
+    );
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -306,10 +445,17 @@ export function ShiftReport({ sessionId }) {
             </div>
           </div>
 
-          <Button onClick={generateReport} disabled={loading}>
-            {loading ? <Loader2 size={16} className="mr-2" /> : null}
-            Generate Report
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={generateReport} disabled={loading}>
+              {loading ? <Loader2 size={16} className="mr-2" /> : null}
+              Generate Report
+            </Button>
+            {report && report.length > 0 && (
+              <Button onClick={handlePrint} variant="outline">
+                Print Report
+              </Button>
+            )}
+          </div>
 
           {report && (
             <div className="mt-6 space-y-4">
@@ -409,6 +555,25 @@ export function ItemReport({ sessionId }) {
     }
   };
 
+  const handlePrint = () => {
+    if (!report || report.length === 0) return;
+    printReport(
+      `Item Sales Report (${filters.startDate} - ${filters.endDate})`,
+      [
+        { header: "Item Name", accessor: (r) => r.itemName },
+        { header: "Category", accessor: (r) => r.category || "N/A" },
+        { header: "Shift", accessor: (r) => r.shiftName },
+        { header: "Quantity", accessor: (r) => r.totalQuantity },
+        {
+          header: "Amount",
+          accessor: (r) => "₹" + Number(r.totalAmount).toFixed(2),
+          align: "right",
+        },
+      ],
+      report,
+    );
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -495,10 +660,17 @@ export function ItemReport({ sessionId }) {
             </div>
           </div>
 
-          <Button onClick={generateReport} disabled={loading}>
-            {loading ? <Loader2 size={16} className="mr-2" /> : null}
-            Generate Report
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={generateReport} disabled={loading}>
+              {loading ? <Loader2 size={16} className="mr-2" /> : null}
+              Generate Report
+            </Button>
+            {report.length > 0 && (
+              <Button onClick={handlePrint} variant="outline">
+                Print Report
+              </Button>
+            )}
+          </div>
 
           {report.length > 0 && (
             <div className="mt-6">
