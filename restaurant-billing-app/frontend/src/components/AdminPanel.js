@@ -355,6 +355,38 @@ function SettingsEditor({ settings, onChange, clerk }) {
                 />
               </TableCell>
             </TableRow>
+            <TableRow>
+              <TableCell>SGST %</TableCell>
+              <TableCell>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={safeGet(form, "sgst_percentage", 2.5)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      sgst_percentage: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                />
+              </TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell>CGST %</TableCell>
+              <TableCell>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={safeGet(form, "cgst_percentage", 2.5)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      cgst_percentage: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                />
+              </TableCell>
+            </TableRow>
           </TableBody>
         </Table>
         <div className="mt-4">

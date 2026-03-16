@@ -31,6 +31,8 @@ const BillContent = ({ data, settings }) => {
   const subtotal = safeGet(data, "subtotal", 0);
   const sgst = safeGet(data, "sgst", 0);
   const cgst = safeGet(data, "cgst", 0);
+  const sgstPercentage = safeGet(mergedData, "sgst_percentage", 2.5);
+  const cgstPercentage = safeGet(mergedData, "cgst_percentage", 2.5);
   const grandTotal = safeGet(data, "grand_total", 0);
   const titleSuffix = safeGet(data, "titleSuffix", "");
 
@@ -161,7 +163,7 @@ const BillContent = ({ data, settings }) => {
           marginBottom: "2px",
         }}
       >
-        <span>SGST( 2.50%)</span>
+        <span>SGST ({Number(sgstPercentage).toFixed(2)}%)</span>
         <span>Rs. {Number(sgst).toFixed(2)}</span>
       </div>
       <div
@@ -171,7 +173,7 @@ const BillContent = ({ data, settings }) => {
           marginBottom: "2px",
         }}
       >
-        <span>CGST( 2.50%)</span>
+        <span>CGST ({Number(cgstPercentage).toFixed(2)}%)</span>
         <span>Rs. {Number(cgst).toFixed(2)}</span>
       </div>
 

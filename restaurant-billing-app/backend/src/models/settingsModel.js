@@ -20,7 +20,14 @@ const SettingsModel = {
   // Update settings for a specific clerk
   async updateSettings(clerk_initials, data) {
     const code = clerk_initials ? clerk_initials.toUpperCase() : "CLK";
-    const { hotel_name, address, phone, gstin } = data;
+    const {
+      hotel_name,
+      address,
+      phone,
+      gstin,
+      sgst_percentage,
+      cgst_percentage,
+    } = data;
 
     // Check if exists
     const check = await pool.query(
@@ -35,10 +42,18 @@ const SettingsModel = {
 
     const result = await pool.query(
       `UPDATE settings 
-         SET hotel_name = $1, address = $2, phone = $3, gstin = $4 
+         SET hotel_name = $1, address = $2, phone = $3, gstin = $4, sgst_percentage = $6, cgst_percentage = $7
          WHERE clerk_initials = $5 
          RETURNING *`,
-      [hotel_name, address, phone, gstin, code],
+      [
+        hotel_name,
+        address,
+        phone,
+        gstin,
+        code,
+        sgst_percentage ?? 2.5,
+        cgst_percentage ?? 2.5,
+      ],
     );
     return result.rows[0];
   },
@@ -61,12 +76,13 @@ const SettingsModel = {
 
     console.log(`Clerk "${code}" not found, creating new entry...`);
 
-    // 2. If not, fetch 'CLK' template (or hardcoded defaults)
     let defaults = {
       hotel_name: "Default Hotel",
       address: "Address",
       phone: "0000000000",
       gstin: "",
+      sgst_percentage: 2.5,
+      cgst_percentage: 2.5,
     };
 
     const template = await pool.query(
@@ -80,8 +96,8 @@ const SettingsModel = {
 
     // 3. Insert new row for this clerk
     const result = await pool.query(
-      `INSERT INTO settings (hotel_name, address, phone, gstin, clerk_initials, created_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+      `INSERT INTO settings (hotel_name, address, phone, gstin, sgst_percentage, cgst_percentage, clerk_initials, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
        ON CONFLICT (clerk_initials) DO UPDATE SET hotel_name = EXCLUDED.hotel_name 
        RETURNING *`,
       [
@@ -89,6 +105,8 @@ const SettingsModel = {
         defaults.address,
         defaults.phone,
         defaults.gstin,
+        defaults.sgst_percentage,
+        defaults.cgst_percentage,
         code,
       ],
     );

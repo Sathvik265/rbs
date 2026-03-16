@@ -35,7 +35,7 @@ function Test-CommandExists {
     $ErrorActionPreference = "SilentlyContinue"
     $path = Get-Command $command
     $ErrorActionPreference = $oldPreference
-    return $path -ne $null
+    return $null -ne $path
 }
 
 # ==============================================================================

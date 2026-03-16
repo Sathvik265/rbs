@@ -414,6 +414,135 @@ export function ShiftReport({ sessionId }) {
     );
   };
 
+  const handlePrintSummary = async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get(`${API}/reports/shift-summary`, {
+        params: { date: filters.date },
+        headers: { Authorization: "admin" },
+      });
+      const data = res.data;
+      if (!data || data.length === 0) {
+        toast.error("No shift data found for this date");
+        return;
+      }
+
+      const summaryData = [...data];
+      const totalAmount = data.reduce((s, r) => s + Number(r.amount), 0);
+      const totalGst = data.reduce((s, r) => s + Number(r.gst_amount), 0);
+      const grandTotal = data.reduce((s, r) => s + Number(r.total_amount), 0);
+
+      summaryData.push({
+        shift_name: "** TOTAL **",
+        amount: totalAmount,
+        gst_amount: totalGst,
+        total_amount: grandTotal,
+        date: "",
+      });
+
+      printReport(
+        `Shift Summary Report (${filters.date})`,
+        [
+          {
+            header: "Date",
+            accessor: (r) =>
+              r.date ? new Date(r.date).toLocaleDateString() : "",
+          },
+          { header: "Shift Name", accessor: (r) => r.shift_name },
+          {
+            header: "Amount Rs",
+            accessor: (r) => Number(r.amount).toFixed(2),
+            align: "right",
+          },
+          {
+            header: "GST Rs",
+            accessor: (r) => Number(r.gst_amount).toFixed(2),
+            align: "right",
+          },
+          {
+            header: "Total Rs",
+            accessor: (r) => Number(r.total_amount).toFixed(2),
+            align: "right",
+          },
+        ],
+        summaryData,
+      );
+    } catch (e) {
+      console.error("Failed to generate summary report:", e);
+      toast.error("Failed to generate summary report");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePrintDetailed = async () => {
+    if (!filters.shiftName || filters.shiftName.trim() === "") {
+      toast.error(
+        "Please enter a valid shift name (e.g. RBS1) for detailed report",
+      );
+      return;
+    }
+    try {
+      setLoading(true);
+      const res = await axios.get(`${API}/reports/shift-detailed`, {
+        params: { date: filters.date, shift_name: filters.shiftName },
+        headers: { Authorization: "admin" },
+      });
+      const data = res.data;
+      if (!data || data.length === 0) {
+        toast.error("No items found for this shift");
+        return;
+      }
+
+      const detailedData = [...data];
+      const totalQty = data.reduce((s, r) => s + Number(r.total_quantity), 0);
+      const totalAmount = data.reduce((s, r) => s + Number(r.total_amount), 0);
+      const totalGst = data.reduce((s, r) => s + Number(r.gst_amount), 0);
+      const finalTotal = data.reduce((s, r) => s + Number(r.final_total), 0);
+
+      detailedData.push({
+        item_code: "",
+        item_name: "** TOTAL **",
+        category: "",
+        total_quantity: totalQty,
+        total_amount: totalAmount,
+        gst_amount: totalGst,
+        final_total: finalTotal,
+      });
+
+      printReport(
+        `Detailed Shift Report (${filters.date} - ${filters.shiftName})`,
+        [
+          { header: "Code", accessor: (r) => r.item_code },
+          { header: "Item Desc", accessor: (r) => r.item_name },
+          { header: "Category", accessor: (r) => r.category || "" },
+          { header: "Qty", accessor: (r) => r.total_quantity },
+          {
+            header: "Amount Rs",
+            accessor: (r) => Number(r.total_amount).toFixed(2),
+            align: "right",
+          },
+          {
+            header: "GST Rs",
+            accessor: (r) => Number(r.gst_amount).toFixed(2),
+            align: "right",
+          },
+          {
+            header: "Total Rs",
+            accessor: (r) => Number(r.final_total).toFixed(2),
+            align: "right",
+          },
+        ],
+        detailedData,
+      );
+    } catch (e) {
+      console.error("Failed to generate detailed report:", e);
+      toast.error("Failed to generate detailed report");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -440,21 +569,39 @@ export function ShiftReport({ sessionId }) {
                 onChange={(e) =>
                   setFilters({ ...filters, shiftName: e.target.value })
                 }
-                placeholder="`, ``, RBS1, RBS2"
+                placeholder="\`, \`\`, RBS1, RBS2"
               />
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={generateReport} disabled={loading}>
               {loading ? <Loader2 size={16} className="mr-2" /> : null}
-              Generate Report
+              Generate List
             </Button>
             {report && report.length > 0 && (
               <Button onClick={handlePrint} variant="outline">
-                Print Report
+                Print Bill List
               </Button>
             )}
+            <Button
+              onClick={handlePrintSummary}
+              variant="outline"
+              disabled={loading}
+              className="bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200"
+            >
+              {loading ? <Loader2 size={16} className="mr-2" /> : null}
+              Summary Report
+            </Button>
+            <Button
+              onClick={handlePrintDetailed}
+              variant="outline"
+              disabled={loading}
+              className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+            >
+              {loading ? <Loader2 size={16} className="mr-2" /> : null}
+              Detailed Report
+            </Button>
           </div>
 
           {report && (

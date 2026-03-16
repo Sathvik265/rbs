@@ -73,6 +73,27 @@ export default function Billing({
   const [filteredItems, setFilteredItems] = useState([]);
   const [selectedHelpIndex, setSelectedHelpIndex] = useState(0);
 
+  // Dynamic GST percentages
+  const [sgstPercentage, setSgstPercentage] = useState(2.5);
+  const [cgstPercentage, setCgstPercentage] = useState(2.5);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const clerk =
+          userInitials || (activeShift && activeShift.clerk_initials) || "CLK";
+        const res = await axios.get(`${API}/settings?clerk=${clerk}`);
+        if (res.data) {
+          setSgstPercentage(parseFloat(res.data.sgst_percentage) || 0);
+          setCgstPercentage(parseFloat(res.data.cgst_percentage) || 0);
+        }
+      } catch (err) {
+        console.error("Failed to load settings for taxes:", err);
+      }
+    };
+    fetchSettings();
+  }, [userInitials, activeShift]);
+
   const currentDraft = useMemo(() => {
     const defaultDraft = {
       header: {
@@ -417,8 +438,14 @@ export default function Billing({
     return lines.reduce((s, l) => s + Number(safeGet(l, "line_total", 0)), 0);
   }, [currentDraft.lines]);
 
-  const sgst = useMemo(() => Number((subtotal * 0.025).toFixed(2)), [subtotal]);
-  const cgst = useMemo(() => Number((subtotal * 0.025).toFixed(2)), [subtotal]);
+  const sgst = useMemo(
+    () => Number((subtotal * (sgstPercentage / 100)).toFixed(2)),
+    [subtotal, sgstPercentage],
+  );
+  const cgst = useMemo(
+    () => Number((subtotal * (cgstPercentage / 100)).toFixed(2)),
+    [subtotal, cgstPercentage],
+  );
   const total = useMemo(
     () => Number((subtotal + sgst + cgst).toFixed(2)),
     [subtotal, sgst, cgst],
@@ -648,6 +675,30 @@ export default function Billing({
           safeGet(item, "numeric_code", ""),
           "numeric_code",
         );
+
+        // Prompt for dynamic price if item price is 0 or name contains MISC
+        if (
+          Number(unitPrice) === 0 ||
+          (typeof itemName === "string" &&
+            itemName.toUpperCase().includes("MISC"))
+        ) {
+          const customPriceStr = window.prompt(
+            `Enter amount for ${itemName}:`,
+            "",
+          );
+          if (customPriceStr === null) {
+            // User cancelled
+            if (itemCodeRef.current) itemCodeRef.current.focus();
+            return null;
+          }
+          const customPrice = parseFloat(customPriceStr);
+          if (isNaN(customPrice) || customPrice < 0) {
+            toast.error("Invalid amount entered. Please enter a valid number.");
+            if (itemCodeRef.current) itemCodeRef.current.focus();
+            return null;
+          }
+          unitPrice = customPrice;
+        }
 
         const newLine = {
           code: entryCode.toUpperCase(),
@@ -1497,11 +1548,11 @@ export default function Billing({
                 <span>{subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
-                <span>SGST (2.5%):</span>
+                <span>SGST ({sgstPercentage}%):</span>
                 <span>{sgst.toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
-                <span>CGST (2.5%):</span>
+                <span>CGST ({cgstPercentage}%):</span>
                 <span>{cgst.toFixed(2)}</span>
               </div>
               <div className="flex justify-between font-bold text-lg border-t pt-2 my-2">

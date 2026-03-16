@@ -81,6 +81,116 @@ exports.getShiftReport = async (req, res) => {
   }
 };
 
+// GET /api/reports/shift-summary
+exports.getShiftSummaryReport = async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ detail: "date is required" });
+
+    const result = await pool.query(
+      `
+      WITH GstRate AS (
+          SELECT (COALESCE(sgst_percentage, 2.50) + COALESCE(cgst_percentage, 2.50)) / 100.0 as rate
+          FROM settings LIMIT 1
+      ),
+      FlatItems AS (
+          SELECT 
+              b.bill_date,
+              b.track as shift_name,
+              (item->>'quantity')::integer as qty,
+              (item->>'line_total')::decimal as amount
+          FROM bills b,
+          jsonb_array_elements(b.items_json) as item
+          WHERE b.bill_date = $1 AND b.bill_number > 0
+      )
+      SELECT 
+          f.bill_date as date,
+          f.shift_name,
+          SUM(f.amount) as amount,
+          SUM(f.amount) * (SELECT rate FROM GstRate) as gst_amount,
+          SUM(f.amount) * (1 + (SELECT rate FROM GstRate)) as total_amount
+      FROM FlatItems f
+      GROUP BY f.bill_date, f.shift_name
+      ORDER BY f.shift_name
+      `,
+      [date],
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Shift summary report error:", error);
+    res.status(500).json({ detail: "Failed to generate shift summary report" });
+  }
+};
+
+// GET /api/reports/shift-detailed
+exports.getShiftDetailedReport = async (req, res) => {
+  try {
+    const { date, shift_name } = req.query;
+    if (!date || !shift_name)
+      return res
+        .status(400)
+        .json({ detail: "date and shift_name are required" });
+
+    const result = await pool.query(
+      `
+      WITH GstRate AS (
+          SELECT (COALESCE(sgst_percentage, 2.50) + COALESCE(cgst_percentage, 2.50)) / 100.0 as rate
+          FROM settings LIMIT 1
+      ),
+      FlatItems AS (
+          SELECT 
+              item->>'item_code' as item_code,
+              item->>'item_name' as item_name,
+              item->>'category' as legacy_category,
+              (item->>'quantity')::integer as qty,
+              (item->>'line_total')::decimal as amount,
+              COALESCE(item->'categories', '[]'::jsonb) as categories_json
+          FROM bills b,
+          jsonb_array_elements(b.items_json) as item
+          WHERE b.bill_date = $1 AND b.track = $2 AND b.bill_number > 0
+      ),
+      ProcessedItems AS (
+          SELECT 
+              item_code,
+              item_name,
+              qty,
+              amount,
+              COALESCE(
+                  (SELECT cat->>'name' FROM jsonb_array_elements(
+                    CASE 
+                      WHEN jsonb_typeof(categories_json->0) = 'array' THEN categories_json->0
+                      ELSE categories_json
+                    END
+                  ) cat LIMIT 1),
+                  legacy_category
+              ) as category_name
+          FROM FlatItems
+      )
+      SELECT   
+        COALESCE(p.item_code, '') as item_code,
+        p.item_name,
+        p.category_name as category,
+        SUM(p.qty) as total_quantity,
+        SUM(p.amount) as total_amount,
+        SUM(p.amount) * (SELECT rate FROM GstRate) as gst_amount,
+        SUM(p.amount) * (1 + (SELECT rate FROM GstRate)) as final_total
+      FROM ProcessedItems p
+      GROUP BY p.item_code, p.item_name, p.category_name
+      ORDER BY p.category_name, p.item_name
+      `,
+      [date, shift_name],
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Shift detailed report error:", error);
+    res
+      .status(500)
+      .json({ detail: "Failed to generate shift detailed report" });
+  }
+};
+
 // GET /api/reports/shift-wise (for the frontend Reports component)
 exports.getShiftWiseReport = async (req, res) => {
   try {
@@ -205,7 +315,12 @@ exports.getItemReport = async (req, res) => {
       whereConditions.push(`(
         item->>'category' ILIKE $${paramIndex} OR
         EXISTS (
-          SELECT 1 FROM jsonb_array_elements(item->'categories') cat
+          SELECT 1 FROM jsonb_array_elements(
+            CASE 
+              WHEN jsonb_typeof(COALESCE(item->'categories', '[]'::jsonb)->0) = 'array' THEN COALESCE(item->'categories', '[]'::jsonb)->0
+              ELSE COALESCE(item->'categories', '[]'::jsonb)
+            END
+          ) cat
           WHERE cat->>'name' ILIKE $${paramIndex}
         )
       )`);
@@ -217,27 +332,52 @@ exports.getItemReport = async (req, res) => {
 
     const result = await pool.query(
       `
+      WITH FlatItems AS (
+          SELECT 
+              b.track as shift_name,
+              item->>'item_name' as item_name,
+              item->>'category' as legacy_category,
+              (item->>'quantity')::integer as qty,
+              (item->>'line_total')::decimal as amount,
+              COALESCE(item->'categories', '[]'::jsonb) as categories_json
+          FROM bills b,
+          jsonb_array_elements(b.items_json) as item
+          WHERE ${whereClause}
+      ),
+      ProcessedItems AS (
+          SELECT 
+              shift_name,
+              item_name,
+              qty,
+              amount,
+              COALESCE(
+                  (SELECT SUM((cat->>'qty')::integer) FROM jsonb_array_elements(
+                    CASE 
+                      WHEN jsonb_typeof(categories_json->0) = 'array' THEN categories_json->0
+                      ELSE categories_json
+                    END
+                  ) cat),
+                  1
+              ) as multiplier,
+              COALESCE(
+                  (SELECT cat->>'name' FROM jsonb_array_elements(
+                    CASE 
+                      WHEN jsonb_typeof(categories_json->0) = 'array' THEN categories_json->0
+                      ELSE categories_json
+                    END
+                  ) cat LIMIT 1),
+                  legacy_category
+              ) as category_name
+          FROM FlatItems
+      )
       SELECT   
-        item->>'item_name' as item_name,
-        -- Extract category name (prefer from categories array, fallback to legacy field)
-        COALESCE(
-          (SELECT cat->>'name' FROM jsonb_array_elements(item->'categories') cat LIMIT 1),
-          item->>'category'
-        ) as category,
-        -- Calculate Total Quantity: Item Qty * Category Qty (Multiplier)
-        SUM(
-          (item->>'quantity')::integer * 
-          COALESCE(
-            (SELECT SUM((cat->>'qty')::integer) FROM jsonb_array_elements(item->'categories') cat),
-            1
-          )
-        ) as total_quantity,
-        SUM((item->>'line_total')::decimal) as total_amount,
-        b.track as shift_name
-      FROM bills b,
-      jsonb_array_elements(b.items_json) as item
-      WHERE ${whereClause}
-      GROUP BY item->>'item_name', item->'categories', item->>'category', b.track
+        item_name,
+        category_name as category,
+        SUM(qty * multiplier) as total_quantity,
+        SUM(amount) as total_amount,
+        shift_name
+      FROM ProcessedItems
+      GROUP BY item_name, category_name, shift_name
       ORDER BY total_quantity DESC`,
       params,
     );
