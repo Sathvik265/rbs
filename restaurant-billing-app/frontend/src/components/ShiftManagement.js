@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from "react";
-import axios from "axios";
 import {
   Card,
   CardHeader,
@@ -17,7 +16,7 @@ import {
   TableCell,
 } from "./ui/Table";
 import { getShiftStatus, reopenShift, closeShift } from "../services/api";
-import { API, toast, safeGet, safeArray } from "../utils/helpers";
+import { toast, safeGet, safeArray } from "../utils/helpers";
 
 export default function ShiftTab({
   mode,
@@ -60,11 +59,8 @@ export default function ShiftTab({
     if (!sessionId) return;
 
     try {
-      const res = await axios.post(`${API}/shifts/close`, {
-        session_id: sessionId,
-      });
-
-      toast.success(`Shift ${res.data.shift_name} closed successfully`);
+      const res = await closeShift(sessionId);
+      toast.success(`Shift ${res.shift_name} closed successfully`);
       setTimeout(() => {
         window.location.reload();
       }, 1500);

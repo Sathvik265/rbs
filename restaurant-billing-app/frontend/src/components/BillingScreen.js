@@ -143,13 +143,10 @@ export default function Billing({
   useEffect(() => {
     const fetchLastBillNumber = async () => {
       try {
-        console.log("Fetching last bill number for date:", billingDate);
         const res = await getLastBillNumber(billingDate);
-        console.log("Last bill number response:", res);
 
         // The API returns the *last* bill number. We want to show the *next* one.
         const lastNum = parseInt(res.last_bill_number, 10);
-        console.log("Parsed last number:", lastNum);
 
         if (!isNaN(lastNum)) {
           setNextBillNumber(lastNum + 1);
@@ -451,6 +448,11 @@ export default function Billing({
     [subtotal, sgst, cgst],
   );
 
+  // These are defined later in the file; keep stable call sites without
+  // tripping `no-use-before-define` or stale-closure issues.
+  const fetchActiveTablesRef = useRef(null);
+  const fetchLastBillNumberRef = useRef(null);
+
   const createBill = useCallback(
     async (lines) => {
       if (!lines || lines.length === 0) {
@@ -593,8 +595,8 @@ export default function Billing({
         }
 
         // Refresh numbers
-        fetchLastBillNumber();
-        fetchActiveTables();
+        fetchLastBillNumberRef.current?.();
+        fetchActiveTablesRef.current?.();
 
         setEntryCode("");
         setQty(1);
@@ -729,7 +731,7 @@ export default function Billing({
         await createOrder(payload);
 
         // Refresh active tables to update sequences
-        fetchActiveTables();
+        fetchActiveTablesRef.current?.();
 
         if (focusItemCode && setDrafts) {
           const updatedLines = [...safeArray(currentDraft.lines), newLine];
@@ -762,6 +764,7 @@ export default function Billing({
       activeShift,
       track,
       userInitials,
+      billingDate,
       setDrafts,
       setEntryCode,
       setQty,
@@ -908,6 +911,7 @@ export default function Billing({
     addItem,
     createBill,
     setLoading,
+    setPrintData,
     tableNoRef,
     isSplitBillMode,
   ]);
@@ -986,7 +990,15 @@ export default function Billing({
     } catch (err) {
       console.error("Failed to fetch active tables", err);
     }
-  }, []);
+  }, [billingDate]);
+
+  useEffect(() => {
+    fetchActiveTablesRef.current = fetchActiveTables;
+  }, [fetchActiveTables]);
+
+  useEffect(() => {
+    fetchLastBillNumberRef.current = fetchLastBillNumber;
+  }, [fetchLastBillNumber]);
 
   // Initial load and Polling
   useEffect(() => {
@@ -1099,7 +1111,7 @@ export default function Billing({
   const displayBillNumber =
     safeGet(currentDraft, "header.bill_number") !== null
       ? safeGet(currentDraft, "header.bill_number")
-      : nextBillNumber || "...";
+      : tempBillNumber || nextBillNumber || "...";
 
   useEffect(() => {
     if (showHelp) {

@@ -76,6 +76,13 @@ const BillContent = ({ data, settings }) => {
           {address}
         </div>
       )}
+      {phone && (
+        <div
+          style={{ textAlign: "center", fontSize: "11px", marginBottom: "2px" }}
+        >
+          {phone}
+        </div>
+      )}
       <div
         style={{ textAlign: "center", fontSize: "11px", marginBottom: "8px" }}
       >
@@ -156,6 +163,16 @@ const BillContent = ({ data, settings }) => {
       <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }}></div>
 
       {/* Taxes */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          marginBottom: "2px",
+        }}
+      >
+        <span>Subtotal</span>
+        <span>Rs. {Number(subtotal).toFixed(2)}</span>
+      </div>
       <div
         style={{
           display: "flex",

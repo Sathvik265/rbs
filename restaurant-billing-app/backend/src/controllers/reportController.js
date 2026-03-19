@@ -199,8 +199,6 @@ exports.getShiftWiseReport = async (req, res) => {
       return res.status(400).json({ detail: "bill_date is required" });
     }
 
-    console.log("Generating shift-wise report for date:", bill_date);
-
     const result = await pool.query(
       `
       SELECT   
@@ -214,7 +212,6 @@ exports.getShiftWiseReport = async (req, res) => {
       [bill_date],
     );
 
-    console.log("Shift-wise report result:", result.rows);
     res.json({ report: result.rows });
   } catch (error) {
     console.error("Shift wise report error:", error);
@@ -230,8 +227,6 @@ exports.getTimeWiseReport = async (req, res) => {
       return res.status(400).json({ detail: "bill_date is required" });
     }
 
-    console.log("Generating time-wise report for date:", bill_date);
-
     const result = await pool.query(
       `
       SELECT   
@@ -245,7 +240,6 @@ exports.getTimeWiseReport = async (req, res) => {
       [bill_date],
     );
 
-    console.log("Time-wise report result:", result.rows);
     res.json({ report: result.rows });
   } catch (error) {
     console.error("Time wise report error:", error);
@@ -261,8 +255,6 @@ exports.getItemWiseReport = async (req, res) => {
       return res.status(400).json({ detail: "bill_date is required" });
     }
 
-    console.log("Generating item-wise report for date:", bill_date);
-
     const result = await pool.query(
       `
       SELECT   
@@ -277,7 +269,6 @@ exports.getItemWiseReport = async (req, res) => {
       [bill_date],
     );
 
-    console.log("Item-wise report result:", result.rows);
     res.json({ report: result.rows });
   } catch (error) {
     console.error("Item wise report error:", error);
@@ -449,11 +440,18 @@ const SettingsModel = require("../models/settingsModel");
 // GET /api/settings
 exports.getSettings = async (req, res) => {
   try {
-    const { clerk } = req.query;
-    // If clerk is passed, get for that clerk. Else default to 'CLK' or whoever is calling if we had auth middleware here.
-    // For now, default to 'CLK' if no clerk specified (preserving admin UI behavior)
-    // The frontend should ideally pass the logged-in clerk initials.
-    const settings = await SettingsModel.getSettings(clerk || "CLK");
+    const requestedClerk = String(
+      req.query.clerk || req.auth?.staff_code || "CLK",
+    ).toUpperCase();
+    const isAdmin = String(req.auth?.mode || "").startsWith("admin");
+
+    if (!isAdmin && requestedClerk !== req.auth?.staff_code) {
+      return res
+        .status(403)
+        .json({ detail: "You can only access your own settings" });
+    }
+
+    const settings = await SettingsModel.getSettings(requestedClerk);
 
     // Fallback if null (shouldn't happen with ensureSettings, but safe check)
     if (!settings) {
@@ -462,7 +460,7 @@ exports.getSettings = async (req, res) => {
         phone: "",
         gstin: "",
         address: "",
-        clerk_initials: clerk || "CLK",
+        clerk_initials: requestedClerk,
       });
     }
 
@@ -487,10 +485,11 @@ exports.getClerks = async (req, res) => {
 // PUT /api/settings
 exports.updateSettings = async (req, res) => {
   try {
-    const { clerk } = req.query;
-    // Update for specific clerk or 'CLK'
+    const targetClerk = String(
+      req.query.clerk || req.auth?.staff_code || "CLK",
+    ).toUpperCase();
     const settings = await SettingsModel.updateSettings(
-      clerk || "CLK",
+      targetClerk,
       req.body,
     );
     res.json(settings);
@@ -506,8 +505,6 @@ const BillingModel = require("../models/billingModel");
 exports.getTopItems = async (req, res) => {
   try {
     const today = new Date().toISOString().slice(0, 10);
-    console.log("Fetching top items for date:", today);
-
     // Fetch raw bills data
     // Using loose date matching to be safe
     const result = await pool.query(
@@ -515,14 +512,6 @@ exports.getTopItems = async (req, res) => {
        WHERE bill_date::text LIKE $1 || '%' AND bill_number > 0`,
       [today],
     );
-
-    console.log(`Found ${result.rows.length} bills for top items calculation`);
-    if (result.rows.length > 0) {
-      console.log(
-        "First bill items sample:",
-        JSON.stringify(result.rows[0].items_json, null, 2),
-      );
-    }
 
     // Manually aggregate items
     const itemCounts = {};
@@ -555,7 +544,6 @@ exports.getTopItems = async (req, res) => {
       .sort((a, b) => b.total_quantity - a.total_quantity)
       .slice(0, 5);
 
-    console.log("Top items calculated:", sortedItems);
     res.json(sortedItems);
   } catch (error) {
     console.error("Top items error:", error);

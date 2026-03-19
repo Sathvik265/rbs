@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const ItemModel = require("../models/itemModel");
+const { requireAdminFull } = require("../middleware/auth");
 
 router.get("/", async (req, res) => {
   try {
@@ -75,7 +76,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requireAdminFull, async (req, res) => {
   try {
     const item = await ItemModel.createItem(req.body);
     res.status(201).json(item);
@@ -86,7 +87,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireAdminFull, async (req, res) => {
   try {
     const item = await ItemModel.updateItem(req.params.id, req.body);
     res.json(item);
@@ -97,7 +98,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.patch("/:id/separate", async (req, res) => {
+router.patch("/:id/separate", requireAdminFull, async (req, res) => {
   try {
     const { is_separate } = req.body;
     const item = await ItemModel.updateItemSeparate(req.params.id, is_separate);
@@ -110,7 +111,7 @@ router.patch("/:id/separate", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAdminFull, async (req, res) => {
   try {
     await ItemModel.deleteItem(req.params.id);
     res.json({ message: "Item deleted successfully" });

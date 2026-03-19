@@ -61,7 +61,6 @@ const SettingsModel = {
   // Ensure settings exist for a clerk (auto-provisioning)
   async ensureSettings(clerk_initials) {
     const code = clerk_initials ? clerk_initials.toUpperCase() : "CLK";
-    console.log(`ensureSettings called for clerk: "${code}"`);
 
     // 1. Check if exists
     const check = await pool.query(
@@ -70,11 +69,8 @@ const SettingsModel = {
     );
 
     if (check.rows.length > 0) {
-      console.log(`Clerk "${code}" already exists in settings`);
       return check.rows[0];
     }
-
-    console.log(`Clerk "${code}" not found, creating new entry...`);
 
     let defaults = {
       hotel_name: "Default Hotel",
@@ -91,7 +87,6 @@ const SettingsModel = {
 
     if (template.rows.length > 0) {
       defaults = { ...template.rows[0] };
-      console.log(`Using CLK template for new clerk "${code}"`);
     }
 
     // 3. Insert new row for this clerk
@@ -110,8 +105,6 @@ const SettingsModel = {
         code,
       ],
     );
-
-    console.log(`Clerk "${code}" created successfully:`, result.rows[0]);
     return result.rows[0];
   },
 

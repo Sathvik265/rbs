@@ -41,7 +41,6 @@ export const UserProvider = ({ children }) => {
 
   // Sync with localStorage whenever values change
   useEffect(() => {
-    console.log("UserContext: userInitials changed to:", userInitials);
     if (userInitials) {
       localStorage.setItem("userInitials", userInitials);
     } else {

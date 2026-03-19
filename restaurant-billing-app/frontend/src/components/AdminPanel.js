@@ -45,9 +45,7 @@ function EnhancedReconciliation({ sessionId, mode }) {
   const loadRunningBills = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/reconciliation/running`, {
-        headers: { Authorization: "admin" },
-      });
+      const res = await api.get(`/reconciliation/running`);
       setUnprintedBills(safeArray(res.data));
     } catch (e) {
       console.error("Failed to load running bills:", e);
@@ -219,9 +217,7 @@ function TopItemsDashboard({ sessionId }) {
 
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/dashboard/top-items`, {
-        headers: { Authorization: "admin" },
-      });
+      const res = await axios.get(`${API}/dashboard/top-items`);
       setTopItems(safeArray(res.data));
     } catch (e) {
       console.error("Failed to load top items:", e);
@@ -570,9 +566,7 @@ function ClerkStatsDashboard({ sessionId }) {
   const loadStats = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/dashboard/clerk-stats`, {
-        headers: { Authorization: "admin" },
-      });
+      const res = await axios.get(`${API}/dashboard/clerk-stats`);
       setStats(safeObject(res.data));
     } catch (e) {
       console.error("Failed to load clerk stats:", e);
@@ -671,6 +665,15 @@ function PurgeBillsSection() {
   );
 
   const handlePurge = async () => {
+    const confirmPassword = window.prompt(
+      "Enter admin full password to confirm purge:",
+      "",
+    );
+
+    if (!confirmPassword) {
+      return;
+    }
+
     if (
       !window.confirm(
         `DANGER: Are you sure you want to DELETE ALL bills from ${startDate} to ${endDate}?\n\nThis will delete records for ALL tracks. This cannot be undone.`,
@@ -684,6 +687,7 @@ function PurgeBillsSection() {
       const res = await api.post("/billing/bills/purge", {
         startDate,
         endDate,
+        confirmPassword,
       });
       toast.success(res.data.message);
     } catch (e) {

@@ -5,14 +5,8 @@ export const API = `${BACKEND_URL}/api`;
 
 // Toast notification system
 export const toast = {
-  success: (message) => {
-    console.log("Success:", message);
-    alert(message);
-  },
-  error: (message) => {
-    console.error("Error:", message);
-    alert(message);
-  },
+  success: (message) => alert(message),
+  error: (message) => alert(message),
 };
 
 // Safe utility functions
@@ -26,7 +20,6 @@ export const safeGet = (obj, path, defaultValue = null) => {
     }
     return current === undefined ? defaultValue : current;
   } catch (e) {
-    console.warn(`Safe get failed for path: ${path}`, e);
     return defaultValue;
   }
 };

@@ -45,7 +45,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
     const fetchSessions = async () => {
       setSessionsLoading(true);
       try {
-        const res = await axios.get(`${API}/shifts/sessions`);
+        const res = await axios.get(`${API}/auth/shift-status`);
         setSessions(safeArray(res.data));
       } catch (e) {
         console.error("Failed to fetch sessions for shift check:", e);
@@ -138,15 +138,8 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
         setShowPwd(true);
         return;
       }
-
-      if (password === "SHRIDAR") {
-        if (onLogin) onLogin("admin-restricted", date, track, null, "SHI");
-        return;
-      } else if (password === "SHRIDAR123") {
-        if (onLogin) onLogin("admin-full", date, track, null, "SHI");
-        return;
-      } else {
-        toast.error("Invalid Admin Password");
+      if (!password) {
+        toast.error("Please enter admin password");
         return;
       }
     }
@@ -155,7 +148,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
     try {
       const res = await axios.post(`${API}/auth/login`, {
         staff_code: credential,
-        is_root: false,
+        password,
         date: date,
         track: track,
       });
@@ -167,6 +160,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
           track,
           res.data.session_id,
           credential.toUpperCase(),
+          res.data.auth_token,
         );
       }
 
@@ -176,6 +170,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
           : "Clerk mode",
       );
     } catch (e) {
+      setPassword("");
       if (onLogin) {
         onLogin("none", null, null, null, null);
       }
@@ -200,7 +195,15 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
                     placeholder="Enter credential"
                     className="col-span-2"
                     value={credential}
-                    onChange={(e) => setCredential(e.target.value)}
+                    onChange={(e) => {
+                      const nextCredential = e.target.value;
+                      setCredential(nextCredential);
+
+                      if (nextCredential.toUpperCase() !== "SHI") {
+                        setShowPwd(false);
+                        setPassword("");
+                      }
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Tab" && !e.shiftKey) {
                         e.preventDefault();
@@ -298,8 +301,8 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
               )}
             </div>
             <div className="text-xs text-gray-600 text-center">
-              Hint: Use 'CLK' for clerk, 'SHI' for admin. Track: '`', '``',
-              'RBS1', 'RBS2'
+              Hint: Use clerk initials for clerks or 'SHI' for admin. Track:
+              '`', '``', 'RBS1', 'RBS2'
             </div>
           </div>
         </CardContent>

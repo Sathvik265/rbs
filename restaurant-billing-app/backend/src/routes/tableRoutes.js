@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const TableModel = require("../models/TableModel");
+const { requireAdminAny } = require("../middleware/auth");
 
 router.get("/tables", async (req, res) => {
   try {
@@ -50,7 +51,7 @@ router.get("/tables/section/:sectionName", async (req, res) => {
   }
 });
 
-router.put("/tables/:tableId", async (req, res) => {
+router.put("/tables/:tableId", requireAdminAny, async (req, res) => {
   try {
     const { section_name } = req.body;
     const table = await TableModel.updateTableSection(

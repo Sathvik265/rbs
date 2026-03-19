@@ -2,6 +2,7 @@ import axios from "axios";
 
 // FIXED: Updated to use the correct port (8000) instead of 5000
 const API_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8000/api";
+const AUTH_TOKEN_KEY = "authToken";
 
 if (!process.env.REACT_APP_API_URL) {
   console.warn(
@@ -9,7 +10,6 @@ if (!process.env.REACT_APP_API_URL) {
   );
 }
 
-// Create axios instance with default config
 const api = axios.create({
   baseURL: API_URL,
   timeout: 10000,
@@ -18,42 +18,59 @@ const api = axios.create({
   },
 });
 
-// Add request interceptor for debugging
-api.interceptors.request.use(
-  (config) => {
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
-    return config;
-  },
-  (error) => {
-    console.error("API Request Error:", error);
-    return Promise.reject(error);
+const applyAuthToken = (token) => {
+  if (token) {
+    api.defaults.headers.common["X-Auth-Token"] = token;
+    axios.defaults.headers.common["X-Auth-Token"] = token;
+  } else {
+    delete api.defaults.headers.common["X-Auth-Token"];
+    delete axios.defaults.headers.common["X-Auth-Token"];
   }
-);
+};
 
-// Add response interceptor for error handling
-api.interceptors.response.use(
-  (response) => {
-    console.log(
-      `API Response: ${response.status} ${response.config.url}`,
-      response.data
-    );
-    return response;
-  },
-  (error) => {
-    console.error("API Response Error:", error.response?.data || error.message);
-    return Promise.reject(error);
+if (typeof window !== "undefined") {
+  applyAuthToken(localStorage.getItem(AUTH_TOKEN_KEY));
+}
+
+export const setAuthToken = (token) => {
+  if (typeof window !== "undefined") {
+    if (token) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+    }
   }
-);
+
+  applyAuthToken(token);
+};
+
+export const clearAuthToken = () => {
+  setAuthToken(null);
+};
 
 // ==================== AUTHENTICATION ====================
-export const login = async (staff_code, is_root = false) => {
-  const response = await api.post("/auth/login", { staff_code, is_root });
+export const login = async (staff_code, date, track, password = "") => {
+  const response = await api.post("/auth/login", {
+    staff_code,
+    date,
+    track,
+    password,
+  });
+
+  if (response.data?.auth_token) {
+    setAuthToken(response.data.auth_token);
+  }
+
   return response.data;
 };
 
 export const logout = async () => {
-  const response = await api.post("/auth/transfer");
-  return response.data;
+  try {
+    const response = await api.post("/auth/logout");
+    return response.data;
+  } finally {
+    clearAuthToken();
+  }
 };
 
 // ==================== MENU OPERATIONS ====================

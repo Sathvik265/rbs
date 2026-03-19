@@ -23,6 +23,14 @@ const dashboardRoutes = require("./routes/dashboardRoutes");
 const reconciliationRoutes = require("./routes/reconciliationRoutes");
 const reportController = require("./controllers/reportController");
 const SettingsModel = require("./models/settingsModel");
+const { resolveAdminMode } = require("./auth/config");
+const { createSession, deleteSession } = require("./auth/sessionStore");
+const {
+  attachAuth,
+  requireAuth,
+  requireAdminAny,
+  requireAdminFull,
+} = require("./middleware/auth");
 
 // Security middleware
 app.use(
@@ -49,6 +57,7 @@ app.use(
 // Body parsing
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use("/api", attachAuth);
 
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -56,25 +65,37 @@ app.use((req, res, next) => {
 });
 
 // ================ ROUTES (centralized) ================
-app.use("/api/billing", billingRoutes);
-app.use("/api/shifts", shiftRoutes);
-app.use("/api/items", itemRoutes);
-app.use("/api/tables", tableRoutes);
-app.use("/api/reports", reportRoutes);
-app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/reconciliation", reconciliationRoutes);
+app.use("/api/billing", requireAuth, billingRoutes);
+app.use("/api/shifts", requireAuth, shiftRoutes);
+app.use("/api/items", requireAuth, itemRoutes);
+app.use("/api/tables", requireAuth, tableRoutes);
+app.use("/api/reports", requireAdminAny, reportRoutes);
+app.use("/api/dashboard", requireAdminAny, dashboardRoutes);
+app.use("/api/reconciliation", requireAdminAny, reconciliationRoutes);
 
 // Simple settings endpoints for admin UI
-app.get("/api/settings/clerks", reportController.getClerks);
-app.get("/api/settings", reportController.getSettings);
-app.put("/api/settings", reportController.updateSettings);
+app.get("/api/settings/clerks", requireAdminAny, reportController.getClerks);
+app.get("/api/settings", requireAuth, reportController.getSettings);
+app.put("/api/settings", requireAdminAny, reportController.updateSettings);
+
+app.get("/api/auth/shift-status", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT session_id, shift_name, status, start_time, end_time
+       FROM sessions
+       ORDER BY shift_name, start_time`,
+    );
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ detail: "Failed to fetch shift status" });
+  }
+});
 
 // ================ AUTH ROUTES (UPDATED) ================
 // POST /api/auth/login - Updated for shift_sessions table
 app.post("/api/auth/login", async (req, res) => {
   try {
-    console.log("Auth login request body:", req.body);
-    const { staff_code: initials, date, track, is_root = false } = req.body;
+    const { staff_code: initials, date, track, password = "" } = req.body;
 
     // Normalize initials to uppercase for DB consistency
     const upperStaffCode = initials ? String(initials).toUpperCase() : null;
@@ -85,39 +106,32 @@ app.post("/api/auth/login", async (req, res) => {
       });
     }
 
-    // Check if clerk exists in settings table
-    const clerkCheck = await pool.query(
-      "SELECT clerk_initials FROM settings WHERE clerk_initials = $1",
-      [upperStaffCode],
-    );
+    let mode = "clerk";
 
-    console.log(`Clerk check for "${upperStaffCode}":`, clerkCheck.rows);
+    if (upperStaffCode === "SHI") {
+      mode = resolveAdminMode(password);
 
-    if (clerkCheck.rows.length === 0) {
-      console.log(`Clerk "${upperStaffCode}" not found in settings table`);
-      return res.status(401).json({
-        detail: "Invalid credentials. Clerk not found in system.",
-      });
-    }
-
-    console.log(`Clerk "${upperStaffCode}" found, proceeding with login`);
-
-    // Determine mode based on clerk initials
-    let mode = "none";
-
-    if (upperStaffCode === "CLK") {
-      mode = "clerk";
-    } else if (upperStaffCode === "SHI") {
-      mode = is_root ? "admin-full" : "admin-limited";
+      if (!mode) {
+        return res.status(401).json({
+          detail: "Invalid admin password",
+        });
+      }
     } else {
-      // Other clerks get clerk mode by default
-      mode = "clerk";
+      const clerkCheck = await pool.query(
+        "SELECT clerk_initials FROM settings WHERE clerk_initials = $1",
+        [upperStaffCode],
+      );
+
+      if (clerkCheck.rows.length === 0) {
+        return res.status(401).json({
+          detail: "Invalid credentials. Clerk not found in system.",
+        });
+      }
     }
 
     // IMPORTANT: If the requested track/shift is CLOSED, do not allow login.
     // We check by shift_name only — session_date is a fixed creation date and
     // doesn't change per login, so date-specific comparisons always miss closed shifts.
-    console.log(`Checking closed status for Track: ${track}, Date: ${date}`);
     const closedCheck = await pool.query(
       `SELECT 1 FROM sessions WHERE shift_name = $1 AND UPPER(status) = 'CLOSED' LIMIT 1`,
       [track],
@@ -126,13 +140,6 @@ app.post("/api/auth/login", async (req, res) => {
       `SELECT 1 FROM sessions WHERE shift_name = $1 AND UPPER(status) = 'OPEN' LIMIT 1`,
       [track],
     );
-    console.log(
-      `Closed Check Result:`,
-      closedCheck.rows,
-      `Open Check:`,
-      openCheck.rows,
-    );
-
     if (closedCheck.rows.length > 0 && openCheck.rows.length === 0) {
       return res
         .status(403)
@@ -152,14 +159,8 @@ app.post("/api/auth/login", async (req, res) => {
     if (shiftSessionResult.rows.length > 0) {
       // Reuse the existing open session for this track
       shift_session_id = shiftSessionResult.rows[0].session_id;
-      console.log(
-        `Reusing existing open session ${shift_session_id} for track "${track}" (originally created by ${shiftSessionResult.rows[0].clerk_initials})`,
-      );
     } else {
       // No open session exists for this track, create a new one
-      console.log(
-        `Creating new session for track "${track}" and clerk "${upperStaffCode}"`,
-      );
       const createResult = await pool.query(
         `INSERT INTO sessions (shift_name, clerk_initials, session_date, status, start_time)
      VALUES ($1, $2, $3, 'OPEN', CURRENT_TIMESTAMP)
@@ -169,7 +170,6 @@ app.post("/api/auth/login", async (req, res) => {
 
       if (createResult.rows.length > 0) {
         shift_session_id = createResult.rows[0].session_id;
-        console.log(`Created new session ${shift_session_id}`);
       } else {
         return res
           .status(409)
@@ -179,11 +179,19 @@ app.post("/api/auth/login", async (req, res) => {
 
     // Ensure settings exist for this clerk (Auto-provisioning)
     await SettingsModel.ensureSettings(upperStaffCode);
+    const authToken = createSession({
+      staff_code: upperStaffCode,
+      mode,
+      session_id: shift_session_id,
+      track,
+      billing_date: date,
+    });
 
     res.json({
       mode,
       shift_session_id,
       session_id: shift_session_id, // For backward compatibility
+      auth_token: authToken,
     });
   } catch (error) {
     console.error("Auth login error:", error);
@@ -191,9 +199,14 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+app.post("/api/auth/logout", requireAuth, (req, res) => {
+  deleteSession(req.auth.token);
+  res.json({ detail: "Logged out" });
+});
+
 // ================ MENU ROUTES (UNCHANGED) ================
 // GET /api/menu - all menu items
-app.get("/api/menu", async (req, res) => {
+app.get("/api/menu", requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
       "SELECT * FROM items ORDER BY category, name",
@@ -206,7 +219,7 @@ app.get("/api/menu", async (req, res) => {
 });
 
 // POST /api/menu - add menu item
-app.post("/api/menu", async (req, res) => {
+app.post("/api/menu", requireAdminFull, async (req, res) => {
   try {
     const {
       name,
@@ -291,7 +304,7 @@ app.post("/api/menu", async (req, res) => {
 });
 
 // DELETE /api/menu/:id
-app.delete("/api/menu/:id", async (req, res) => {
+app.delete("/api/menu/:id", requireAdminFull, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -308,7 +321,7 @@ app.delete("/api/menu/:id", async (req, res) => {
 });
 
 // PUT /api/menu/:id - update menu item
-app.put("/api/menu/:id", async (req, res) => {
+app.put("/api/menu/:id", requireAdminFull, async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -388,7 +401,7 @@ app.put("/api/menu/:id", async (req, res) => {
 });
 
 // GET /api/menu/lookup/:code
-app.get("/api/menu/lookup/:code", async (req, res) => {
+app.get("/api/menu/lookup/:code", requireAuth, async (req, res) => {
   try {
     const { code } = req.params;
     const upperCode = code.toUpperCase();
@@ -409,7 +422,7 @@ app.get("/api/menu/lookup/:code", async (req, res) => {
 
 // ================ ADMIN MODULE ENHANCEMENTS (UPDATED) ================
 // GET /api/admin/dashboard - Updated for new schema
-app.get("/api/admin/dashboard", async (req, res) => {
+app.get("/api/admin/dashboard", requireAdminAny, async (req, res) => {
   try {
     const today = new Date().toISOString().split("T")[0];
 

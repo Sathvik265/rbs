@@ -100,7 +100,6 @@ export function TimeRangeReport({ sessionId }) {
           startTime: filters.startTime,
           endTime: filters.endTime,
         },
-        headers: { Authorization: "admin" },
       });
       setReport(res.data);
       toast.success("Time range report generated successfully");
@@ -244,7 +243,6 @@ export function DateRangeReport({ sessionId }) {
           startDate: filters.startDate,
           endDate: filters.endDate,
         },
-        headers: { Authorization: "admin" },
       });
       setReport(res.data);
       toast.success("Date range report generated successfully");
@@ -378,7 +376,6 @@ export function ShiftReport({ sessionId }) {
           date: filters.date,
           shift_name: filters.shiftName,
         },
-        headers: { Authorization: "admin" },
       });
       setReport(res.data);
       toast.success("Shift report generated successfully");
@@ -419,7 +416,6 @@ export function ShiftReport({ sessionId }) {
       setLoading(true);
       const res = await axios.get(`${API}/reports/shift-summary`, {
         params: { date: filters.date },
-        headers: { Authorization: "admin" },
       });
       const data = res.data;
       if (!data || data.length === 0) {
@@ -486,7 +482,6 @@ export function ShiftReport({ sessionId }) {
       setLoading(true);
       const res = await axios.get(`${API}/reports/shift-detailed`, {
         params: { date: filters.date, shift_name: filters.shiftName },
-        headers: { Authorization: "admin" },
       });
       const data = res.data;
       if (!data || data.length === 0) {
@@ -687,7 +682,6 @@ export function ItemReport({ sessionId }) {
 
       const res = await axios.get(`${API}/reports/by-item`, {
         params,
-        headers: { Authorization: "admin" },
       });
       setReport(safeArray(res.data));
       toast.success("Item report generated successfully");

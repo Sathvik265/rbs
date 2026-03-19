@@ -1,6 +1,12 @@
 const BillingModel = require("../models/billingModel");
 const OrderModel = require("../models/orderModel");
 const pool = require("../db");
+const { ADMIN_FULL_PASSWORD } = require("../auth/config");
+const {
+  verifyOrderIntegrity,
+  verifyBillIntegrity,
+  roundMoney,
+} = require("../utils/billingIntegrity");
 
 const billingController = {
   // Get all bills
@@ -94,18 +100,7 @@ const billingController = {
         // Use the track and clerk_initials from the first order
         track = existingOrders[0].track;
         clerk_initials = existingOrders[0].clerk_initials;
-        console.log(
-          `Using track="${track}" and clerk="${clerk_initials}" from existing orders`,
-        );
       }
-
-      // DEBUG: Log the lookup parameters
-      console.log(`Looking for provisional bill with:`, {
-        table_no: parseInt(table_no),
-        party_no,
-        track,
-        clerk_initials,
-      });
 
       // Look up the active provisional bill to get the linking 'created_at'
       // Look up the active provisional bill strictly by table/party
@@ -115,14 +110,9 @@ const billingController = {
       );
       let provisionalBill = provisionalRes.rows[0];
 
-      console.log(`Provisional bill found:`, provisionalBill);
-
       if (!provisionalBill) {
         // RECOVERY LOGIC: If orders exist but bill is missing, create a new one on the fly.
         if (existingOrders && existingOrders.length > 0) {
-          console.log(
-            "Orphaned orders found without provisional bill. Attempting recovery...",
-          );
           const now = new Date();
           const provisionalBillData = {
             bill_date:
@@ -143,36 +133,21 @@ const billingController = {
             `UPDATE orders SET created_at = $1 WHERE table_no = $2 AND party_no = $3`,
             [provisionalBill.created_at, parseInt(table_no), party_no],
           );
-
-          console.log(
-            "Recovery successful. New provisional bill created and orders linked.",
-          );
         } else {
-          // ENHANCED ERROR: Query all provisional bills to see what exists
-          const allProvisionalBills = await pool.query(
-            `SELECT * FROM bills WHERE bill_number = 0 ORDER BY created_at DESC LIMIT 10`,
-          );
-          console.log(
-            `All provisional bills in database:`,
-            allProvisionalBills.rows,
-          );
-
           return res.status(404).json({
             error: "No active provisional bill found to finalize.",
-            searched_for: {
-              table_no: parseInt(table_no),
-              party_no,
-              track,
-              clerk_initials,
-            },
-            available_provisional_bills: allProvisionalBills.rows.map((b) => ({
-              table_no: b.table_no,
-              party_no: b.party_no,
-              track: b.track,
-              clerk_initials: b.clerk_initials,
-            })),
           });
         }
+      }
+
+      const totalsCheck = await verifyBillIntegrity({
+        orders: existingOrders,
+        clerkInitials: clerk_initials,
+        submittedTotals: billData,
+      });
+
+      if (!totalsCheck.ok) {
+        return res.status(400).json({ error: totalsCheck.detail });
       }
 
       const bill_date = new Date().toISOString().split("T")[0];
@@ -180,6 +155,11 @@ const billingController = {
       const finalizeData = {
         ...billData,
         bill_date,
+        subtotal: totalsCheck.computed.subtotal,
+        sgst: totalsCheck.computed.sgst,
+        cgst: totalsCheck.computed.cgst,
+        tax_amount: totalsCheck.computed.tax_amount,
+        grand_total: totalsCheck.computed.grand_total,
         track, // Use the corrected track value
         clerk_initials, // Use the corrected clerk_initials
         created_at: provisionalBill.created_at, // Vital: Pass the key to matching
@@ -286,8 +266,9 @@ const billingController = {
 
       // Set defaults
       if (!orderData.party_no) orderData.party_no = "1";
-      if (!orderData.track) orderData.track = "TRACK1";
-      if (!orderData.clerk_initials) orderData.clerk_initials = "SYS";
+      orderData.track = req.auth?.track || orderData.track || "TRACK1";
+      orderData.clerk_initials =
+        req.auth?.staff_code || orderData.clerk_initials || "SYS";
       if (!orderData.bill_number) orderData.bill_number = 0; // Always 0 for pending
 
       // Ensure bill_date is present, default to today if not
@@ -295,12 +276,15 @@ const billingController = {
         orderData.bill_date = new Date().toISOString().split("T")[0];
       }
 
-      console.log(`Creating order with data:`, {
-        table_no: orderData.table_no,
-        party_no: orderData.party_no,
-        track: orderData.track,
-        clerk_initials: orderData.clerk_initials,
-      });
+      const orderCheck = await verifyOrderIntegrity(orderData);
+
+      if (!orderCheck.ok) {
+        return res.status(400).json({ error: orderCheck.detail });
+      }
+
+      orderData.quantity = orderCheck.normalized.quantity;
+      orderData.unit_price = orderCheck.normalized.unit_price;
+      orderData.line_total = orderCheck.normalized.line_total;
 
       // 1. Find or Create Provisional Bill
       let provisionalBill = await BillingModel.getProvisionalBill(
@@ -309,8 +293,6 @@ const billingController = {
         orderData.track,
         orderData.clerk_initials,
       );
-
-      console.log(`Existing provisional bill:`, provisionalBill);
 
       if (!provisionalBill) {
         const now = new Date();
@@ -324,12 +306,8 @@ const billingController = {
           created_at: now,
         };
 
-        console.log(`Creating new provisional bill with:`, provisionalBillData);
-
         provisionalBill =
           await BillingModel.createProvisionalBill(provisionalBillData);
-
-        console.log(`Created provisional bill:`, provisionalBill);
       }
 
       // 2. Attach the Bill's 'created_at' to the Order so FK mapping works
@@ -350,18 +328,30 @@ const billingController = {
   async updateOrder(req, res) {
     try {
       const { orderId } = req.params;
-      const { quantity, unit_price } = req.body;
+      const { quantity } = req.body;
 
-      if (!quantity || !unit_price) {
-        return res
-          .status(400)
-          .json({ error: "quantity and unit_price are required" });
+      if (!quantity) {
+        return res.status(400).json({ error: "quantity is required" });
       }
 
-      const line_total = quantity * unit_price;
+      const existingOrder = await OrderModel.getOrderById(orderId);
+
+      if (!existingOrder) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      const safeQuantity = Number(quantity);
+
+      if (!Number.isFinite(safeQuantity) || safeQuantity <= 0) {
+        return res.status(400).json({ error: "Invalid quantity" });
+      }
+
+      const line_total = roundMoney(
+        safeQuantity * Number(existingOrder.unit_price || 0),
+      );
       const updatedOrder = await OrderModel.updateOrderQuantity(
         orderId,
-        quantity,
+        safeQuantity,
         line_total,
       );
 
@@ -418,7 +408,11 @@ const billingController = {
   // Purge all bills for a date range
   async purgeBills(req, res) {
     try {
-      const { startDate, endDate } = req.body;
+      const { startDate, endDate, confirmPassword } = req.body;
+
+      if (confirmPassword !== ADMIN_FULL_PASSWORD) {
+        return res.status(403).json({ error: "Invalid admin password" });
+      }
 
       // Default to "today" if no date provided
       let start = startDate;

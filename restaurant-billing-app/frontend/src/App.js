@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { getShiftStatus } from "./services/api";
+import {
+  clearAuthToken,
+  getShiftStatus,
+  logout as logoutApi,
+  setAuthToken,
+} from "./services/api";
 import RecentBills from "./components/RecentBills";
 import { LoginPanel } from "./components/LoginPanel";
 import BillPrint from "./components/BillPrint";
@@ -16,7 +21,6 @@ import {
   TabsTrigger,
   TabsContent,
 } from "./components/ui/UIComponents";
-import { toast } from "./utils/helpers";
 import "./styles/App.css";
 
 function App() {
@@ -33,7 +37,10 @@ function App() {
   } = useUser();
 
   const [mode, setMode] = useState(
-    () => localStorage.getItem("mode") || "none",
+    () =>
+      localStorage.getItem("authToken")
+        ? localStorage.getItem("mode") || "none"
+        : "none",
   );
 
   const isAdmin = mode && mode.includes("admin");
@@ -170,7 +177,11 @@ function App() {
     newTrack,
     newSessionId,
     initials = "CLK",
+    authToken = null,
   ) => {
+    if (authToken) {
+      setAuthToken(authToken);
+    }
     setMode(newMode);
     setBillingDate(date);
     setTrack(newTrack);
@@ -179,7 +190,13 @@ function App() {
     localStorage.setItem("mode", newMode);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+    } catch (error) {
+      clearAuthToken();
+    }
+
     setMode("none");
     setBillingDate(null);
     setTrack("");

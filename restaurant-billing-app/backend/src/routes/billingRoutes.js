@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const billingController = require("../controllers/billingController");
+const { requireAdminFull } = require("../middleware/auth");
 
 // Bill routes
 router.get("/bills", billingController.getAllBills);
@@ -13,7 +14,7 @@ router.get("/bills/:billId/items", billingController.getBillItems);
 router.get("/bills/last-number/:date", billingController.getLastBillNumber);
 router.post("/bills", billingController.createBill);
 
-router.post("/bills/purge", billingController.purgeBills);
+router.post("/bills/purge", requireAdminFull, billingController.purgeBills);
 
 router.get(
   "/bills/date-range/:startDate/:endDate",
