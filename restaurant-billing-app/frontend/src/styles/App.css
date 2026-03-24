@@ -197,19 +197,19 @@ textarea:hover:not(:disabled):not([readonly]) {
   gap: 1.5rem;
 }
 
-.space-y-1 > * + * {
+.space-y-1>*+* {
   margin-top: 0.25rem;
 }
 
-.space-y-2 > * + * {
+.space-y-2>*+* {
   margin-top: 0.5rem;
 }
 
-.space-y-3 > * + * {
+.space-y-3>*+* {
   margin-top: 0.75rem;
 }
 
-.space-y-4 > * + * {
+.space-y-4>*+* {
   margin-top: 1rem;
 }
 
@@ -633,11 +633,11 @@ textarea:hover:not(:disabled):not([readonly]) {
   border-color: #991b1b;
 }
 
-.divide-y > * + * {
+.divide-y>*+* {
   border-top-width: 1px;
 }
 
-.divide-gray-200 > * + * {
+.divide-gray-200>*+* {
   border-color: #333333;
 }
 
@@ -768,7 +768,7 @@ textarea:hover:not(:disabled):not([readonly]) {
   white-space: nowrap;
 }
 
-.divide-y > * + * {
+.divide-y>*+* {
   border-top-width: 1px;
 }
 
@@ -830,68 +830,79 @@ textarea:hover:not(:disabled):not([readonly]) {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
 }
 
 /* Print Styles */
+/* Optimized Print Styles for Dot-Matrix Continuous Feed */
 @media print {
-  .print\\:block {
-    display: block !important;
+
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    position: relative !important;
   }
 
-  .print-area {
-    display: block !important;
+  .print-receipt-container {
+    height: auto !important;
+    position: relative !important;
+    page-break-after: avoid !important;
   }
 
-  body * {
+  @page {
+    margin: 0;
+  }
+
+  /* Reset body for printing */
+  body {
+    background-color: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
     visibility: hidden;
   }
 
-  .print-receipt,
-  .print-receipt * {
+  /* Only show the receipt container */
+  .print-receipt-container,
+  .print-receipt-container * {
     visibility: visible;
   }
 
+  .print-receipt-container {
+    position: static;
+    /* Changed from absolute to allow auto-height calculation */
+    display: block !important;
+    width: 100%;
+    max-width: 100mm;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   .print-receipt {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
     font-family: "Courier New", monospace;
-    font-size: 12px;
-    line-height: 1.2;
-  }
-
-  .print-receipt .divider {
-    border-bottom: 1px solid #000;
-    margin: 5px 0;
-  }
-
-  .print-receipt table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .print-receipt th,
-  .print-receipt td {
-    padding: 2px 4px;
-    text-align: left;
-  }
-
-  .print-receipt .text-right,
-  .print-receipt .text-right * {
-    text-align: right !important;
-  }
-
-  .print-receipt .text-center,
-  .print-receipt .text-center * {
-    text-align: center !important;
-  }
-
-  .print-receipt .font-bold {
+    font-size: 13px;
     font-weight: bold;
+    color: black;
+    /* This prevents the browser from adding extra blank space at the bottom */
+    page-break-after: avoid;
+    overflow: visible;
+  }
+
+  /* Ensure background colors don't print (saves ink/ribbon) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide UI elements that shouldn't be on the bill */
+  .help-panel,
+  .active-bills-list,
+  button {
+    display: none !important;
   }
 }
 

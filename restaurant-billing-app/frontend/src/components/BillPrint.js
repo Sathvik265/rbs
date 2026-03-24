@@ -18,7 +18,7 @@ const BillContent = ({ data, settings }) => {
 
   const hotelName = safeGet(mergedData, "hotel_name", "Restaurant");
   const address = safeGet(mergedData, "address", "");
-  const phone = safeGet(mergedData, "phone", "");
+  const phone = safeGet(mergedData, "phone", "1234567890");
   const gstin = safeGet(mergedData, "gstin", "");
 
   // Use clerk from data, fallback to settings/context or default
@@ -53,14 +53,17 @@ const BillContent = ({ data, settings }) => {
       className="print-receipt"
       style={{
         fontFamily: "monospace",
-        fontSize: "12px",
-        maxWidth: "300px",
+        fontSize: "13px", // slightly larger for dot-matrix readability
+        fontWeight: "bold", // dot-matrix prints thinly, bold helps visibility
+        width: "100%", // Responsive to the actual paper width 
+        maxWidth: "100mm",
+        boxSizing: "border-box",
         color: "black",
         background: "white",
-        padding: "10px",
+        padding: "20px 10px 10px", // Added top padding so the header isn't cut off by the printer
         position: "relative", // PREVENT OVERLAPPING
         display: "block",
-        margin: "0 auto",
+        margin: "0", // Left align to avoid A4 centering cutoff
       }}
     >
       {/* Header - Hotel Name and GST */}

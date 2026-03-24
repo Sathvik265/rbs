@@ -48,7 +48,15 @@ const PrintPortal = ({ children }) => {
     const printStyle = iframeDoc.createElement("style");
     printStyle.textContent = `
       @media print {
-        @page { margin: 0; }
+        @page { 
+          margin: 0; 
+        }
+        html, body {
+          height: auto !important;
+          min-height: 0 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
         body, body * { 
           visibility: visible !important;
           background-color: white !important;

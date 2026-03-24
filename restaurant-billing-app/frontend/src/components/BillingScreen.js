@@ -303,7 +303,7 @@ export default function Billing({
         (i) =>
           safeGet(i, "numeric_code") === entryCode ||
           safeGet(i, "alpha_code", "").toLowerCase() ===
-            entryCode.toLowerCase(),
+          entryCode.toLowerCase(),
       );
       if (item) {
         if (qtyRef.current) {
@@ -1097,7 +1097,7 @@ export default function Billing({
       (t) =>
         String(t.table_no) === String(currentTable) &&
         String(t.party_no) ===
-          String(safeGet(currentDraft, "header.party_no", "1")),
+        String(safeGet(currentDraft, "header.party_no", "1")),
     );
 
     if (idx !== -1) {
@@ -1111,7 +1111,7 @@ export default function Billing({
   const displayBillNumber =
     safeGet(currentDraft, "header.bill_number") !== null
       ? safeGet(currentDraft, "header.bill_number")
-      : tempBillNumber || nextBillNumber || "...";
+      : tempBillNumber;
 
   useEffect(() => {
     if (showHelp) {
@@ -1154,7 +1154,7 @@ export default function Billing({
         const selectedItem = filteredItems[selectedHelpIndex];
         setEntryCode(
           safeGet(selectedItem, "numeric_code", "") ||
-            safeGet(selectedItem, "alpha_code", ""),
+          safeGet(selectedItem, "alpha_code", ""),
         );
         setShowHelp(false);
         if (qtyRef.current) {
@@ -1184,15 +1184,13 @@ export default function Billing({
                   id="splitBillModeHeader"
                   checked={isSplitBillMode}
                   onChange={(e) => setIsSplitBillMode(e.target.checked)}
-                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${
-                    isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
-                  }`}
+                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
+                    }`}
                 />
                 <Label
                   htmlFor="splitBillModeHeader"
-                  className={`!mb-0 cursor-pointer text-xs font-medium ${
-                    isSplitBillMode ? "text-green-700" : "text-gray-600"
-                  }`}
+                  className={`!mb-0 cursor-pointer text-xs font-medium ${isSplitBillMode ? "text-green-700" : "text-gray-600"
+                    }`}
                 >
                   SPLIT BILL
                 </Label>
@@ -1387,17 +1385,15 @@ export default function Billing({
           <div className="help-header">
             <div className="help-tabs">
               <button
-                className={`help-tab-btn ${
-                  helpTab === "shortcuts" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "shortcuts" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("shortcuts")}
               >
                 Shortcuts
               </button>
               <button
-                className={`help-tab-btn ${
-                  helpTab === "active" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "active" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("active")}
               >
                 Active Bills ({activeTables.length})
@@ -1438,15 +1434,14 @@ export default function Billing({
                             {filteredItems.map((item, index) => (
                               <TableRow
                                 key={safeGet(item, "id", Math.random())}
-                                className={`cursor-pointer hover:bg-gray-100 ${
-                                  selectedHelpIndex === index
+                                className={`cursor-pointer hover:bg-gray-100 ${selectedHelpIndex === index
                                     ? "bg-blue-100"
                                     : ""
-                                }`}
+                                  }`}
                                 onClick={() => {
                                   setEntryCode(
                                     safeGet(item, "numeric_code", "") ||
-                                      safeGet(item, "alpha_code", ""),
+                                    safeGet(item, "alpha_code", ""),
                                   );
                                   setShowHelp(false);
                                   if (qtyRef.current) {
