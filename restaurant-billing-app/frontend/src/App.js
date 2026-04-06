@@ -54,7 +54,7 @@ function App() {
 
   useEffect(() => {
     const fetchShiftStatus = async () => {
-      if (billingDate && track) {
+      if (mode !== "none" && billingDate && track) {
         setIsShiftLoading(true);
         try {
           const status = await getShiftStatus(billingDate);
@@ -70,8 +70,7 @@ function App() {
       }
     };
     fetchShiftStatus();
-    fetchShiftStatus();
-  }, [billingDate, track]);
+  }, [mode, billingDate, track]);
 
   // State for admin jump target (shortcuts)
   const [adminJumpTarget, setAdminJumpTarget] = useState(null);

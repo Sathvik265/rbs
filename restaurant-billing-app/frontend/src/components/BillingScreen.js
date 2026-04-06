@@ -86,7 +86,7 @@ export default function Billing({
       try {
         const clerk =
           userInitials || (activeShift && activeShift.clerk_initials) || "CLK";
-        const res = await axios.get(`${API}/settings?clerk=${clerk}`);
+        const res = await api.get(`/settings?clerk=${clerk}`);
         if (res.data) {
           setSgstPercentage(parseFloat(res.data.sgst_percentage) || 0);
           setCgstPercentage(parseFloat(res.data.cgst_percentage) || 0);
@@ -130,7 +130,7 @@ export default function Billing({
   useEffect(() => {
     const loadMenu = async () => {
       try {
-        const res = await axios.get(`${API}/menu`);
+        const res = await api.get(`/menu`);
         const items = safeArray(res.data);
         setMenuItems(items);
         setFilteredItems(items);
@@ -145,9 +145,9 @@ export default function Billing({
   }, []);
 
   useEffect(() => {
-    const fetchLastBillNumber = async () => {
+    const fetchLastBillNumberData = async () => {
       try {
-        const res = await getLastBillNumber(billingDate);
+        const res = await getLastBillNumber(billingDate, track);
 
         // The API returns the *last* bill number. We want to show the *next* one.
         const lastNum = parseInt(res.last_bill_number, 10);
@@ -164,9 +164,9 @@ export default function Billing({
     };
 
     if (activeTab === "billing" || activeTab === "home") {
-      fetchLastBillNumber();
+      fetchLastBillNumberData();
     }
-  }, [billingDate, activeTab, drafts]); // Re-fetch when drafts change (bill created) or tab/date changes
+  }, [billingDate, track, activeTab, drafts]); // Re-fetch when drafts change (bill created) or tab/date changes
 
   useEffect(() => {
     if (activeTab === "billing" && tableNoRef.current) {
@@ -308,7 +308,7 @@ export default function Billing({
         (i) =>
           safeGet(i, "numeric_code") === entryCode ||
           safeGet(i, "alpha_code", "").toLowerCase() ===
-          entryCode.toLowerCase(),
+            entryCode.toLowerCase(),
       );
       if (item) {
         if (qtyRef.current) {
@@ -427,7 +427,7 @@ export default function Billing({
     const lines = safeArray(currentDraft.lines);
     const lineToRemove = lines[index];
     const updatedLines = lines.filter((_, i) => i !== index);
-    
+
     setDrafts((prev) => ({
       ...safeObject(prev),
       [currentTable]: {
@@ -582,7 +582,7 @@ export default function Billing({
           if (setPrintData) {
             setPrintData(printPayload);
           }
-          
+
           try {
             const clerk = userInitials || activeShift?.clerk_initials || "CLK";
             const settingsRes = await api.get(`/settings?clerk=${clerk}`);
@@ -601,7 +601,9 @@ export default function Billing({
             toast.success("Bill sent directly to POS printer!");
           } catch (err) {
             console.error("Direct print failed:", err);
-            toast.error("Printer error. Check if backend printer route is running.");
+            toast.error(
+              "Printer error. Check if backend printer route is running.",
+            );
           }
 
           if (tableNoRef.current) {
@@ -663,7 +665,7 @@ export default function Billing({
       if (!entryCode || !currentTable) return null;
 
       try {
-        const res = await axios.get(`${API}/menu/lookup/${entryCode}`);
+        const res = await api.get(`/menu/lookup/${entryCode}`);
         const item = res.data;
 
         if (!item) {
@@ -895,7 +897,7 @@ export default function Billing({
         if (setPrintData) {
           setPrintData(printPayload);
         }
-        
+
         try {
           const clerk = userInitials || activeShift?.clerk_initials || "CLK";
           const settingsRes = await api.get(`/settings?clerk=${clerk}`);
@@ -914,7 +916,9 @@ export default function Billing({
           toast.success("Bill sent directly to POS printer!");
         } catch (err) {
           console.error("Direct print failed:", err);
-          toast.error("Printer error. Check if backend printer route is running.");
+          toast.error(
+            "Printer error. Check if backend printer route is running.",
+          );
         }
 
         if (tableNoRef.current) {
@@ -966,13 +970,13 @@ export default function Billing({
 
   const fetchLastBillNumber = useCallback(async () => {
     try {
-      const res = await getLastBillNumber(billingDate);
+      const res = await getLastBillNumber(billingDate, track);
       // res is { last_bill_number: ... }
       setLastBillNumber(parseInt(safeGet(res, "last_bill_number", 0)) || 0);
     } catch (e) {
       console.error("Failed to fetch last bill number", e);
     }
-  }, [billingDate]);
+  }, [billingDate, track]);
 
   const fetchActiveTables = useCallback(async () => {
     try {
@@ -1070,6 +1074,17 @@ export default function Billing({
           }
           if (helpTab === "active") return false;
           setHelpTab("active");
+          return true;
+        });
+      } else if (e.key === "F1") {
+        e.preventDefault();
+        setShowHelp((prev) => {
+          if (!prev) {
+            setHelpTab("shortcuts");
+            return true;
+          }
+          if (helpTab === "shortcuts") return false;
+          setHelpTab("shortcuts");
           return true;
         });
       }
@@ -1181,7 +1196,7 @@ export default function Billing({
         const selectedItem = filteredItems[selectedHelpIndex];
         setEntryCode(
           safeGet(selectedItem, "numeric_code", "") ||
-          safeGet(selectedItem, "alpha_code", ""),
+            safeGet(selectedItem, "alpha_code", ""),
         );
         setShowHelp(false);
         if (qtyRef.current) {
@@ -1211,13 +1226,15 @@ export default function Billing({
                   id="splitBillModeHeader"
                   checked={isSplitBillMode}
                   onChange={(e) => setIsSplitBillMode(e.target.checked)}
-                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
-                    }`}
+                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${
+                    isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
+                  }`}
                 />
                 <Label
                   htmlFor="splitBillModeHeader"
-                  className={`!mb-0 cursor-pointer text-xs font-medium ${isSplitBillMode ? "text-green-700" : "text-gray-600"
-                    }`}
+                  className={`!mb-0 cursor-pointer text-xs font-medium ${
+                    isSplitBillMode ? "text-green-700" : "text-gray-600"
+                  }`}
                 >
                   SPLIT BILL
                 </Label>
@@ -1412,15 +1429,17 @@ export default function Billing({
           <div className="help-header">
             <div className="help-tabs">
               <button
-                className={`help-tab-btn ${helpTab === "shortcuts" ? "active" : ""
-                  }`}
+                className={`help-tab-btn ${
+                  helpTab === "shortcuts" ? "active" : ""
+                }`}
                 onClick={() => setHelpTab("shortcuts")}
               >
                 Shortcuts
               </button>
               <button
-                className={`help-tab-btn ${helpTab === "active" ? "active" : ""
-                  }`}
+                className={`help-tab-btn ${
+                  helpTab === "active" ? "active" : ""
+                }`}
                 onClick={() => setHelpTab("active")}
               >
                 Active Bills ({activeTables.length})
@@ -1461,14 +1480,15 @@ export default function Billing({
                             {filteredItems.map((item, index) => (
                               <TableRow
                                 key={safeGet(item, "id", Math.random())}
-                                className={`cursor-pointer hover:bg-gray-100 ${selectedHelpIndex === index
+                                className={`cursor-pointer hover:bg-gray-100 ${
+                                  selectedHelpIndex === index
                                     ? "bg-blue-100"
                                     : ""
-                                  }`}
+                                }`}
                                 onClick={() => {
                                   setEntryCode(
                                     safeGet(item, "numeric_code", "") ||
-                                    safeGet(item, "alpha_code", ""),
+                                      safeGet(item, "alpha_code", ""),
                                   );
                                   setShowHelp(false);
                                   if (qtyRef.current) {

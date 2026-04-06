@@ -91,10 +91,27 @@ const billingController = {
 
       // IMPORTANT FIX: If orders exist for this table/party, use THEIR track/clerk values
       // because that's what the provisional bill was created with
-      const existingOrders = await OrderModel.getPendingOrdersByTableAndParty(
+      const allOrders = await OrderModel.getPendingOrdersByTableAndParty(
         table_no,
         party_no,
       );
+
+      // Filter out stale orders that belong to previous days. The frontend ignores them.
+      let existingOrders = allOrders;
+      if (billData.bill_date) {
+        existingOrders = allOrders.filter(o => {
+          let orderDateStr = "";
+          let rawDate = o.bill_date;
+          if (rawDate) {
+            const d = new Date(rawDate);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            orderDateStr = `${year}-${month}-${day}`;
+          }
+          return orderDateStr === billData.bill_date;
+        });
+      }
 
       if (existingOrders && existingOrders.length > 0) {
         // Use the track and clerk_initials from the first order
@@ -147,7 +164,8 @@ const billingController = {
       });
 
       if (!totalsCheck.ok) {
-        return res.status(400).json({ error: totalsCheck.detail });
+        console.error("DEBUG totalsCheck failed:", totalsCheck);
+        return res.status(400).json({ error: totalsCheck.detail, computed: totalsCheck.computed });
       }
 
       const bill_date = new Date().toISOString().split("T")[0];
@@ -181,7 +199,8 @@ const billingController = {
   async getLastBillNumber(req, res) {
     try {
       const { date } = req.params;
-      const result = await BillingModel.getLastBillNumber(date);
+      const track = req.query.track || req.auth?.track;
+      const result = await BillingModel.getLastBillNumber(date, track);
       res.json(result);
     } catch (error) {
       console.error("Error getting last bill number:", error);

@@ -39,19 +39,46 @@ const BillingModel = {
     return [];
   },
 
-  // Get next bill number for a track based on today's date
-  async getNextBillNumber(track, date) {
-    // Logic Changed: Global sequence to avoid duplicate key error.
-    // Ignored 'track' to ensure bill_number is unique per date across all tracks.
-    const result = await pool.query(
-      `SELECT MAX(bill_number) as max_num 
-       FROM bills 
-       WHERE bill_date = $1`,
-      [date],
-    );
+  _getTrackColumn(track) {
+    const validTracks = ["`", "``", "RBS1", "RBS2"];
+    if (validTracks.includes(track)) {
+      return `"${track}"`;
+    }
+    return '"`"'; // Fallback
+  },
 
-    const maxNum = parseInt(result.rows[0].max_num) || 0;
-    return maxNum + 1;
+  // Increment and get next bill number using the running_bills table.
+  // Self-heals: if the counter is behind the actual max in the bills table,
+  // it syncs up first to avoid duplicate key violations.
+  async getNextBillNumber(track, date) {
+    const colName = this._getTrackColumn(track);
+
+    // 1. Check what the running_bills counter currently says
+    const counterRes = await pool.query(
+      `SELECT ${colName} as current_val FROM running_bills WHERE id = 1`
+    );
+    const counterVal = parseInt(counterRes.rows[0]?.current_val) || 0;
+
+    // 2. Check the actual max bill_number in the bills table for this track+date
+    const actualRes = await pool.query(
+      `SELECT COALESCE(MAX(bill_number), 0) as actual_max FROM bills WHERE track = $1 AND bill_date = $2 AND bill_number > 0`,
+      [track, date]
+    );
+    const actualMax = parseInt(actualRes.rows[0]?.actual_max) || 0;
+
+    // 3. If the counter is behind reality, sync it up first
+    if (counterVal < actualMax) {
+      await pool.query(
+        `UPDATE running_bills SET ${colName} = $1 WHERE id = 1`,
+        [actualMax]
+      );
+    }
+
+    // 4. Now atomically increment and return
+    const result = await pool.query(
+      `UPDATE running_bills SET ${colName} = ${colName} + 1 WHERE id = 1 RETURNING ${colName} as max_num`
+    );
+    return parseInt(result.rows[0]?.max_num) || 1;
   },
 
   // Find an existing provisional bill (bill_number = 0)
@@ -208,12 +235,21 @@ const BillingModel = {
     return this.finalizeBill(data);
   },
 
-  async getLastBillNumber(date) {
+  async getLastBillNumber(date, track) {
+    if (!track) {
+      return { last_bill_number: 0 };
+    }
+
+    const colName = this._getTrackColumn(track);
     const result = await pool.query(
-      "SELECT MAX(bill_number) as last_bill_number FROM bills WHERE bill_date = $1",
-      [date],
+      `SELECT ${colName} as last_bill_number FROM running_bills WHERE id = 1`
     );
-    return result.rows[0];
+    return result.rows[0] || { last_bill_number: 0 };
+  },
+
+  async resetRunningBill(track) {
+    const colName = this._getTrackColumn(track);
+    await pool.query(`UPDATE running_bills SET ${colName} = 0 WHERE id = 1`);
   },
 
   // Get bills by date range

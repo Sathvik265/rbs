@@ -1,5 +1,22 @@
 const pool = require("../db");
 
+  const _getTrackColumn = (track) => {
+    const validTracks = ["`", "``", "RBS1", "RBS2"];
+    if (validTracks.includes(track)) {
+      return `"${track}"`;
+    }
+    return '"`"'; // Fallback
+  };
+  
+  const _resetRunningBill = async (track) => {
+    try {
+      const colName = _getTrackColumn(track);
+      await pool.query(`UPDATE running_bills SET ${colName} = 0 WHERE id = 1`);
+    } catch(e) {
+      console.error('Error resetting running bill:', e);
+    }
+  };
+
 const ShiftModel = {
   // ==================== SHIFTS TABLE OPERATIONS ====================
 
@@ -76,6 +93,9 @@ const ShiftModel = {
          RETURNING *`,
         [clerk_initials, session_date, start_time, status, sessionId]
       );
+      if (status === 'OPEN') {
+        await _resetRunningBill(shift_name);
+      }
       return result.rows[0];
     } else {
       // If no session exists, create a new one
@@ -87,6 +107,9 @@ const ShiftModel = {
         RETURNING *`,
         [shift_name, clerk_initials, session_date, start_time, status]
       );
+      if (status === 'OPEN') {
+        await _resetRunningBill(shift_name);
+      }
       return result.rows[0];
     }
   },
@@ -107,6 +130,9 @@ const ShiftModel = {
     const updatedSession = result.rows[0];
     if (!updatedSession) return null;
 
+    if (updatedSession.shift_name) {
+      await _resetRunningBill(updatedSession.shift_name);
+    }
     // Also attempt to close the corresponding shift_sessions row (match by shift_name and session_date)
 
     return updatedSession;

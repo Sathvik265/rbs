@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import api from "../services/api";
 import { API, safeGet, safeArray, safeObject } from "../utils/helpers";
 import { useUser } from "../context/UserContext";
 
@@ -172,8 +172,11 @@ export default function BillPrint({ billData = null }) {
 
   useEffect(() => {
     if (!billData?.hotel_name) {
+      const mode = localStorage.getItem("mode");
+      if (!mode || mode === "none") return;
+
       const clerk = billData?.clerk_initials || loggedInClerk || "CLK";
-      axios.get(`${API}/settings?clerk=${clerk}`)
+      api.get(`/settings?clerk=${clerk}`)
         .then((res) => setFetchedSettings(res.data))
         .catch((err) => console.error("Settings fetch failed", err));
     }

@@ -18,6 +18,28 @@ const api = axios.create({
   },
 });
 
+const handleAuthError = (error) => {
+  if (error.response && error.response.status === 401) {
+    if (typeof window !== "undefined") {
+      const mode = localStorage.getItem("mode");
+      if (!mode || mode === "none") {
+        return Promise.reject(error);
+      }
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem("mode");
+      localStorage.removeItem("track");
+      localStorage.removeItem("billingDate");
+      localStorage.removeItem("sessionId");
+      localStorage.removeItem("userInitials");
+      window.location.reload();
+    }
+  }
+  return Promise.reject(error);
+};
+
+api.interceptors.response.use((response) => response, handleAuthError);
+axios.interceptors.response.use((response) => response, handleAuthError);
+
 const applyAuthToken = (token) => {
   if (token) {
     api.defaults.headers.common["X-Auth-Token"] = token;
@@ -134,8 +156,9 @@ export const getBillById = async (billId) => {
   return response.data;
 };
 
-export const getLastBillNumber = async (date) => {
-  const response = await api.get(`/billing/bills/last-number/${date}`);
+export const getLastBillNumber = async (date, track) => {
+  const urlParams = track ? `?track=${encodeURIComponent(track)}` : '';
+  const response = await api.get(`/billing/bills/last-number/${date}${urlParams}`);
   return response.data;
 };
 
