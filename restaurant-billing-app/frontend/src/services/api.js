@@ -117,6 +117,18 @@ export const getPendingOrdersByTableAndParty = async (tableNo, partyNo) => {
   return response.data;
 };
 
+export const deleteOrder = async (orderId) => {
+  const response = await api.delete(`/billing/orders/${orderId}`);
+  return response.data;
+};
+
+export const clearOrders = async (tableNo, partyNo) => {
+  const response = await api.delete(
+    `/billing/orders/table/${tableNo}/party/${partyNo}`
+  );
+  return response.data;
+};
+
 export const getBillById = async (billId) => {
   const response = await api.get(`/billing/bills/${billId}`);
   return response.data;

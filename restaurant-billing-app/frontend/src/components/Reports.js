@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import api from "../services/api";
 import {
   Card,
   CardHeader,
@@ -19,67 +20,28 @@ import {
   TableCell,
 } from "./ui/Table";
 import { API, toast, safeGet, safeArray } from "../utils/helpers";
+import { generateAsciiReport } from "../utils/receiptGenerator";
 
-const printReport = (title, columns, data) => {
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) {
-    toast.error("Please allow popups to print reports");
-    return;
+const fetchSettings = async () => {
+  try {
+    const res = await api.get("/settings");
+    return res.data;
+  } catch (err) {
+    console.error("Failed to fetch settings for printer:", err);
+    return {};
   }
+};
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>${title}</title>
-        <style>
-          body { font-family: monospace; padding: 20px; }
-          h1 { text-align: center; margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background-color: #f2f2f2; }
-          .text-right { text-align: right; }
-          @media print {
-            button { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <h1>${title}</h1>
-        <table>
-          <thead>
-            <tr>
-              ${columns.map((col) => `<th>${col.header}</th>`).join("")}
-            </tr>
-          </thead>
-          <tbody>
-            ${data
-              .map(
-                (row) => `
-              <tr>
-                ${columns
-                  .map(
-                    (col) =>
-                      `<td class="${col.align === "right" ? "text-right" : ""}">
-                    ${col.accessor(row)}
-                  </td>`,
-                  )
-                  .join("")}
-              </tr>
-            `,
-              )
-              .join("")}
-          </tbody>
-        </table>
-        <script>
-          window.onload = function() { window.print(); window.close(); }
-        </script>
-      </body>
-    </html>
-  `;
-
-  printWindow.document.write(html);
-  printWindow.document.close();
+const sendToPosPrinter = async (title, columns, data) => {
+  try {
+    const settings = await fetchSettings();
+    const rawText = generateAsciiReport(title, columns, data, settings);
+    await api.post("/printer/print", { text: rawText });
+    toast.success("Report sent to POS printer!");
+  } catch (err) {
+    console.error("Direct print failed:", err);
+    toast.error("Printer error. Check if backend printer route is running.");
+  }
 };
 
 export function TimeRangeReport({ sessionId }) {
@@ -116,22 +78,25 @@ export function TimeRangeReport({ sessionId }) {
 
   const handlePrint = () => {
     if (!report || report.length === 0) return;
-    printReport(
-      `Time Range Report (${filters.date} ${filters.startTime} - ${filters.endTime})`,
+    sendToPosPrinter(
+      `Time Range Report`,
       [
-        { header: "Bill No", accessor: (r) => r.bill_number },
-        { header: "Table", accessor: (r) => r.table_no },
+        { header: "Bill", accessor: (r) => r.bill_number, width: 6 },
+        { header: "Tbl", accessor: (r) => r.table_no, width: 4 },
         {
-          header: "Amount",
+          header: "Amt Rs",
           accessor: (r) => Number(r.grand_total).toFixed(2),
+          width: 9,
           align: "right",
         },
         {
           header: "Time",
-          accessor: (r) => new Date(r.created_at).toLocaleTimeString(),
+          accessor: (r) => new Date(r.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+          width: 9,
+          align: "right",
         },
       ],
-      report,
+      report
     );
   };
 
@@ -259,22 +224,24 @@ export function DateRangeReport({ sessionId }) {
 
   const handlePrint = () => {
     if (!report || report.length === 0) return;
-    printReport(
-      `Date Range Report (${filters.startDate} - ${filters.endDate})`,
+    sendToPosPrinter(
+      `Date Range Report (${filters.startDate.slice(5)} to ${filters.endDate.slice(5)})`,
       [
-        { header: "Bill No", accessor: (r) => r.bill_number },
+        { header: "Bill", accessor: (r) => r.bill_number, width: 6 },
         {
           header: "Date",
-          accessor: (r) => new Date(r.bill_date).toLocaleDateString(),
+          accessor: (r) => new Date(r.bill_date).toLocaleDateString("en-GB").substring(0, 5),
+          width: 6,
         },
-        { header: "Table", accessor: (r) => r.table_no },
+        { header: "Tbl", accessor: (r) => r.table_no, width: 4 },
         {
           header: "Amount",
           accessor: (r) => Number(r.grand_total).toFixed(2),
+          width: 10,
           align: "right",
         },
       ],
-      report,
+      report
     );
   };
 
@@ -392,22 +359,25 @@ export function ShiftReport({ sessionId }) {
 
   const handlePrint = () => {
     if (!report || report.length === 0) return;
-    printReport(
-      `Shift Report (${filters.date} - ${filters.shiftName})`,
+    sendToPosPrinter(
+      `Shift Bills (${filters.date.slice(5)} - ${filters.shiftName})`,
       [
-        { header: "Bill No", accessor: (r) => r.bill_number },
-        { header: "Table", accessor: (r) => r.table_no },
+        { header: "Bill", accessor: (r) => r.bill_number, width: 6 },
+        { header: "Tbl", accessor: (r) => r.table_no, width: 4 },
         {
           header: "Amount",
           accessor: (r) => Number(r.grand_total).toFixed(2),
+          width: 9,
           align: "right",
         },
         {
           header: "Time",
-          accessor: (r) => new Date(r.created_at).toLocaleTimeString(),
+          accessor: (r) => new Date(r.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+          width: 9,
+          align: "right",
         },
       ],
-      report,
+      report
     );
   };
 
@@ -436,32 +406,24 @@ export function ShiftReport({ sessionId }) {
         date: "",
       });
 
-      printReport(
-        `Shift Summary Report (${filters.date})`,
+      sendToPosPrinter(
+        `Shift Summary (${filters.date})`,
         [
-          {
-            header: "Date",
-            accessor: (r) =>
-              r.date ? new Date(r.date).toLocaleDateString() : "",
-          },
-          { header: "Shift Name", accessor: (r) => r.shift_name },
-          {
-            header: "Amount Rs",
-            accessor: (r) => Number(r.amount).toFixed(2),
-            align: "right",
-          },
+          { header: "Shift Name", accessor: (r) => r.shift_name, width: 14 },
           {
             header: "GST Rs",
             accessor: (r) => Number(r.gst_amount).toFixed(2),
+            width: 8,
             align: "right",
           },
           {
             header: "Total Rs",
             accessor: (r) => Number(r.total_amount).toFixed(2),
+            width: 9,
             align: "right",
           },
         ],
-        summaryData,
+        summaryData
       );
     } catch (e) {
       console.error("Failed to generate summary report:", e);
@@ -505,30 +467,19 @@ export function ShiftReport({ sessionId }) {
         final_total: finalTotal,
       });
 
-      printReport(
-        `Detailed Shift Report (${filters.date} - ${filters.shiftName})`,
+      sendToPosPrinter(
+        `Detailed Shift Rpt (${filters.shiftName})`,
         [
-          { header: "Code", accessor: (r) => r.item_code },
-          { header: "Item Desc", accessor: (r) => r.item_name },
-          { header: "Category", accessor: (r) => r.category || "" },
-          { header: "Qty", accessor: (r) => r.total_quantity },
-          {
-            header: "Amount Rs",
-            accessor: (r) => Number(r.total_amount).toFixed(2),
-            align: "right",
-          },
-          {
-            header: "GST Rs",
-            accessor: (r) => Number(r.gst_amount).toFixed(2),
-            align: "right",
-          },
+          { header: "Item Desc", accessor: (r) => r.item_name, width: 19 },
+          { header: "Qty", accessor: (r) => r.total_quantity, width: 4 },
           {
             header: "Total Rs",
             accessor: (r) => Number(r.final_total).toFixed(2),
+            width: 8,
             align: "right",
           },
         ],
-        detailedData,
+        detailedData
       );
     } catch (e) {
       console.error("Failed to generate detailed report:", e);
@@ -698,20 +649,19 @@ export function ItemReport({ sessionId }) {
 
   const handlePrint = () => {
     if (!report || report.length === 0) return;
-    printReport(
-      `Item Sales Report (${filters.startDate} - ${filters.endDate})`,
+    sendToPosPrinter(
+      `Item Sales (${filters.startDate.slice(5)} to ${filters.endDate.slice(5)})`,
       [
-        { header: "Item Name", accessor: (r) => r.itemName },
-        { header: "Category", accessor: (r) => r.category || "N/A" },
-        { header: "Shift", accessor: (r) => r.shiftName },
-        { header: "Quantity", accessor: (r) => r.totalQuantity },
+        { header: "Item", accessor: (r) => r.itemName, width: 17 },
+        { header: "Qty", accessor: (r) => r.totalQuantity, width: 4 },
         {
           header: "Amount",
-          accessor: (r) => "₹" + Number(r.totalAmount).toFixed(2),
+          accessor: (r) => Number(r.totalAmount).toFixed(2),
+          width: 10,
           align: "right",
         },
       ],
-      report,
+      report
     );
   };
 

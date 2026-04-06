@@ -6,6 +6,8 @@ import React, {
   useCallback,
 } from "react";
 import axios from "axios";
+import api from "../services/api";
+
 import {
   Card,
   CardHeader,
@@ -31,8 +33,10 @@ import {
   getPendingOrdersByTableAndParty,
   getAllPendingOrders,
   getLastBillNumber,
+  deleteOrder,
 } from "../services/api";
 import { API, toast, safeGet, safeArray, safeObject } from "../utils/helpers";
+import { generateAsciiReceipt } from "../utils/receiptGenerator";
 
 export default function Billing({
   drafts = {},
@@ -223,6 +227,7 @@ export default function Billing({
       const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, "1");
       if (pendingOrders && pendingOrders.length > 0) {
         initialLines = pendingOrders.map((order) => ({
+          id: order.id,
           code: order.item_code || order.numeric_item_code,
           name: order.item_name,
           quantity: order.quantity,
@@ -420,7 +425,9 @@ export default function Billing({
   const removeLine = (index) => {
     if (!setDrafts || !currentTable) return;
     const lines = safeArray(currentDraft.lines);
+    const lineToRemove = lines[index];
     const updatedLines = lines.filter((_, i) => i !== index);
+    
     setDrafts((prev) => ({
       ...safeObject(prev),
       [currentTable]: {
@@ -428,6 +435,12 @@ export default function Billing({
         lines: updatedLines,
       },
     }));
+
+    if (lineToRemove && lineToRemove.id) {
+      deleteOrder(lineToRemove.id)
+        .then(() => fetchActiveTablesRef.current?.())
+        .catch((e) => console.error("Failed to delete order from backend", e));
+    }
   };
 
   const subtotal = useMemo(() => {
@@ -569,17 +582,31 @@ export default function Billing({
           if (setPrintData) {
             setPrintData(printPayload);
           }
-          setTimeout(() => {
-            const iframe = document.getElementById("print-iframe");
-            if (iframe && iframe.contentWindow) {
-              iframe.contentWindow.print();
+          
+          try {
+            const clerk = userInitials || activeShift?.clerk_initials || "CLK";
+            const settingsRes = await api.get(`/settings?clerk=${clerk}`);
+            const settings = settingsRes.data;
+
+            let rawText = "";
+            if (printPayload.split && printPayload.bills) {
+              printPayload.bills.forEach((b) => {
+                rawText += generateAsciiReceipt(b, settings);
+              });
             } else {
-              window.print();
+              rawText = generateAsciiReceipt(printPayload, settings);
             }
-            if (tableNoRef.current) {
-              tableNoRef.current.focus();
-            }
-          }, 500);
+
+            await api.post(`/printer/print`, { text: rawText });
+            toast.success("Bill sent directly to POS printer!");
+          } catch (err) {
+            console.error("Direct print failed:", err);
+            toast.error("Printer error. Check if backend printer route is running.");
+          }
+
+          if (tableNoRef.current) {
+            tableNoRef.current.focus();
+          }
         }
 
         if (setDrafts) {
@@ -728,7 +755,8 @@ export default function Billing({
           bill_date: billingDate, // Use the session date for the order
         };
 
-        await createOrder(payload);
+        const orderRes = await createOrder(payload);
+        newLine.id = orderRes.id || orderRes[0]?.id;
 
         // Refresh active tables to update sequences
         fetchActiveTablesRef.current?.();
@@ -867,17 +895,31 @@ export default function Billing({
         if (setPrintData) {
           setPrintData(printPayload);
         }
-        setTimeout(() => {
-          const iframe = document.getElementById("print-iframe");
-          if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.print();
+        
+        try {
+          const clerk = userInitials || activeShift?.clerk_initials || "CLK";
+          const settingsRes = await api.get(`/settings?clerk=${clerk}`);
+          const settings = settingsRes.data;
+
+          let rawText = "";
+          if (printPayload.split && printPayload.bills) {
+            printPayload.bills.forEach((b) => {
+              rawText += generateAsciiReceipt(b, settings);
+            });
           } else {
-            window.print();
+            rawText = generateAsciiReceipt(printPayload, settings);
           }
-          if (tableNoRef.current) {
-            tableNoRef.current.focus();
-          }
-        }, 500);
+
+          await api.post(`/printer/print`, { text: rawText });
+          toast.success("Bill sent directly to POS printer!");
+        } catch (err) {
+          console.error("Direct print failed:", err);
+          toast.error("Printer error. Check if backend printer route is running.");
+        }
+
+        if (tableNoRef.current) {
+          tableNoRef.current.focus();
+        }
       } catch (e) {
         console.error("Error fetching bill for reprint:", e);
         toast.error("Failed to load bill for printing");
@@ -1085,28 +1127,13 @@ export default function Billing({
 
   const tempBillNumber = useMemo(() => {
     const existingBillNum = safeGet(currentDraft, "header.bill_number");
-    if (existingBillNum !== null && existingBillNum !== undefined)
+    if (existingBillNum !== null && existingBillNum !== undefined) {
       return existingBillNum;
-
-    // Calculate temporary number
-    // Logic: lastBillNumber + position_of_current_table_in_activeTables + 1
-    // Position is 0-indexed, so +1
-
-    // Identify current table in activeTables
-    const idx = activeTables.findIndex(
-      (t) =>
-        String(t.table_no) === String(currentTable) &&
-        String(t.party_no) ===
-        String(safeGet(currentDraft, "header.party_no", "1")),
-    );
-
-    if (idx !== -1) {
-      return lastBillNumber + idx + 1;
     }
 
-    // If not found in active tables (newly started draft), assume it comes next
-    return lastBillNumber + activeTables.length + 1;
-  }, [currentDraft, activeTables, lastBillNumber, currentTable]);
+    // The bill number on the screen should only update after previous bills are formally printed/finalised.
+    return lastBillNumber ? lastBillNumber + 1 : 1;
+  }, [currentDraft, lastBillNumber]);
 
   const displayBillNumber =
     safeGet(currentDraft, "header.bill_number") !== null
