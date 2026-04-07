@@ -6,6 +6,8 @@ import React, {
   useCallback,
 } from "react";
 import axios from "axios";
+import api from "../services/api";
+
 import {
   Card,
   CardHeader,
@@ -31,8 +33,10 @@ import {
   getPendingOrdersByTableAndParty,
   getAllPendingOrders,
   getLastBillNumber,
+  deleteOrder,
 } from "../services/api";
 import { API, toast, safeGet, safeArray, safeObject } from "../utils/helpers";
+import { generateAsciiReceipt } from "../utils/receiptGenerator";
 
 export default function Billing({
   drafts = {},
@@ -53,6 +57,9 @@ export default function Billing({
   const [loading, setLoading] = useState(false);
   const [isSplitBillMode, setIsSplitBillMode] = useState(false);
   const [nextBillNumber, setNextBillNumber] = useState(null);
+  const [currentParty, setCurrentParty] = useState("1");
+
+  const draftKey = currentTable ? `${currentTable}-${currentParty}` : "";
 
   // --- REFS FOR NAVIGATION ---
   const tableNoRef = useRef(null);
@@ -82,7 +89,7 @@ export default function Billing({
       try {
         const clerk =
           userInitials || (activeShift && activeShift.clerk_initials) || "CLK";
-        const res = await axios.get(`${API}/settings?clerk=${clerk}`);
+        const res = await api.get(`/settings?clerk=${clerk}`);
         if (res.data) {
           setSgstPercentage(parseFloat(res.data.sgst_percentage) || 0);
           setCgstPercentage(parseFloat(res.data.cgst_percentage) || 0);
@@ -98,7 +105,7 @@ export default function Billing({
     const defaultDraft = {
       header: {
         table_no: currentTable || "",
-        party_no: "1",
+        party_no: currentParty || "1",
         section: "G",
         track: track || "",
         bill_number: null,
@@ -107,11 +114,11 @@ export default function Billing({
       modified_from_bill_id: null,
     };
 
-    if (!drafts || !currentTable) {
+    if (!drafts || !draftKey) {
       return defaultDraft;
     }
 
-    const draft = drafts[currentTable];
+    const draft = drafts[draftKey];
     if (!draft) {
       return defaultDraft;
     }
@@ -121,12 +128,12 @@ export default function Billing({
       lines: safeArray(draft.lines, []),
       modified_from_bill_id: draft.modified_from_bill_id || null,
     };
-  }, [drafts, currentTable, track]);
+  }, [drafts, currentTable, currentParty, draftKey, track]);
 
   useEffect(() => {
     const loadMenu = async () => {
       try {
-        const res = await axios.get(`${API}/menu`);
+        const res = await api.get(`/menu`);
         const items = safeArray(res.data);
         setMenuItems(items);
         setFilteredItems(items);
@@ -141,9 +148,9 @@ export default function Billing({
   }, []);
 
   useEffect(() => {
-    const fetchLastBillNumber = async () => {
+    const fetchLastBillNumberData = async () => {
       try {
-        const res = await getLastBillNumber(billingDate);
+        const res = await getLastBillNumber(billingDate, track);
 
         // The API returns the *last* bill number. We want to show the *next* one.
         const lastNum = parseInt(res.last_bill_number, 10);
@@ -160,9 +167,9 @@ export default function Billing({
     };
 
     if (activeTab === "billing" || activeTab === "home") {
-      fetchLastBillNumber();
+      fetchLastBillNumberData();
     }
-  }, [billingDate, activeTab, drafts]); // Re-fetch when drafts change (bill created) or tab/date changes
+  }, [billingDate, track, activeTab, drafts]); // Re-fetch when drafts change (bill created) or tab/date changes
 
   useEffect(() => {
     if (activeTab === "billing" && tableNoRef.current) {
@@ -171,7 +178,7 @@ export default function Billing({
   }, [activeTab]);
 
   const onHeaderChange = (patch) => {
-    if (!currentTable || !setDrafts) return;
+    if (!draftKey || !setDrafts) return;
 
     const newHeader = {
       ...safeObject(currentDraft.header),
@@ -185,7 +192,7 @@ export default function Billing({
 
     setDrafts((prev) => ({
       ...safeObject(prev),
-      [currentTable]: newDraft,
+      [draftKey]: newDraft,
     }));
   };
 
@@ -205,13 +212,15 @@ export default function Billing({
     }
   };
 
-  const loadDataForTable = async (tableNo) => {
+  const loadDataForTableAndParty = async (tableNo, partyNo) => {
     if (!tableNo || !setDrafts) return;
+
+    const key = `${tableNo}-${partyNo}`;
 
     // First, try to update existing draft if any (might be redundant if we overwrite below, but good for UI consistency)
     setSectionByTable(tableNo);
 
-    if (drafts && drafts[tableNo]) return;
+    if (drafts && drafts[key]) return;
 
     let initialLines = [];
     let modifiedFromBillId = null;
@@ -220,9 +229,10 @@ export default function Billing({
     const initialSection = getSectionForTable(tableNo);
 
     try {
-      const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, "1");
+      const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, String(partyNo));
       if (pendingOrders && pendingOrders.length > 0) {
         initialLines = pendingOrders.map((order) => ({
+          id: order.id,
           code: order.item_code || order.numeric_item_code,
           name: order.item_name,
           quantity: order.quantity,
@@ -233,7 +243,7 @@ export default function Billing({
           is_separate: !!order.is_separate,
         }));
         toast.success(
-          `Loaded ${pendingOrders.length} pending items for Table ${tableNo}`,
+          `Loaded ${pendingOrders.length} pending items for Table ${tableNo} (Party ${partyNo})`,
         );
       }
     } catch (error) {
@@ -243,11 +253,11 @@ export default function Billing({
 
     setDrafts((prev) => ({
       ...safeObject(prev),
-      [tableNo]: {
+      [key]: {
         header: {
           table_no: tableNo,
-          party_no: "1",
-          section: initialSection, // Use the correct section
+          party_no: partyNo,
+          section: initialSection,
           bill_number: null,
         },
         lines: initialLines,
@@ -255,6 +265,12 @@ export default function Billing({
       },
     }));
   };
+
+  useEffect(() => {
+    if (currentTable && currentParty) {
+      loadDataForTableAndParty(currentTable, currentParty);
+    }
+  }, [currentTable, currentParty]);
 
   // --- NAVIGATION HANDLERS ---
   const handleTableNoKeyDown = (event) => {
@@ -267,7 +283,6 @@ export default function Billing({
       if (setCurrentTable) {
         setCurrentTable(newTableNo);
       }
-      loadDataForTable(newTableNo);
       if (partyNoRef.current) partyNoRef.current.focus();
     }
   };
@@ -303,7 +318,7 @@ export default function Billing({
         (i) =>
           safeGet(i, "numeric_code") === entryCode ||
           safeGet(i, "alpha_code", "").toLowerCase() ===
-          entryCode.toLowerCase(),
+            entryCode.toLowerCase(),
       );
       if (item) {
         if (qtyRef.current) {
@@ -385,7 +400,7 @@ export default function Billing({
   };
 
   const updateQty = (index, val) => {
-    if (!setDrafts || !currentTable) return;
+    if (!setDrafts || !draftKey) return;
 
     let newQty = val;
     if (val !== "") {
@@ -410,7 +425,7 @@ export default function Billing({
 
     setDrafts((prev) => ({
       ...safeObject(prev),
-      [currentTable]: {
+      [draftKey]: {
         ...currentDraft,
         lines: updatedLines,
       },
@@ -418,16 +433,24 @@ export default function Billing({
   };
 
   const removeLine = (index) => {
-    if (!setDrafts || !currentTable) return;
+    if (!setDrafts || !draftKey) return;
     const lines = safeArray(currentDraft.lines);
+    const lineToRemove = lines[index];
     const updatedLines = lines.filter((_, i) => i !== index);
+
     setDrafts((prev) => ({
       ...safeObject(prev),
-      [currentTable]: {
+      [draftKey]: {
         ...currentDraft,
         lines: updatedLines,
       },
     }));
+
+    if (lineToRemove && lineToRemove.id) {
+      deleteOrder(lineToRemove.id)
+        .then(() => fetchActiveTablesRef.current?.())
+        .catch((e) => console.error("Failed to delete order from backend", e));
+    }
   };
 
   const subtotal = useMemo(() => {
@@ -569,23 +592,39 @@ export default function Billing({
           if (setPrintData) {
             setPrintData(printPayload);
           }
-          setTimeout(() => {
-            const iframe = document.getElementById("print-iframe");
-            if (iframe && iframe.contentWindow) {
-              iframe.contentWindow.print();
+
+          try {
+            const clerk = userInitials || activeShift?.clerk_initials || "CLK";
+            const settingsRes = await api.get(`/settings?clerk=${clerk}`);
+            const settings = settingsRes.data;
+
+            let rawText = "";
+            if (printPayload.split && printPayload.bills) {
+              printPayload.bills.forEach((b) => {
+                rawText += generateAsciiReceipt(b, settings);
+              });
             } else {
-              window.print();
+              rawText = generateAsciiReceipt(printPayload, settings);
             }
-            if (tableNoRef.current) {
-              tableNoRef.current.focus();
-            }
-          }, 500);
+
+            await api.post(`/printer/print`, { text: rawText });
+            toast.success("Bill sent directly to POS printer!");
+          } catch (err) {
+            console.error("Direct print failed:", err);
+            toast.error(
+              "Printer error. Check if backend printer route is running.",
+            );
+          }
+
+          if (tableNoRef.current) {
+            tableNoRef.current.focus();
+          }
         }
 
         if (setDrafts) {
           setDrafts((prev) => {
             const newDrafts = { ...safeObject(prev) };
-            delete newDrafts[currentTable];
+            delete newDrafts[draftKey];
             return newDrafts;
           });
         }
@@ -593,6 +632,7 @@ export default function Billing({
         if (setCurrentTable) {
           setCurrentTable("");
         }
+        setCurrentParty("1");
 
         // Refresh numbers
         fetchLastBillNumberRef.current?.();
@@ -636,7 +676,7 @@ export default function Billing({
       if (!entryCode || !currentTable) return null;
 
       try {
-        const res = await axios.get(`${API}/menu/lookup/${entryCode}`);
+        const res = await api.get(`/menu/lookup/${entryCode}`);
         const item = res.data;
 
         if (!item) {
@@ -715,7 +755,7 @@ export default function Billing({
 
         const payload = {
           table_no: currentTable,
-          party_no: safeGet(currentDraft, "header.party_no", "1"),
+          party_no: currentParty,
           item_name: newLine.name,
           quantity: newLine.quantity,
           unit_price: newLine.unit_price,
@@ -728,7 +768,8 @@ export default function Billing({
           bill_date: billingDate, // Use the session date for the order
         };
 
-        await createOrder(payload);
+        const orderRes = await createOrder(payload);
+        newLine.id = orderRes.id || orderRes[0]?.id;
 
         // Refresh active tables to update sequences
         fetchActiveTablesRef.current?.();
@@ -737,7 +778,7 @@ export default function Billing({
           const updatedLines = [...safeArray(currentDraft.lines), newLine];
           setDrafts((prev) => ({
             ...safeObject(prev),
-            [currentTable]: {
+            [draftKey]: {
               ...currentDraft,
               lines: updatedLines,
             },
@@ -867,17 +908,33 @@ export default function Billing({
         if (setPrintData) {
           setPrintData(printPayload);
         }
-        setTimeout(() => {
-          const iframe = document.getElementById("print-iframe");
-          if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.print();
+
+        try {
+          const clerk = userInitials || activeShift?.clerk_initials || "CLK";
+          const settingsRes = await api.get(`/settings?clerk=${clerk}`);
+          const settings = settingsRes.data;
+
+          let rawText = "";
+          if (printPayload.split && printPayload.bills) {
+            printPayload.bills.forEach((b) => {
+              rawText += generateAsciiReceipt(b, settings);
+            });
           } else {
-            window.print();
+            rawText = generateAsciiReceipt(printPayload, settings);
           }
-          if (tableNoRef.current) {
-            tableNoRef.current.focus();
-          }
-        }, 500);
+
+          await api.post(`/printer/print`, { text: rawText });
+          toast.success("Bill sent directly to POS printer!");
+        } catch (err) {
+          console.error("Direct print failed:", err);
+          toast.error(
+            "Printer error. Check if backend printer route is running.",
+          );
+        }
+
+        if (tableNoRef.current) {
+          tableNoRef.current.focus();
+        }
       } catch (e) {
         console.error("Error fetching bill for reprint:", e);
         toast.error("Failed to load bill for printing");
@@ -924,13 +981,13 @@ export default function Billing({
 
   const fetchLastBillNumber = useCallback(async () => {
     try {
-      const res = await getLastBillNumber(billingDate);
+      const res = await getLastBillNumber(billingDate, track);
       // res is { last_bill_number: ... }
       setLastBillNumber(parseInt(safeGet(res, "last_bill_number", 0)) || 0);
     } catch (e) {
       console.error("Failed to fetch last bill number", e);
     }
-  }, [billingDate]);
+  }, [billingDate, track]);
 
   const fetchActiveTables = useCallback(async () => {
     try {
@@ -1030,6 +1087,17 @@ export default function Billing({
           setHelpTab("active");
           return true;
         });
+      } else if (e.key === "F1") {
+        e.preventDefault();
+        setShowHelp((prev) => {
+          if (!prev) {
+            setHelpTab("shortcuts");
+            return true;
+          }
+          if (helpTab === "shortcuts") return false;
+          setHelpTab("shortcuts");
+          return true;
+        });
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1046,7 +1114,11 @@ export default function Billing({
 
   useEffect(() => {
     const handleGlobalKeyDown = (event) => {
-      if (event.key === "Escape") {
+      if (event.key === "F1") {
+        event.preventDefault();
+        setShowHelp(true);
+        setHelpTab("shortcuts");
+      } else if (event.key === "Escape") {
         event.preventDefault();
         if (tableNoRef.current) {
           tableNoRef.current.focus();
@@ -1085,28 +1157,13 @@ export default function Billing({
 
   const tempBillNumber = useMemo(() => {
     const existingBillNum = safeGet(currentDraft, "header.bill_number");
-    if (existingBillNum !== null && existingBillNum !== undefined)
+    if (existingBillNum !== null && existingBillNum !== undefined) {
       return existingBillNum;
-
-    // Calculate temporary number
-    // Logic: lastBillNumber + position_of_current_table_in_activeTables + 1
-    // Position is 0-indexed, so +1
-
-    // Identify current table in activeTables
-    const idx = activeTables.findIndex(
-      (t) =>
-        String(t.table_no) === String(currentTable) &&
-        String(t.party_no) ===
-        String(safeGet(currentDraft, "header.party_no", "1")),
-    );
-
-    if (idx !== -1) {
-      return lastBillNumber + idx + 1;
     }
 
-    // If not found in active tables (newly started draft), assume it comes next
-    return lastBillNumber + activeTables.length + 1;
-  }, [currentDraft, activeTables, lastBillNumber, currentTable]);
+    // The bill number on the screen should only update after previous bills are formally printed/finalised.
+    return lastBillNumber ? lastBillNumber + 1 : 1;
+  }, [currentDraft, lastBillNumber]);
 
   const displayBillNumber =
     safeGet(currentDraft, "header.bill_number") !== null
@@ -1154,7 +1211,7 @@ export default function Billing({
         const selectedItem = filteredItems[selectedHelpIndex];
         setEntryCode(
           safeGet(selectedItem, "numeric_code", "") ||
-          safeGet(selectedItem, "alpha_code", ""),
+            safeGet(selectedItem, "alpha_code", ""),
         );
         setShowHelp(false);
         if (qtyRef.current) {
@@ -1184,13 +1241,15 @@ export default function Billing({
                   id="splitBillModeHeader"
                   checked={isSplitBillMode}
                   onChange={(e) => setIsSplitBillMode(e.target.checked)}
-                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
-                    }`}
+                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${
+                    isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
+                  }`}
                 />
                 <Label
                   htmlFor="splitBillModeHeader"
-                  className={`!mb-0 cursor-pointer text-xs font-medium ${isSplitBillMode ? "text-green-700" : "text-gray-600"
-                    }`}
+                  className={`!mb-0 cursor-pointer text-xs font-medium ${
+                    isSplitBillMode ? "text-green-700" : "text-gray-600"
+                  }`}
                 >
                   SPLIT BILL
                 </Label>
@@ -1238,10 +1297,8 @@ export default function Billing({
                   <Label>Party No.</Label>
                   <Input
                     ref={partyNoRef}
-                    value={safeGet(currentDraft, "header.party_no", "")}
-                    onChange={(e) =>
-                      onHeaderChange({ party_no: e.target.value })
-                    }
+                    value={currentParty}
+                    onChange={(e) => setCurrentParty(e.target.value)}
                     onKeyDown={handlePartyNoKeyDown}
                   />
                 </div>
@@ -1385,15 +1442,17 @@ export default function Billing({
           <div className="help-header">
             <div className="help-tabs">
               <button
-                className={`help-tab-btn ${helpTab === "shortcuts" ? "active" : ""
-                  }`}
+                className={`help-tab-btn ${
+                  helpTab === "shortcuts" ? "active" : ""
+                }`}
                 onClick={() => setHelpTab("shortcuts")}
               >
                 Shortcuts
               </button>
               <button
-                className={`help-tab-btn ${helpTab === "active" ? "active" : ""
-                  }`}
+                className={`help-tab-btn ${
+                  helpTab === "active" ? "active" : ""
+                }`}
                 onClick={() => setHelpTab("active")}
               >
                 Active Bills ({activeTables.length})
@@ -1434,14 +1493,15 @@ export default function Billing({
                             {filteredItems.map((item, index) => (
                               <TableRow
                                 key={safeGet(item, "id", Math.random())}
-                                className={`cursor-pointer hover:bg-gray-100 ${selectedHelpIndex === index
+                                className={`cursor-pointer hover:bg-gray-100 ${
+                                  selectedHelpIndex === index
                                     ? "bg-blue-100"
                                     : ""
-                                  }`}
+                                }`}
                                 onClick={() => {
                                   setEntryCode(
                                     safeGet(item, "numeric_code", "") ||
-                                    safeGet(item, "alpha_code", ""),
+                                      safeGet(item, "alpha_code", ""),
                                   );
                                   setShowHelp(false);
                                   if (qtyRef.current) {

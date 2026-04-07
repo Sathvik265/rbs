@@ -843,12 +843,14 @@ textarea:hover:not(:disabled):not([readonly]) {
   html,
   body {
     height: auto !important;
+    min-height: 0 !important;
     overflow: visible !important;
     position: relative !important;
+    padding: 0;
   }
 
   .print-receipt-container {
-    height: auto !important;
+    height: fit-content !important;
     position: relative !important;
     page-break-after: avoid !important;
   }

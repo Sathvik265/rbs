@@ -54,7 +54,7 @@ function App() {
 
   useEffect(() => {
     const fetchShiftStatus = async () => {
-      if (billingDate && track) {
+      if (mode !== "none" && billingDate && track) {
         setIsShiftLoading(true);
         try {
           const status = await getShiftStatus(billingDate);
@@ -70,8 +70,7 @@ function App() {
       }
     };
     fetchShiftStatus();
-    fetchShiftStatus();
-  }, [billingDate, track]);
+  }, [mode, billingDate, track]);
 
   // State for admin jump target (shortcuts)
   const [adminJumpTarget, setAdminJumpTarget] = useState(null);
@@ -213,7 +212,7 @@ function App() {
       <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-white tracking-tight">
-            Kamalanatha Vitthala Prasid
+            New Udipi Anand Bhavan
           </h1>
           {mode !== "none" && billingDate && (
             <div className="mt-2 text-sm text-gray-300">

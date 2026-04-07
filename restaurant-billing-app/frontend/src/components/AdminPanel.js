@@ -217,7 +217,7 @@ function TopItemsDashboard({ sessionId }) {
 
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/dashboard/top-items`);
+      const res = await api.get(`/dashboard/top-items`);
       setTopItems(safeArray(res.data));
     } catch (e) {
       console.error("Failed to load top items:", e);
@@ -418,7 +418,7 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/settings?clerk=${settingsClerk}`);
+      const res = await api.get(`/settings?clerk=${settingsClerk}`);
       setSettings(safeObject(res.data));
     } catch (e) {
       console.error("Failed to load settings:", e);
@@ -566,7 +566,7 @@ function ClerkStatsDashboard({ sessionId }) {
   const loadStats = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/dashboard/clerk-stats`);
+      const res = await api.get(`/dashboard/clerk-stats`);
       setStats(safeObject(res.data));
     } catch (e) {
       console.error("Failed to load clerk stats:", e);
