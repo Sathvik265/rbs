@@ -40,11 +40,11 @@ const BillingModel = {
   },
 
   _getTrackColumn(track) {
-    const validTracks = ["`", "``", "RBS1", "RBS2"];
-    if (validTracks.includes(track)) {
-      return `"${track}"`;
-    }
-    return '"`"'; // Fallback
+    if (track === "`") return "track_morning";
+    if (track === "``") return "track_afternoon";
+    if (track === "RBS1") return "track_rbs1";
+    if (track === "RBS2") return "track_rbs2";
+    return "track_morning"; // Fallback
   },
 
   // Increment and get next bill number using the running_bills table.

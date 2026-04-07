@@ -57,6 +57,9 @@ export default function Billing({
   const [loading, setLoading] = useState(false);
   const [isSplitBillMode, setIsSplitBillMode] = useState(false);
   const [nextBillNumber, setNextBillNumber] = useState(null);
+  const [currentParty, setCurrentParty] = useState("1");
+
+  const draftKey = currentTable ? `${currentTable}-${currentParty}` : "";
 
   // --- REFS FOR NAVIGATION ---
   const tableNoRef = useRef(null);
@@ -102,7 +105,7 @@ export default function Billing({
     const defaultDraft = {
       header: {
         table_no: currentTable || "",
-        party_no: "1",
+        party_no: currentParty || "1",
         section: "G",
         track: track || "",
         bill_number: null,
@@ -111,11 +114,11 @@ export default function Billing({
       modified_from_bill_id: null,
     };
 
-    if (!drafts || !currentTable) {
+    if (!drafts || !draftKey) {
       return defaultDraft;
     }
 
-    const draft = drafts[currentTable];
+    const draft = drafts[draftKey];
     if (!draft) {
       return defaultDraft;
     }
@@ -125,7 +128,7 @@ export default function Billing({
       lines: safeArray(draft.lines, []),
       modified_from_bill_id: draft.modified_from_bill_id || null,
     };
-  }, [drafts, currentTable, track]);
+  }, [drafts, currentTable, currentParty, draftKey, track]);
 
   useEffect(() => {
     const loadMenu = async () => {
@@ -175,7 +178,7 @@ export default function Billing({
   }, [activeTab]);
 
   const onHeaderChange = (patch) => {
-    if (!currentTable || !setDrafts) return;
+    if (!draftKey || !setDrafts) return;
 
     const newHeader = {
       ...safeObject(currentDraft.header),
@@ -189,7 +192,7 @@ export default function Billing({
 
     setDrafts((prev) => ({
       ...safeObject(prev),
-      [currentTable]: newDraft,
+      [draftKey]: newDraft,
     }));
   };
 
@@ -209,13 +212,15 @@ export default function Billing({
     }
   };
 
-  const loadDataForTable = async (tableNo) => {
+  const loadDataForTableAndParty = async (tableNo, partyNo) => {
     if (!tableNo || !setDrafts) return;
+
+    const key = `${tableNo}-${partyNo}`;
 
     // First, try to update existing draft if any (might be redundant if we overwrite below, but good for UI consistency)
     setSectionByTable(tableNo);
 
-    if (drafts && drafts[tableNo]) return;
+    if (drafts && drafts[key]) return;
 
     let initialLines = [];
     let modifiedFromBillId = null;
@@ -224,7 +229,7 @@ export default function Billing({
     const initialSection = getSectionForTable(tableNo);
 
     try {
-      const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, "1");
+      const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, String(partyNo));
       if (pendingOrders && pendingOrders.length > 0) {
         initialLines = pendingOrders.map((order) => ({
           id: order.id,
@@ -238,7 +243,7 @@ export default function Billing({
           is_separate: !!order.is_separate,
         }));
         toast.success(
-          `Loaded ${pendingOrders.length} pending items for Table ${tableNo}`,
+          `Loaded ${pendingOrders.length} pending items for Table ${tableNo} (Party ${partyNo})`,
         );
       }
     } catch (error) {
@@ -248,11 +253,11 @@ export default function Billing({
 
     setDrafts((prev) => ({
       ...safeObject(prev),
-      [tableNo]: {
+      [key]: {
         header: {
           table_no: tableNo,
-          party_no: "1",
-          section: initialSection, // Use the correct section
+          party_no: partyNo,
+          section: initialSection,
           bill_number: null,
         },
         lines: initialLines,
@@ -260,6 +265,12 @@ export default function Billing({
       },
     }));
   };
+
+  useEffect(() => {
+    if (currentTable && currentParty) {
+      loadDataForTableAndParty(currentTable, currentParty);
+    }
+  }, [currentTable, currentParty]);
 
   // --- NAVIGATION HANDLERS ---
   const handleTableNoKeyDown = (event) => {
@@ -272,7 +283,6 @@ export default function Billing({
       if (setCurrentTable) {
         setCurrentTable(newTableNo);
       }
-      loadDataForTable(newTableNo);
       if (partyNoRef.current) partyNoRef.current.focus();
     }
   };
@@ -390,7 +400,7 @@ export default function Billing({
   };
 
   const updateQty = (index, val) => {
-    if (!setDrafts || !currentTable) return;
+    if (!setDrafts || !draftKey) return;
 
     let newQty = val;
     if (val !== "") {
@@ -415,7 +425,7 @@ export default function Billing({
 
     setDrafts((prev) => ({
       ...safeObject(prev),
-      [currentTable]: {
+      [draftKey]: {
         ...currentDraft,
         lines: updatedLines,
       },
@@ -423,14 +433,14 @@ export default function Billing({
   };
 
   const removeLine = (index) => {
-    if (!setDrafts || !currentTable) return;
+    if (!setDrafts || !draftKey) return;
     const lines = safeArray(currentDraft.lines);
     const lineToRemove = lines[index];
     const updatedLines = lines.filter((_, i) => i !== index);
 
     setDrafts((prev) => ({
       ...safeObject(prev),
-      [currentTable]: {
+      [draftKey]: {
         ...currentDraft,
         lines: updatedLines,
       },
@@ -614,7 +624,7 @@ export default function Billing({
         if (setDrafts) {
           setDrafts((prev) => {
             const newDrafts = { ...safeObject(prev) };
-            delete newDrafts[currentTable];
+            delete newDrafts[draftKey];
             return newDrafts;
           });
         }
@@ -622,6 +632,7 @@ export default function Billing({
         if (setCurrentTable) {
           setCurrentTable("");
         }
+        setCurrentParty("1");
 
         // Refresh numbers
         fetchLastBillNumberRef.current?.();
@@ -744,7 +755,7 @@ export default function Billing({
 
         const payload = {
           table_no: currentTable,
-          party_no: safeGet(currentDraft, "header.party_no", "1"),
+          party_no: currentParty,
           item_name: newLine.name,
           quantity: newLine.quantity,
           unit_price: newLine.unit_price,
@@ -767,7 +778,7 @@ export default function Billing({
           const updatedLines = [...safeArray(currentDraft.lines), newLine];
           setDrafts((prev) => ({
             ...safeObject(prev),
-            [currentTable]: {
+            [draftKey]: {
               ...currentDraft,
               lines: updatedLines,
             },
@@ -1103,7 +1114,11 @@ export default function Billing({
 
   useEffect(() => {
     const handleGlobalKeyDown = (event) => {
-      if (event.key === "Escape") {
+      if (event.key === "F1") {
+        event.preventDefault();
+        setShowHelp(true);
+        setHelpTab("shortcuts");
+      } else if (event.key === "Escape") {
         event.preventDefault();
         if (tableNoRef.current) {
           tableNoRef.current.focus();
@@ -1282,10 +1297,8 @@ export default function Billing({
                   <Label>Party No.</Label>
                   <Input
                     ref={partyNoRef}
-                    value={safeGet(currentDraft, "header.party_no", "")}
-                    onChange={(e) =>
-                      onHeaderChange({ party_no: e.target.value })
-                    }
+                    value={currentParty}
+                    onChange={(e) => setCurrentParty(e.target.value)}
                     onKeyDown={handlePartyNoKeyDown}
                   />
                 </div>
