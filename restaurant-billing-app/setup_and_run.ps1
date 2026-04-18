@@ -90,7 +90,7 @@ if (Test-CommandExists "node") {
     Write-Host "   - Node.js is already installed." -ForegroundColor Green
 } else {
     Write-Host "   - Installing Node.js (LTS)..." -ForegroundColor Cyan
-    winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent
+    winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --source winget --silent
     if ($LASTEXITCODE -ne 0) { Write-Error "Failed to install Node.js." }
     # Refresh env
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
@@ -106,8 +106,8 @@ if (Test-CommandExists "psql") {
     Write-Host "   IMPORTANT: During installation, you will be asked to set a password for the 'postgres' user." -ForegroundColor Magenta
     Write-Host "   REMEMBER THIS PASSWORD! You will need to enter it shortly." -ForegroundColor Magenta
     
-    winget install PostgreSQL.PostgreSQL --version 17 --accept-source-agreements --accept-package-agreements --interactive
-    
+     winget install PostgreSQL.PostgreSQL.17 --accept-source-agreements --accept-package-agreements --source winget
+
     if ($LASTEXITCODE -ne 0) { Write-Error "Failed to install PostgreSQL." }
     
     # Add Postgres bin to path manually if needed (Standard path)
