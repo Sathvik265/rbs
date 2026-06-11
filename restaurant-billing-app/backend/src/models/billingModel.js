@@ -48,52 +48,64 @@ const BillingModel = {
   },
 
   // Increment and get next bill number using the running_bills table.
-  // Self-heals: if the counter is behind the actual max in the bills table,
-  // it syncs up first to avoid duplicate key violations.
-  async getNextBillNumber(track, date) {
+  // Auto-resets to 1 each new day: if no finalized bills exist for today on
+  // this track, the counter is zeroed so the first bill of the day is always #1.
+  // Self-heals: if the counter is behind the actual day-max it syncs up first.
+  // Accepts an optional `dbClient` so it can run inside an existing transaction.
+  async getNextBillNumber(track, date, dbClient) {
     const colName = this._getTrackColumn(track);
+    const db = dbClient || pool; // Use transaction client if provided
 
-    // 1. Check what the running_bills counter currently says
-    const counterRes = await pool.query(
-      `SELECT ${colName} as current_val FROM running_bills WHERE id = 1`
-    );
-    const counterVal = parseInt(counterRes.rows[0]?.current_val) || 0;
-
-    // 2. Check the actual max bill_number in the bills table for this track+date
-    const actualRes = await pool.query(
-      `SELECT COALESCE(MAX(bill_number), 0) as actual_max FROM bills WHERE track = $1 AND bill_date = $2 AND bill_number > 0`,
+    // 1. Check actual max bill_number in bills table for this track on TODAY
+    const actualRes = await db.query(
+      `SELECT COALESCE(MAX(bill_number), 0) AS actual_max
+         FROM bills
+         WHERE track = $1 AND bill_date = $2 AND bill_number > 0`,
       [track, date]
     );
     const actualMax = parseInt(actualRes.rows[0]?.actual_max) || 0;
 
-    // 3. If the counter is behind reality, sync it up first
-    if (counterVal < actualMax) {
-      await pool.query(
-        `UPDATE running_bills SET ${colName} = $1 WHERE id = 1`,
-        [actualMax]
+    // 2. If no bills exist for today on this track → new day → reset counter to 0
+    if (actualMax === 0) {
+      await db.query(
+        `UPDATE running_bills SET ${colName} = 0 WHERE id = 1`
       );
+    } else {
+      // 3. Otherwise, if the running counter is behind reality, sync it up first
+      const counterRes = await db.query(
+        `SELECT ${colName} AS current_val FROM running_bills WHERE id = 1`
+      );
+      const counterVal = parseInt(counterRes.rows[0]?.current_val) || 0;
+      if (counterVal < actualMax) {
+        await db.query(
+          `UPDATE running_bills SET ${colName} = $1 WHERE id = 1`,
+          [actualMax]
+        );
+      }
     }
 
-    // 4. Now atomically increment and return
-    const result = await pool.query(
-      `UPDATE running_bills SET ${colName} = ${colName} + 1 WHERE id = 1 RETURNING ${colName} as max_num`
+    // 4. Atomically increment and return — first bill of day → counter was 0 → returns 1
+    const result = await db.query(
+      `UPDATE running_bills SET ${colName} = ${colName} + 1 WHERE id = 1 RETURNING ${colName} AS max_num`
     );
     return parseInt(result.rows[0]?.max_num) || 1;
   },
 
   // Find an existing provisional bill (bill_number = 0)
-  async getProvisionalBill(table_no, party_no, track, clerk_initials) {
-    const result = await pool.query(
-      `SELECT * FROM bills 
+  async getProvisionalBill(table_no, party_no, track, clerk_initials, bill_date) {
+    let query = `SELECT * FROM bills 
        WHERE table_no = $1 
        AND party_no = $2 
        AND track = $3 
        AND clerk_initials = $4 
-       AND bill_number = 0 
-       ORDER BY created_at DESC 
-       LIMIT 1`,
-      [parseInt(table_no), party_no, track, clerk_initials],
-    );
+       AND bill_number = 0`;
+    const params = [parseInt(table_no), party_no, track, clerk_initials];
+    if (bill_date) {
+      query += ` AND bill_date = $5`;
+      params.push(bill_date);
+    }
+    query += ` ORDER BY created_at DESC LIMIT 1`;
+    const result = await pool.query(query, params);
     return result.rows[0];
   },
 
@@ -156,8 +168,8 @@ const BillingModel = {
     try {
       await client.query("BEGIN");
 
-      // 1. Generate real bill number
-      const bill_number = await this.getNextBillNumber(track, bill_date);
+      // 1. Generate real bill number — run INSIDE transaction to prevent race conditions
+      const bill_number = await this.getNextBillNumber(track, bill_date, client);
 
       // 2. Update the existing provisional bill
       // We must match on the Created At because that's the FK link
@@ -240,9 +252,22 @@ const BillingModel = {
       return { last_bill_number: 0 };
     }
 
+    // Read the actual max from the bills table for today — this is always
+    // accurate regardless of counter state or daily resets.
+    if (date) {
+      const result = await pool.query(
+        `SELECT COALESCE(MAX(bill_number), 0) AS last_bill_number
+           FROM bills
+           WHERE track = $1 AND bill_date = $2 AND bill_number > 0`,
+        [track, date]
+      );
+      return result.rows[0] || { last_bill_number: 0 };
+    }
+
+    // Fallback: use the running counter if no date given
     const colName = this._getTrackColumn(track);
     const result = await pool.query(
-      `SELECT ${colName} as last_bill_number FROM running_bills WHERE id = 1`
+      `SELECT ${colName} AS last_bill_number FROM running_bills WHERE id = 1`
     );
     return result.rows[0] || { last_bill_number: 0 };
   },
@@ -250,6 +275,54 @@ const BillingModel = {
   async resetRunningBill(track) {
     const colName = this._getTrackColumn(track);
     await pool.query(`UPDATE running_bills SET ${colName} = 0 WHERE id = 1`);
+  },
+
+  /**
+   * EOD: Reset ALL four track counters to 0 in a single atomic update.
+   */
+  async resetAllTrackCounters() {
+    await pool.query(
+      `UPDATE running_bills
+         SET track_morning = 0,
+             track_afternoon = 0,
+             track_rbs1 = 0,
+             track_rbs2 = 0
+         WHERE id = 1`
+    );
+  },
+
+  /**
+   * EOD Audit: Return provisional bills that have actual items (unprinted) from pending orders.
+   */
+  async getUnprintedBillsEOD() {
+    const result = await pool.query(
+      `SELECT
+         b.id,
+         o.track,
+         o.table_no,
+         o.party_no,
+         o.clerk_initials,
+         o.bill_date,
+         o.created_at,
+         COUNT(o.id) as item_count,
+         json_agg(json_build_object(
+             'item_name', o.item_name,
+             'quantity', o.quantity,
+             'unit_price', o.unit_price,
+             'line_total', o.line_total
+         ))::jsonb as items_json
+       FROM orders o
+       LEFT JOIN bills b ON (
+         o.table_no = b.table_no 
+         AND o.party_no = b.party_no 
+         AND o.created_at = b.created_at 
+         AND b.bill_number = 0
+       )
+       WHERE o.track != 'SYS'
+       GROUP BY b.id, o.track, o.table_no, o.party_no, o.clerk_initials, o.bill_date, o.created_at
+       ORDER BY o.track, o.created_at DESC`
+    );
+    return result.rows;
   },
 
   // Get bills by date range

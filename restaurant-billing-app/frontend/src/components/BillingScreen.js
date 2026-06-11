@@ -33,6 +33,7 @@ import {
   getPendingOrdersByTableAndParty,
   getAllPendingOrders,
   getLastBillNumber,
+  updateOrder,
   deleteOrder,
 } from "../services/api";
 import { API, toast, safeGet, safeArray, safeObject } from "../utils/helpers";
@@ -68,6 +69,7 @@ export default function Billing({
   const itemCodeRef = useRef(null);
   const qtyRef = useRef(null);
   const searchInputRef = useRef(null);
+  const scrollContainerRef = useRef(null);
 
   // Array ref for item quantity inputs
   const itemQtyRefs = useRef([]);
@@ -129,6 +131,22 @@ export default function Billing({
       modified_from_bill_id: draft.modified_from_bill_id || null,
     };
   }, [drafts, currentTable, currentParty, draftKey, track]);
+
+  const matchedItem = useMemo(() => {
+    if (!entryCode || !entryCode.trim()) return null;
+    const cleanCode = entryCode.trim().toLowerCase();
+    return menuItems.find(
+      (i) =>
+        String(safeGet(i, "numeric_code", "")).trim().toLowerCase() === cleanCode ||
+        String(safeGet(i, "alpha_code", "")).trim().toLowerCase() === cleanCode
+    );
+  }, [entryCode, menuItems]);
+
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [currentDraft.lines.length]);
 
   useEffect(() => {
     const loadMenu = async () => {
@@ -230,8 +248,36 @@ export default function Billing({
 
     try {
       const pendingOrders = await getPendingOrdersByTableAndParty(tableNo, String(partyNo));
-      if (pendingOrders && pendingOrders.length > 0) {
-        initialLines = pendingOrders.map((order) => ({
+      
+      // Filter out stale orders that belong to previous days
+      let filteredOrders = pendingOrders || [];
+      if (billingDate) {
+        filteredOrders = filteredOrders.filter((order) => {
+          let rawDate = safeGet(order, "bill_date");
+          let orderDateStr = "";
+
+          if (rawDate) {
+            const d = new Date(rawDate);
+            try {
+              orderDateStr = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Asia/Kolkata',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+              }).format(d);
+            } catch (e) {
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, "0");
+              const day = String(d.getDate()).padStart(2, "0");
+              orderDateStr = `${year}-${month}-${day}`;
+            }
+          }
+          return orderDateStr === billingDate;
+        });
+      }
+
+      if (filteredOrders && filteredOrders.length > 0) {
+        initialLines = filteredOrders.map((order) => ({
           id: order.id,
           code: order.item_code || order.numeric_item_code,
           name: order.item_name,
@@ -243,7 +289,7 @@ export default function Billing({
           is_separate: !!order.is_separate,
         }));
         toast.success(
-          `Loaded ${pendingOrders.length} pending items for Table ${tableNo} (Party ${partyNo})`,
+          `Loaded ${filteredOrders.length} pending items for Table ${tableNo} (Party ${partyNo})`,
         );
       }
     } catch (error) {
@@ -283,7 +329,12 @@ export default function Billing({
       if (setCurrentTable) {
         setCurrentTable(newTableNo);
       }
-      if (partyNoRef.current) partyNoRef.current.focus();
+      // Always reset party to 1 when navigating away from the table field
+      setCurrentParty("1");
+      if (partyNoRef.current) {
+        partyNoRef.current.focus();
+        partyNoRef.current.select();
+      }
     }
   };
 
@@ -309,16 +360,25 @@ export default function Billing({
     } else if (e.key === "Escape") {
       e.preventDefault();
       setShowHelp(false);
-      if (tableNoRef.current) {
-        tableNoRef.current.focus();
-      }
+      // Reset party to default 1 whenever we escape back to table number
+      setCurrentParty("1");
+      setTimeout(() => {
+        if (tableNoRef.current) {
+          tableNoRef.current.focus();
+          tableNoRef.current.select();
+        }
+      }, 0);
     } else if (e.key === "Enter" && entryCode) {
       e.preventDefault();
+      const entryCodeStr = entryCode.trim();
+      const entryCodeNum = Number(entryCodeStr);
+
       const item = menuItems.find(
         (i) =>
-          safeGet(i, "numeric_code") === entryCode ||
-          safeGet(i, "alpha_code", "").toLowerCase() ===
-            entryCode.toLowerCase(),
+          String(safeGet(i, "numeric_code", "")).trim() === entryCodeStr ||
+          (!isNaN(entryCodeNum) && safeGet(i, "numeric_code") === entryCodeNum) ||
+          String(safeGet(i, "alpha_code", "")).trim().toLowerCase() === entryCodeStr.toLowerCase() ||
+          String(safeGet(i, "name", "")).trim().toLowerCase() === entryCodeStr.toLowerCase(),
       );
       if (item) {
         if (qtyRef.current) {
@@ -330,9 +390,9 @@ export default function Billing({
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      // Focus first row if exists
-      if (itemRowRefs.current[0]) {
-        itemRowRefs.current[0].focus();
+      if (itemQtyRefs.current[0]) {
+        itemQtyRefs.current[0].focus();
+        itemQtyRefs.current[0].select();
       }
     }
   };
@@ -341,6 +401,12 @@ export default function Billing({
     if (e.key === "Enter") {
       e.preventDefault();
       addItem();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (itemQtyRefs.current[0]) {
+        itemQtyRefs.current[0].focus();
+        itemQtyRefs.current[0].select();
+      }
     }
   };
 
@@ -384,14 +450,16 @@ export default function Billing({
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
       const next = index + 1;
-      if (itemRowRefs.current[next]) {
-        itemRowRefs.current[next].focus();
+      if (itemQtyRefs.current[next]) {
+        itemQtyRefs.current[next].focus();
+        itemQtyRefs.current[next].select();
       }
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       const prev = index - 1;
-      if (prev >= 0 && itemRowRefs.current[prev]) {
-        itemRowRefs.current[prev].focus();
+      if (prev >= 0 && itemQtyRefs.current[prev]) {
+        itemQtyRefs.current[prev].focus();
+        itemQtyRefs.current[prev].select();
       } else if (prev < 0) {
         // Back to item code
         if (itemCodeRef.current) itemCodeRef.current.focus();
@@ -399,7 +467,7 @@ export default function Billing({
     }
   };
 
-  const updateQty = (index, val) => {
+  const updateQty = async (index, val) => {
     if (!setDrafts || !draftKey) return;
 
     let newQty = val;
@@ -430,6 +498,141 @@ export default function Billing({
         lines: updatedLines,
       },
     }));
+
+    // Immediately update activeTables so the right-panel reflects the change
+    // without waiting for the next fetchActiveTables poll.
+    if (currentTable) {
+      const key = `${currentTable}-${currentParty}`;
+      const newTotal = updatedLines.reduce(
+        (s, l) => s + Number(l.line_total || 0), 0
+      );
+      const newCount = updatedLines.reduce(
+        (s, l) => s + Number(l.quantity || 1), 0
+      );
+      setActiveTables((prev) =>
+        prev.map((t) =>
+          `${t.table_no}-${t.party_no}` === key
+            ? { ...t, total_amount: newTotal, item_count: newCount, last_order_at: new Date() }
+            : t
+        )
+      );
+    }
+
+    // Sync to backend if it's an existing order and value is valid
+    if (val !== "" && updatedLines[index] && updatedLines[index].id) {
+      try {
+        await updateOrder(updatedLines[index].id, { quantity: newQty });
+        fetchActiveTablesRef.current?.();
+      } catch (err) {
+        console.error("Failed to sync quantity to DB", err);
+      }
+    }
+  };
+
+  const handleMoveItemClick = async (idx) => {
+    const line = safeArray(currentDraft.lines)[idx];
+    if (!line || !line.id) {
+      toast.error("Cannot move unsaved item. Please save or press enter first.");
+      return;
+    }
+
+    const targetTableStr = window.prompt(
+      `Move '${line.name}' (Qty: ${line.quantity}) to which Table?`,
+      currentTable || ""
+    );
+
+    if (targetTableStr === null) return; // User cancelled
+
+    const targetTableNo = parseInt(targetTableStr.trim(), 10);
+    if (isNaN(targetTableNo) || targetTableNo <= 0 || targetTableNo > 30) {
+      toast.error("Please enter a valid table number (1-30).");
+      return;
+    }
+
+    const targetPartyStr = window.prompt(
+      `Move '${line.name}' to Table ${targetTableNo}, which Party?`,
+      targetTableNo === parseInt(currentTable, 10) ? (currentParty === "1" ? "2" : "1") : "1"
+    );
+
+    if (targetPartyStr === null) return; // User cancelled
+
+    const targetPartyNo = targetPartyStr.trim();
+    const targetPartyNum = parseInt(targetPartyNo, 10);
+    if (isNaN(targetPartyNum) || targetPartyNum < 1 || targetPartyNum > 9) {
+      toast.error("Please enter a valid party number (1-9).");
+      return;
+    }
+
+    if (targetTableNo === parseInt(currentTable, 10) && targetPartyNo === currentParty) {
+      toast.error("Cannot move to the same table and party.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await api.post(`/billing/orders/${line.id}/move`, {
+        targetTableNo: targetTableNo,
+        targetPartyNo: targetPartyNo,
+      });
+
+      toast.success(`Moved '${line.name}' to Table ${targetTableNo} (Party ${targetPartyNo})`);
+
+      setDrafts((prev) => {
+        const nextDrafts = { ...safeObject(prev) };
+        const lines = safeArray(currentDraft.lines);
+        const updatedLines = lines.filter((_, i) => i !== idx);
+
+        if (updatedLines.length === 0) {
+          delete nextDrafts[draftKey];
+          setCurrentTable("");
+        } else {
+          nextDrafts[draftKey] = {
+            ...currentDraft,
+            lines: updatedLines,
+          };
+        }
+        return nextDrafts;
+      });
+
+      fetchActiveTablesRef.current?.();
+
+      if (itemCodeRef.current) {
+        itemCodeRef.current.focus();
+      }
+    } catch (err) {
+      console.error("Failed to move item:", err);
+      toast.error(safeGet(err, "response.data.detail", "Failed to move item"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleLineSplit = async (index) => {
+    if (!setDrafts || !draftKey) return;
+    const lines = safeArray(currentDraft.lines);
+    const lineToToggle = lines[index];
+    if (!lineToToggle) return;
+
+    const newIsSeparate = !lineToToggle.is_separate;
+
+    const updatedLines = lines.map((l, i) => {
+      if (i !== index) return l;
+      return { ...l, is_separate: newIsSeparate };
+    });
+
+    setDrafts((prev) => ({
+      ...safeObject(prev),
+      [draftKey]: { ...currentDraft, lines: updatedLines },
+    }));
+
+    if (lineToToggle.id) {
+      try {
+        await updateOrder(lineToToggle.id, { is_separate: newIsSeparate });
+      } catch (err) {
+        toast.error("Failed to sync split status");
+        console.error(err);
+      }
+    }
   };
 
   const removeLine = (index) => {
@@ -536,6 +739,14 @@ export default function Billing({
               const billsToPrint = [];
 
               if (regularItems.length > 0) {
+                const sub = regularItems.reduce(
+                  (s, i) => s + Number(i.line_total || 0),
+                  0,
+                );
+                const sGstVal = Number((sub * (sgstPercentage / 100)).toFixed(2));
+                const cGstVal = Number((sub * (cgstPercentage / 100)).toFixed(2));
+                const grandVal = Number((sub + sGstVal + cGstVal).toFixed(2));
+
                 billsToPrint.push({
                   ...fullBillData,
                   split: false,
@@ -543,20 +754,22 @@ export default function Billing({
                   items: regularItems,
                   items_json: regularItems,
                   titleSuffix: splitItems.length > 0 ? "(Main)" : "", // Add suffix only if there are split items
-                  subtotal: regularItems.reduce(
-                    (s, i) => s + Number(i.line_total || 0),
-                    0,
-                  ),
-                  grand_total: regularItems.reduce(
-                    (s, i) => s + Number(i.line_total || 0),
-                    0,
-                  ),
-                  sgst: 0,
-                  cgst: 0,
+                  subtotal: sub,
+                  grand_total: grandVal,
+                  sgst: sGstVal,
+                  cgst: cGstVal,
                 });
               }
 
               if (splitItems.length > 0) {
+                const sub = splitItems.reduce(
+                  (s, i) => s + Number(i.line_total || 0),
+                  0,
+                );
+                const sGstVal = Number((sub * (sgstPercentage / 100)).toFixed(2));
+                const cGstVal = Number((sub * (cgstPercentage / 100)).toFixed(2));
+                const grandVal = Number((sub + sGstVal + cGstVal).toFixed(2));
+
                 billsToPrint.push({
                   ...fullBillData,
                   split: false,
@@ -564,16 +777,10 @@ export default function Billing({
                   items: splitItems,
                   items_json: splitItems,
                   titleSuffix: regularItems.length > 0 ? "(Split)" : "", // Add suffix only if there are regular items
-                  subtotal: splitItems.reduce(
-                    (s, i) => s + Number(i.line_total || 0),
-                    0,
-                  ),
-                  grand_total: splitItems.reduce(
-                    (s, i) => s + Number(i.line_total || 0),
-                    0,
-                  ),
-                  sgst: 0,
-                  cgst: 0,
+                  subtotal: sub,
+                  grand_total: grandVal,
+                  sgst: sGstVal,
+                  cgst: cGstVal,
                 });
               }
 
@@ -668,15 +875,20 @@ export default function Billing({
       tableNoRef,
       setPrintData,
       isSplitBillMode,
+      sgstPercentage,
+      cgstPercentage,
     ],
   );
 
   const addItem = useCallback(
-    async (focusItemCode = true) => {
-      if (!entryCode || !currentTable) return null;
+    async (focusItemCode = true, overrideCode = null) => {
+      const rawCode = overrideCode !== null && overrideCode !== undefined ? overrideCode : entryCode;
+      if (!rawCode || !currentTable) return null;
 
       try {
-        const res = await api.get(`/menu/lookup/${entryCode}`);
+        const activeCode = String(rawCode);
+        const cleanCode = activeCode.trim();
+        const res = await api.get(`/menu/lookup/${encodeURIComponent(cleanCode)}`);
         const item = res.data;
 
         if (!item) {
@@ -743,7 +955,7 @@ export default function Billing({
         }
 
         const newLine = {
-          code: entryCode.toUpperCase(),
+          code: activeCode.toUpperCase(),
           name: itemName,
           quantity: qty || 1,
           unit_price: Number(unitPrice),
@@ -852,6 +1064,14 @@ export default function Billing({
             const billsToPrint = [];
 
             if (regularItems.length > 0) {
+              const sub = regularItems.reduce(
+                (s, i) => s + Number(i.line_total || 0),
+                0,
+              );
+              const sGstVal = Number((sub * (sgstPercentage / 100)).toFixed(2));
+              const cGstVal = Number((sub * (cgstPercentage / 100)).toFixed(2));
+              const grandVal = Number((sub + sGstVal + cGstVal).toFixed(2));
+
               billsToPrint.push({
                 ...fullBillData,
                 split: false,
@@ -859,20 +1079,22 @@ export default function Billing({
                 items: regularItems,
                 items_json: regularItems,
                 titleSuffix: splitItems.length > 0 ? "(Main)" : "",
-                subtotal: regularItems.reduce(
-                  (s, i) => s + Number(i.line_total || 0),
-                  0,
-                ),
-                grand_total: regularItems.reduce(
-                  (s, i) => s + Number(i.line_total || 0),
-                  0,
-                ),
-                sgst: 0,
-                cgst: 0,
+                subtotal: sub,
+                grand_total: grandVal,
+                sgst: sGstVal,
+                cgst: cGstVal,
               });
             }
 
             if (splitItems.length > 0) {
+              const sub = splitItems.reduce(
+                (s, i) => s + Number(i.line_total || 0),
+                0,
+              );
+              const sGstVal = Number((sub * (sgstPercentage / 100)).toFixed(2));
+              const cGstVal = Number((sub * (cgstPercentage / 100)).toFixed(2));
+              const grandVal = Number((sub + sGstVal + cGstVal).toFixed(2));
+
               billsToPrint.push({
                 ...fullBillData,
                 split: false,
@@ -880,16 +1102,10 @@ export default function Billing({
                 items: splitItems,
                 items_json: splitItems,
                 titleSuffix: regularItems.length > 0 ? "(Split)" : "",
-                subtotal: splitItems.reduce(
-                  (s, i) => s + Number(i.line_total || 0),
-                  0,
-                ),
-                grand_total: splitItems.reduce(
-                  (s, i) => s + Number(i.line_total || 0),
-                  0,
-                ),
-                sgst: 0,
-                cgst: 0,
+                subtotal: sub,
+                grand_total: grandVal,
+                sgst: sGstVal,
+                cgst: cGstVal,
               });
             }
 
@@ -971,6 +1187,8 @@ export default function Billing({
     setPrintData,
     tableNoRef,
     isSplitBillMode,
+    sgstPercentage,
+    cgstPercentage,
   ]);
 
   // --- Active Bills Logic ---
@@ -995,21 +1213,27 @@ export default function Billing({
       const groups = {};
       orders.forEach((o) => {
         // Filter by billing date to exclude stale orders from previous days
-        // Note: o.bill_date might be ISO string or date object depending on driver, usually string YYYY-MM-DD or full ISO
         if (billingDate) {
           let rawDate = safeGet(o, "bill_date");
           let orderDateStr = "";
 
           if (rawDate) {
             const d = new Date(rawDate);
-            // Construct local YYYY-MM-DD
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, "0");
-            const day = String(d.getDate()).padStart(2, "0");
-            orderDateStr = `${year}-${month}-${day}`;
+            try {
+              orderDateStr = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'Asia/Kolkata',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+              }).format(d);
+            } catch (e) {
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, "0");
+              const day = String(d.getDate()).padStart(2, "0");
+              orderDateStr = `${year}-${month}-${day}`;
+            }
           }
 
-          // If we have a valid order date string, compare it
           if (orderDateStr && orderDateStr !== billingDate) {
             return;
           }
@@ -1036,9 +1260,37 @@ export default function Billing({
           if (updateTime > g.last_order_at) g.last_order_at = updateTime;
         }
 
-        g.item_count += 1;
+        // Sum actual quantities, not just row count
+        g.item_count += Number(o.quantity || 1);
         g.total_amount += parseFloat(o.line_total || 0);
       });
+
+      // Merge local draft values so qty edits show immediately without waiting for poll.
+      // For whichever draft key matches a DB group, override item_count + total_amount
+      // with the live draft state (which is already updated optimistically in updateQty).
+      if (drafts) {
+        Object.entries(safeObject(drafts)).forEach(([draftKey, draft]) => {
+          const lines = safeArray(draft?.lines);
+          if (!lines.length) return;
+          const header = safeObject(draft?.header);
+          const tableNo = header.table_no;
+          const partyNo = header.party_no || "1";
+          if (!tableNo) return;
+          const key = `${tableNo}-${partyNo}`;
+          if (groups[key]) {
+            // Override with live draft totals
+            groups[key].item_count = lines.reduce(
+              (s, l) => s + Number(l.quantity || 1),
+              0,
+            );
+            groups[key].total_amount = lines.reduce(
+              (s, l) => s + Number(l.line_total || 0),
+              0,
+            );
+          }
+        });
+      }
+
       // Sort by first_order_at to ensure consistent temporary bill numbering
       const sortedTables = Object.values(groups).sort(
         (a, b) => a.first_order_at - b.first_order_at,
@@ -1047,7 +1299,7 @@ export default function Billing({
     } catch (err) {
       console.error("Failed to fetch active tables", err);
     }
-  }, [billingDate]);
+  }, [billingDate, drafts]);
 
   useEffect(() => {
     fetchActiveTablesRef.current = fetchActiveTables;
@@ -1105,7 +1357,8 @@ export default function Billing({
   }, [helpTab]);
 
   const formatDuration = (ms) => {
-    const seconds = Math.floor(ms / 1000);
+    const safeMs = Math.max(0, ms);
+    const seconds = Math.floor(safeMs / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     if (hours > 0) return `${hours}h ${minutes % 60}m`;
@@ -1120,10 +1373,13 @@ export default function Billing({
         setHelpTab("shortcuts");
       } else if (event.key === "Escape") {
         event.preventDefault();
-        if (tableNoRef.current) {
-          tableNoRef.current.focus();
-          tableNoRef.current.select();
-        }
+        setCurrentParty("1");
+        setTimeout(() => {
+          if (tableNoRef.current) {
+            tableNoRef.current.focus();
+            tableNoRef.current.select();
+          }
+        }, 0);
       } else if (event.key === "End" || event.key === "Home") {
         event.preventDefault();
         handlePrintBill();
@@ -1187,11 +1443,11 @@ export default function Billing({
     const lowercasedQuery = searchQuery.toLowerCase();
     const filtered = menuItems.filter(
       (item) =>
-        safeGet(item, "name", "").toLowerCase().includes(lowercasedQuery) ||
-        safeGet(item, "numeric_code", "")
+        String(safeGet(item, "name", "")).toLowerCase().includes(lowercasedQuery) ||
+        String(safeGet(item, "numeric_code", ""))
           .toLowerCase()
           .includes(lowercasedQuery) ||
-        safeGet(item, "alpha_code", "").toLowerCase().includes(lowercasedQuery),
+        String(safeGet(item, "alpha_code", "")).toLowerCase().includes(lowercasedQuery),
     );
     setFilteredItems(filtered);
     setSelectedHelpIndex(0);
@@ -1209,11 +1465,12 @@ export default function Billing({
       e.preventDefault();
       if (filteredItems[selectedHelpIndex]) {
         const selectedItem = filteredItems[selectedHelpIndex];
-        setEntryCode(
-          safeGet(selectedItem, "numeric_code", "") ||
-            safeGet(selectedItem, "alpha_code", ""),
-        );
+        const code =
+          String(safeGet(selectedItem, "numeric_code", "")).trim() ||
+          String(safeGet(selectedItem, "alpha_code", "")).trim();
+        setEntryCode(code);
         setShowHelp(false);
+        setSearchQuery("");
         if (qtyRef.current) {
           qtyRef.current.focus();
           qtyRef.current.select();
@@ -1241,15 +1498,13 @@ export default function Billing({
                   id="splitBillModeHeader"
                   checked={isSplitBillMode}
                   onChange={(e) => setIsSplitBillMode(e.target.checked)}
-                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${
-                    isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
-                  }`}
+                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
+                    }`}
                 />
                 <Label
                   htmlFor="splitBillModeHeader"
-                  className={`!mb-0 cursor-pointer text-xs font-medium ${
-                    isSplitBillMode ? "text-green-700" : "text-gray-600"
-                  }`}
+                  className={`!mb-0 cursor-pointer text-xs font-medium ${isSplitBillMode ? "text-green-700" : "text-gray-600"
+                    }`}
                 >
                   SPLIT BILL
                 </Label>
@@ -1290,6 +1545,7 @@ export default function Billing({
                         // toast.error("Table number must be between 1 and 30");
                       }
                     }}
+                    onFocus={(e) => e.target.select()}
                     onKeyDown={handleTableNoKeyDown}
                   />
                 </div>
@@ -1298,7 +1554,23 @@ export default function Billing({
                   <Input
                     ref={partyNoRef}
                     value={currentParty}
-                    onChange={(e) => setCurrentParty(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "") {
+                        setCurrentParty("");
+                        return;
+                      }
+
+                      const num = parseInt(val, 10);
+
+                      // Validation: Allow only numbers, less than 10 (1-9)
+                      if (!isNaN(num) && num >= 1 && num < 10) {
+                        setCurrentParty(String(num));
+                      } else {
+                        toast.error("Party number must be between 1 and 9");
+                      }
+                    }}
+                    onFocus={(e) => e.target.select()}
                     onKeyDown={handlePartyNoKeyDown}
                   />
                 </div>
@@ -1318,9 +1590,9 @@ export default function Billing({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 mb-4 flex-none">
+            <div className="grid gap-4 mb-4 flex-none" style={{ gridTemplateColumns: "3fr 2fr 7fr" }}>
               <div>
-                <Label>Item Code (F1 for Help)</Label>
+                <Label>Item Code</Label>
                 <Input
                   ref={itemCodeRef}
                   type="text"
@@ -1338,12 +1610,23 @@ export default function Billing({
                   min="1"
                   value={qty}
                   onChange={(e) => setQty(Number(e.target.value) || 1)}
+                  onFocus={(e) => e.target.select()}
                   onKeyDown={handleQtyKeyDown}
                 />
+              </div>
+              <div>
+                <Label>Item Name</Label>
+                <div
+                  className="w-full border border-gray-300 rounded-md bg-gray-100 flex items-center px-3 text-lg font-bold text-orange-500 overflow-hidden whitespace-nowrap text-ellipsis"
+                  style={{ height: "38px" }}
+                >
+                  {matchedItem ? safeGet(matchedItem, "name", "") : <span className="text-gray-500 text-sm font-normal">Enter Code...</span>}
+                </div>
               </div>
             </div>
 
             <div
+              ref={scrollContainerRef}
               className="overflow-y-auto border rounded-md relative bg-white"
               style={{ height: "500px", minHeight: "300px" }}
             >
@@ -1376,56 +1659,54 @@ export default function Billing({
                       onKeyDown={(e) => handleRowKeyDown(e, idx)}
                       className="focus:bg-blue-50 outline-none ring-2 ring-transparent focus:ring-blue-300 border-b border-gray-200"
                     >
-                      <TableCell className="!py-4 text-xl font-bold text-gray-800">
+                      <TableCell className="!py-0 text-base font-bold text-gray-800">
                         {idx + 1}
                       </TableCell>
-                      <TableCell className="!py-4">
+                      <TableCell className="!py-0">
                         <div className="flex items-center">
-                          <span className="mr-3 text-2xl font-bold text-black tracking-wide">
+                          <span className="mr-3 text-lg font-bold text-black tracking-wide">
                             {safeGet(l, "name", "Unknown Item")}
                           </span>
-                          <div className="flex space-x-2 ml-4">
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              className="h-10 w-10 p-0 text-xl font-bold"
-                              onClick={() => removeLine(idx)}
-                              title="Remove Line"
+                          {isSplitBillMode && (
+                            <button
+                              onClick={() => toggleLineSplit(idx)}
+                              className={`ml-2 px-3 py-0.5 text-xs font-bold rounded shadow-sm border-2 transition-all cursor-pointer ${l.is_separate
+                                ? "bg-green-100 text-green-700 border-green-500"
+                                : "bg-gray-100 text-gray-400 border-gray-300 hover:bg-gray-200"
+                                }`}
+                              title="Toggle Split Status"
                             >
-                              -
-                            </Button>
+                              SPLIT
+                            </button>
+                          )}
+                          <div className="flex space-x-1.5 ml-4">
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-10 w-10 p-0 bg-green-50 text-green-700 border-green-300 hover:bg-green-100 text-xl font-bold"
-                              onClick={() =>
-                                updateQty(
-                                  idx,
-                                  (Number(safeGet(l, "quantity", 0)) || 0) + 1,
-                                )
-                              }
-                              title="Increase Quantity"
+                              className="h-6 px-1.5 bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100 text-xs font-bold transition-all"
+                              onClick={() => handleMoveItemClick(idx)}
+                              title="Move Item to another Table"
                             >
-                              +
+                              *
                             </Button>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="!py-4">
+                      <TableCell className="!py-0">
                         <Input
                           ref={(el) => (itemQtyRefs.current[idx] = el)}
                           type="number"
                           min="1"
-                          className="w-24 h-12 text-2xl font-bold text-center border-2 border-gray-300 focus:border-blue-500"
+                          className="w-16 h-7 text-lg font-bold text-center border border-gray-300 focus:border-blue-500"
                           value={safeGet(l, "quantity", "")}
                           onChange={(e) => updateQty(idx, e.target.value)}
                           onKeyDown={(e) => handleTableQtyKeyDown(e, idx)}
                         />
                       </TableCell>
-                      <TableCell className="!py-4 text-xl font-semibold text-gray-700">
+                      <TableCell className="!py-0 text-base font-semibold text-gray-700">
                         {Number(safeGet(l, "unit_price", 0)).toFixed(2)}
                       </TableCell>
-                      <TableCell className="!py-4 text-xl font-bold text-black">
+                      <TableCell className="!py-0 text-base font-bold text-black">
                         {Number(safeGet(l, "line_total", 0)).toFixed(2)}
                       </TableCell>
                     </TableRow>
@@ -1442,17 +1723,15 @@ export default function Billing({
           <div className="help-header">
             <div className="help-tabs">
               <button
-                className={`help-tab-btn ${
-                  helpTab === "shortcuts" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "shortcuts" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("shortcuts")}
               >
                 Shortcuts
               </button>
               <button
-                className={`help-tab-btn ${
-                  helpTab === "active" ? "active" : ""
-                }`}
+                className={`help-tab-btn ${helpTab === "active" ? "active" : ""
+                  }`}
                 onClick={() => setHelpTab("active")}
               >
                 Active Bills ({activeTables.length})
@@ -1493,15 +1772,14 @@ export default function Billing({
                             {filteredItems.map((item, index) => (
                               <TableRow
                                 key={safeGet(item, "id", Math.random())}
-                                className={`cursor-pointer hover:bg-gray-100 ${
-                                  selectedHelpIndex === index
-                                    ? "bg-blue-100"
-                                    : ""
-                                }`}
+                                className={`cursor-pointer hover:bg-gray-100 ${selectedHelpIndex === index
+                                  ? "bg-blue-100"
+                                  : ""
+                                  }`}
                                 onClick={() => {
                                   setEntryCode(
                                     safeGet(item, "numeric_code", "") ||
-                                      safeGet(item, "alpha_code", ""),
+                                    safeGet(item, "alpha_code", ""),
                                   );
                                   setShowHelp(false);
                                   if (qtyRef.current) {

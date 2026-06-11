@@ -31,11 +31,12 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [isShiftClosed, setIsShiftClosed] = useState(false);
+  const [isTrackLocked, setIsTrackLocked] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [password, setPassword] = useState("");
   const passwordInputRef = useRef(null);
 
-  // Fetch all sessions on mount to know which shifts are open/closed
+  // Fetch all sessions on mount to know which shifts are open/closed/locked
   useEffect(() => {
     // Update date every minute to handle overnight open app
     const dateInterval = setInterval(() => {
@@ -45,6 +46,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
     const fetchSessions = async () => {
       setSessionsLoading(true);
       try {
+        // Fetch basic shift status (unauthenticated)
         const res = await axios.get(`${API}/auth/shift-status`);
         setSessions(safeArray(res.data));
       } catch (e) {
@@ -59,15 +61,17 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
     return () => clearInterval(dateInterval);
   }, []);
 
-  // Whenever track changes, check if that shift is closed
+  // Whenever track changes, check if that shift is closed OR locked
   useEffect(() => {
     if (!track || sessions.length === 0) {
       setIsShiftClosed(false);
+      setIsTrackLocked(false);
       return;
     }
     const validTracks = ["`", "``", "RBS1", "RBS2"];
     if (!validTracks.includes(track)) {
       setIsShiftClosed(false);
+      setIsTrackLocked(false);
       return;
     }
 
@@ -78,6 +82,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
     if (matchingSessions.length === 0) {
       // No session exists for this shift yet — allow login (backend will create one)
       setIsShiftClosed(false);
+      setIsTrackLocked(false);
       return;
     }
 
@@ -92,6 +97,25 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
     setIsShiftClosed(hasClosed && !hasOpen);
   }, [track, date, sessions]);
 
+  // Separately check is_locked from the track status endpoint (requires auth but
+  // falls back gracefully). We re-check whenever track changes.
+  useEffect(() => {
+    if (!track) {
+      setIsTrackLocked(false);
+      return;
+    }
+    const validTracks = ["`", "``", "RBS1", "RBS2"];
+    if (!validTracks.includes(track)) {
+      setIsTrackLocked(false);
+      return;
+    }
+
+    // is_locked is now returned by /api/auth/shift-status (no auth required)
+    // so we can read it directly from the sessions state.
+    const found = sessions.find((s) => s.shift_name === track);
+    setIsTrackLocked(found ? !!found.is_locked : false);
+  }, [track, sessions]);
+
   useEffect(() => {
     if (credentialInputRef.current && !showPwd) {
       credentialInputRef.current.focus();
@@ -103,7 +127,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
   const handleKeyDown = (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      if (!isShiftClosed) {
+      if (!isShiftClosed && !isTrackLocked) {
         submit();
       }
     } else if (event.key === "Escape" && showPwd) {
@@ -128,6 +152,14 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
     if (isShiftClosed) {
       toast.error(
         "This shift is closed and cannot be accessed. An admin must re-open it from Shift Management first.",
+      );
+      return;
+    }
+
+    // Block clerks from locked tracks (admin bypass is allowed)
+    if (isTrackLocked && credential.toUpperCase() !== "SHI") {
+      toast.error(
+        "Track Logged out",
       );
       return;
     }
@@ -273,6 +305,22 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
               </div>
             )}
 
+            {isTrackLocked && !isShiftClosed && (
+              <div
+                style={{
+                  background: "#fdf4ff",
+                  border: "1px solid #c084fc",
+                  borderRadius: "0.375rem",
+                  padding: "0.75rem 1rem",
+                  color: "#6b21a8",
+                  fontSize: "0.875rem",
+                }}
+              >
+                <strong>🔒 Logged out</strong>
+                <br />
+              </div>
+            )}
+
             {sessionsLoading && (
               <div className="text-xs text-gray-500 text-center">
                 Checking shift status...
@@ -283,7 +331,7 @@ export function LoginPanel({ onLogin, onStartAdminVerification }) {
               <Button
                 onClick={() => submit()}
                 className="w-full"
-                disabled={isShiftClosed}
+                disabled={isShiftClosed || (isTrackLocked && credential.toUpperCase() !== "SHI")}
               >
                 {showPwd ? "Verify" : "Login"}
               </Button>

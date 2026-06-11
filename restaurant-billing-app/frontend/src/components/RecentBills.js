@@ -73,6 +73,7 @@ function RecentBills({ billingDate }) {
         n && typeof n === "object" ? n.name || n.item_name || "" : n || "";
 
       return {
+        code: it.item_code_numeric || it.numeric_item_code || it.numeric_code || "",
         name: finalName,
         quantity: finalQty,
         unit_price:
@@ -302,15 +303,17 @@ function RecentBills({ billingDate }) {
                   <table className="items-table">
                     <thead>
                       <tr>
-                        <th>Item</th>
-                        <th className="col-qty">Qty</th>
-                        <th className="col-price">Price</th>
-                        <th className="col-total">Total</th>
+                        <th style={{ width: "15%", textAlign: "left" }}>Code</th>
+                        <th style={{ width: "40%", textAlign: "left" }}>Item</th>
+                        <th className="col-qty" style={{ width: "15%", textAlign: "right" }}>Qty</th>
+                        <th className="col-price" style={{ width: "15%", textAlign: "right" }}>Price</th>
+                        <th className="col-total" style={{ width: "15%", textAlign: "right" }}>Total</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedBill.items.map((it, i) => (
                         <tr key={i}>
+                          <td>{it.code}</td>
                           <td>{it.name}</td>
                           <td className="col-qty">{it.quantity}</td>
                           <td className="col-price">
@@ -322,7 +325,7 @@ function RecentBills({ billingDate }) {
                         </tr>
                       ))}
                       <tr className="total-row">
-                        <td colSpan={3} className="total-label">
+                        <td colSpan={4} className="total-label">
                           Total Amount:
                         </td>
                         <td className="col-total">

@@ -338,6 +338,12 @@ textarea:hover:not(:disabled):not([readonly]) {
   padding-right: 1.5rem;
 }
 
+.py-0,
+.\!py-0 {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
 .py-1 {
   padding-top: 0.25rem;
   padding-bottom: 0.25rem;
@@ -1107,14 +1113,14 @@ kbd {
 
 .active-bills-table th {
   text-align: left;
-  padding: 0.5rem;
+  padding: 0.25rem 0.5rem;
   color: #9ca3af;
   font-weight: 500;
   border-bottom: 1px solid #333;
 }
 
 .active-bills-table td {
-  padding: 0.75rem 0.5rem;
+  padding: 0.25rem 0.5rem;
   border-bottom: 1px solid #333;
   color: #ffffff;
 }
@@ -1135,4 +1141,139 @@ kbd {
   border: 1px solid #333;
   border-radius: 0.5rem;
   overflow: hidden;
+}
+
+/* ==================== BILLING SCREEN NO-SCROLL LAYOUT FIX ==================== */
+/* Prevent vertical scroll for the whole page when billing screen is shown */
+.billing-tab-active {
+  height: 100vh !important;
+  min-height: 100vh !important;
+  overflow: hidden !important;
+}
+
+.billing-tab-active > .max-w-7xl {
+  height: calc(100vh - 2rem) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* The title section */
+.billing-tab-active .text-center {
+  flex-shrink: 0 !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.billing-tab-active .text-center h1 {
+  font-size: 1.5rem !important; /* Slightly smaller to fit layout */
+}
+
+/* Tabs & space-y-6 container */
+.billing-tab-active .space-y-6 {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  margin-top: 0 !important;
+  gap: 0 !important;
+}
+
+.billing-tab-active .space-y-6 > .w-full {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* Tabs Trigger Header */
+.billing-tab-active .space-y-6 > .w-full > .flex {
+  flex-shrink: 0 !important;
+  margin-bottom: 0.75rem !important;
+}
+
+/* Active tab content wrapper */
+.billing-tab-active .space-y-6 > .w-full > div:not(.flex) {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* The grid element in BillingScreen */
+.billing-tab-active .grid-cols-12 {
+  flex: 1 !important;
+  display: grid !important;
+  grid-template-rows: 1fr !important;
+  overflow: hidden !important;
+  height: 100% !important;
+  margin-bottom: 0 !important;
+}
+
+/* The left side column */
+.billing-tab-active .col-span-8 {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.billing-tab-active .col-span-8 > .bg-white {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.billing-tab-active .col-span-8 > .bg-white > div:first-child {
+  flex-shrink: 0 !important;
+}
+
+.billing-tab-active .col-span-8 > .bg-white > div.px-6.flex {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* The elements inside CardContent (grid, info panel, inputs) */
+.billing-tab-active .col-span-8 > .bg-white > div.px-6.flex > div.flex-none {
+  flex-shrink: 0 !important;
+}
+
+/* The Table container wrapper */
+.billing-tab-active .col-span-8 > .bg-white > div.px-6.flex > div.overflow-y-auto {
+  flex: 1 !important;
+  height: auto !important; /* Override the style="height: 500px" */
+  min-height: 150px !important;
+}
+
+/* Right side column */
+.billing-tab-active .col-span-4 {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  position: static !important;
+  gap: 1rem !important;
+}
+
+/* Help panel (when shown) */
+.billing-tab-active .help-panel {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.billing-tab-active .help-content {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  max-height: none !important; /* Allow it to grow dynamically */
+}
+
+/* Finalize Bill Card on the right */
+.billing-tab-active .col-span-4 > .bg-white {
+  flex-shrink: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
 }

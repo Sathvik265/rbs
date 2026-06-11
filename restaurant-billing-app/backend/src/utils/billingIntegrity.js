@@ -135,18 +135,21 @@ async function verifyBillIntegrity({ orders, clerkInitials, submittedTotals }) {
     grand_total,
   };
 
+  const TOLERANCE = 0.02; // Allow up to 2 cents rounding drift between frontend & backend
+
   const matches =
-    submitted.subtotal === computed.subtotal &&
-    submitted.sgst === computed.sgst &&
-    submitted.cgst === computed.cgst &&
-    submitted.tax_amount === computed.tax_amount &&
-    submitted.grand_total === computed.grand_total;
+    Math.abs(submitted.subtotal - computed.subtotal) <= TOLERANCE &&
+    Math.abs(submitted.sgst     - computed.sgst)     <= TOLERANCE &&
+    Math.abs(submitted.cgst     - computed.cgst)     <= TOLERANCE &&
+    Math.abs(submitted.tax_amount - computed.tax_amount) <= TOLERANCE &&
+    Math.abs(submitted.grand_total - computed.grand_total) <= TOLERANCE;
 
   if (!matches) {
     return {
       ok: false,
       detail: "Submitted bill totals failed backend verification",
       computed,
+      submitted,
     };
   }
 

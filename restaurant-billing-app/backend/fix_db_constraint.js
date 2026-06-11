@@ -27,7 +27,7 @@ async function fixConstraint() {
         console.log("Creating new partial unique index...");
         await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS bills_bill_number_bill_date_unique 
-      ON bills (bill_number, bill_date) 
+      ON bills (bill_number, bill_date, track) 
       WHERE bill_number > 0;
     `);
 

@@ -43,6 +43,20 @@ const BillContent = ({ data, settings }) => {
   const gstin = safeGet(mergedData, "gstin", "");
   const clerkInitials = safeGet(data, "clerk_initials") || safeGet(settings, "clerk_initials") || "CLK";
 
+  const trackVal = safeGet(data, "track") || safeGet(header, "track", "");
+  const getTrackLetter = (t) => {
+    const clean = String(t || "").trim();
+    if (clean === "`") return "I";
+    if (clean === "``") return "II";
+    if (clean.toLowerCase() === "rbs1") return "R";
+    if (clean.toLowerCase() === "rbs 2" || clean.toLowerCase() === "rbs2") return "R2";
+    return "";
+  };
+  const trackLetter = getTrackLetter(trackVal);
+  const titleSuffix = safeGet(data, "titleSuffix", "");
+  const hotelHeading = trackLetter ? `${hotelName} ${trackLetter}` : hotelName;
+  const displayHotelName = titleSuffix ? `${hotelHeading} ${titleSuffix}` : hotelHeading;
+
   const createdAt = safeGet(data, "created_at", null);
   const subtotal = safeGet(data, "subtotal", 0);
   const sgst = safeGet(data, "sgst", 0);
@@ -79,7 +93,7 @@ const BillContent = ({ data, settings }) => {
   let ascii = "";
 
   // Header
-  ascii += centerText(`${hotelName} (${clerkInitials})`, LINE_WIDTH) + "\n";
+  ascii += centerText(`${displayHotelName} (${clerkInitials})`, LINE_WIDTH) + "\n";
   if (address) ascii += centerText(address, LINE_WIDTH) + "\n";
   if (phone) ascii += centerText(`Ph: ${phone}`, LINE_WIDTH) + "\n";
   if (gstin) ascii += centerText(`GST: ${gstin}`, LINE_WIDTH) + "\n";
@@ -131,9 +145,13 @@ const BillContent = ({ data, settings }) => {
   const subTotalStr = Number(subtotal).toFixed(2);
   ascii += padRight("Subtotal", LINE_WIDTH - subTotalStr.length) + subTotalStr + "\n";
 
-  const gstLabel = `GST (${Number(sgstPercentage + cgstPercentage).toFixed(1)}%)`;
-  const gstStr = Number(sgst + cgst).toFixed(2);
-  ascii += padRight(gstLabel, LINE_WIDTH - gstStr.length) + gstStr + "\n";
+  const cgstLabel = `CGST (${Number(cgstPercentage || 0).toFixed(1)}%)`;
+  const cgstStr = Number(cgst || 0).toFixed(2);
+  ascii += padRight(cgstLabel, LINE_WIDTH - cgstStr.length) + cgstStr + "\n";
+
+  const sgstLabel = `SGST (${Number(sgstPercentage || 0).toFixed(1)}%)`;
+  const sgstStr = Number(sgst || 0).toFixed(2);
+  ascii += padRight(sgstLabel, LINE_WIDTH - sgstStr.length) + sgstStr + "\n";
 
   ascii += separator + "\n";
 
