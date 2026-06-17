@@ -5,8 +5,8 @@ export const API = `${BACKEND_URL}/api`;
 
 // Toast notification system
 export const toast = {
-  success: (message) => alert(message),
-  error: (message) => alert(message),
+  success: (message) => console.log("SUCCESS:", message),
+  error: (message) => console.error("ERROR:", message),
 };
 
 // Safe utility functions

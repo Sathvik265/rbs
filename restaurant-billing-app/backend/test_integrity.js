@@ -14,11 +14,11 @@ async function run() {
     ],
     clerkInitials: 'CLK',
     submittedTotals: {
-      subtotal: 100,
+      subtotal: 95,
       sgst: 2.5,
       cgst: 2.5,
       tax_amount: 5,
-      grand_total: 105
+      grand_total: 100
     }
   });
   console.log(check);

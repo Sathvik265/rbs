@@ -42,10 +42,10 @@ app.use(
   }),
 );
 
-// Rate limiting - development tuned
+// Rate limiting - development & multi-device tuned
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000,
+  max: 100000, // Greatly increased to support multi-terminal POS systems
 });
 app.use("/api/", limiter);
 
@@ -282,13 +282,27 @@ app.post("/api/menu", requireAdminFull, async (req, res) => {
     // The database constraint requires an ARRAY with objects containing 'qty' and 'name' fields
     let categoryJson;
     if (typeof category === "string" && category.trim()) {
-      // If it's a plain string, wrap it in JSON array format with qty
-      categoryJson = JSON.stringify([
-        {
-          qty: 1, // Default quantity
-          name: category.trim(),
-        },
-      ]);
+      const trimmed = category.trim();
+      let isJson = false;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && (typeof parsed === "object" || Array.isArray(parsed))) {
+          categoryJson = JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
+          isJson = true;
+        }
+      } catch (e) {
+        // Not a valid JSON string, treat as plain text
+      }
+
+      if (!isJson) {
+        // If it's a plain string, wrap it in JSON array format with qty
+        categoryJson = JSON.stringify([
+          {
+            qty: 1, // Default quantity
+            name: trimmed,
+          },
+        ]);
+      }
     } else if (typeof category === "object" && category !== null) {
       // If it's already an object, wrap in array
       if (Array.isArray(category)) {
@@ -385,13 +399,29 @@ app.put("/api/menu/:id", requireAdminFull, async (req, res) => {
     // Ensure category is properly formatted as JSON for database (Same logic as POST)
     let categoryJson;
     if (typeof category === "string" && category.trim()) {
-      categoryJson = JSON.stringify([
-        {
-          qty: 1,
-          name: category.trim(),
-        },
-      ]);
+      const trimmed = category.trim();
+      let isJson = false;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && (typeof parsed === "object" || Array.isArray(parsed))) {
+          categoryJson = JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
+          isJson = true;
+        }
+      } catch (e) {
+        // Not a valid JSON string, treat as plain text
+      }
+
+      if (!isJson) {
+        // If it's a plain string, wrap it in JSON array format with qty
+        categoryJson = JSON.stringify([
+          {
+            qty: 1, // Default quantity
+            name: trimmed,
+          },
+        ]);
+      }
     } else if (typeof category === "object" && category !== null) {
+      // If it's already an object, wrap in array
       if (Array.isArray(category)) {
         categoryJson = JSON.stringify(category);
       } else {
@@ -403,6 +433,7 @@ app.put("/api/menu/:id", requireAdminFull, async (req, res) => {
         ]);
       }
     } else {
+      // Default empty category
       categoryJson = JSON.stringify([{ qty: 1, name: "" }]);
     }
 

@@ -54,7 +54,7 @@ export default function Billing({
   setPrintData,
 }) {
   const [entryCode, setEntryCode] = useState("");
-  const [qty, setQty] = useState(1);
+  const [qty, setQty] = useState("1");
   const [loading, setLoading] = useState(false);
   const [isSplitBillMode, setIsSplitBillMode] = useState(false);
   const [nextBillNumber, setNextBillNumber] = useState(null);
@@ -76,7 +76,12 @@ export default function Billing({
   // Array ref for item rows (navigation mode)
   const itemRowRefs = useRef([]);
 
-  const [showHelp, setShowHelp] = useState(false);
+  const draftsRef = useRef(drafts);
+  useEffect(() => {
+    draftsRef.current = drafts;
+  }, [drafts]);
+
+  const [showF4Popup, setShowF4Popup] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [menuItems, setMenuItems] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
@@ -187,7 +192,7 @@ export default function Billing({
     if (activeTab === "billing" || activeTab === "home") {
       fetchLastBillNumberData();
     }
-  }, [billingDate, track, activeTab, drafts]); // Re-fetch when drafts change (bill created) or tab/date changes
+  }, [billingDate, track, activeTab]); // Re-fetch when tab/date/track changes (manual refreshes handle bill finalization)
 
   useEffect(() => {
     if (activeTab === "billing" && tableNoRef.current) {
@@ -356,11 +361,12 @@ export default function Billing({
   const handleItemCodeKeyDown = (e) => {
     if (e.key === "F1") {
       e.preventDefault();
-      setShowHelp(true);
+      setShowF4Popup(true);
+      setHelpTab("shortcuts");
     } else if (e.key === "Escape") {
       e.preventDefault();
-      setShowHelp(false);
-      // Reset party to default 1 whenever we escape back to table number
+      setShowF4Popup(false);
+      if (setCurrentTable) setCurrentTable("1");
       setCurrentParty("1");
       setTimeout(() => {
         if (tableNoRef.current) {
@@ -386,7 +392,8 @@ export default function Billing({
           qtyRef.current.select();
         }
       } else {
-        setShowHelp(true);
+        setShowF4Popup(true);
+        setHelpTab("shortcuts");
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -401,11 +408,17 @@ export default function Billing({
     if (e.key === "Enter") {
       e.preventDefault();
       addItem();
-    } else if (e.key === "ArrowDown") {
+    } else if (e.key === "PageDown") {
       e.preventDefault();
       if (itemQtyRefs.current[0]) {
         itemQtyRefs.current[0].focus();
         itemQtyRefs.current[0].select();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      if (itemCodeRef.current) {
+        itemCodeRef.current.focus();
+        itemCodeRef.current.select();
       }
     }
   };
@@ -470,23 +483,17 @@ export default function Billing({
   const updateQty = async (index, val) => {
     if (!setDrafts || !draftKey) return;
 
-    let newQty = val;
-    if (val !== "") {
-      newQty = Number(val);
-      if (newQty <= 0) {
-        removeLine(index);
-        return;
-      }
-    }
+    // 1. Validate decimal keystroke pattern (allow only positive decimals/empty string/dot)
+    if (val !== "" && !/^\d*\.?\d*$/.test(val)) return;
 
     const lines = safeArray(currentDraft.lines);
     const updatedLines = lines.map((l, i) => {
       if (i !== index) return l;
       return {
         ...l,
-        quantity: newQty,
+        quantity: val, // Store exact typed string!
         line_total: Number(
-          (safeGet(l, "unit_price", 0) * (Number(newQty) || 0)).toFixed(2),
+          (safeGet(l, "unit_price", 0) * (parseFloat(val) || 0)).toFixed(2),
         ),
       };
     });
@@ -507,7 +514,7 @@ export default function Billing({
         (s, l) => s + Number(l.line_total || 0), 0
       );
       const newCount = updatedLines.reduce(
-        (s, l) => s + Number(l.quantity || 1), 0
+        (s, l) => s + Number(parseFloat(l.quantity) || 1), 0
       );
       setActiveTables((prev) =>
         prev.map((t) =>
@@ -518,13 +525,16 @@ export default function Billing({
       );
     }
 
-    // Sync to backend if it's an existing order and value is valid
-    if (val !== "" && updatedLines[index] && updatedLines[index].id) {
-      try {
-        await updateOrder(updatedLines[index].id, { quantity: newQty });
-        fetchActiveTablesRef.current?.();
-      } catch (err) {
-        console.error("Failed to sync quantity to DB", err);
+    // Sync to backend if it's an existing order and value is a complete valid number
+    if (val !== "" && !val.endsWith(".") && updatedLines[index] && updatedLines[index].id) {
+      const parsedQty = parseFloat(val);
+      if (Number.isFinite(parsedQty) && parsedQty > 0) {
+        try {
+          await updateOrder(updatedLines[index].id, { quantity: parsedQty });
+          fetchActiveTablesRef.current?.();
+        } catch (err) {
+          console.error("Failed to sync quantity to DB", err);
+        }
       }
     }
   };
@@ -656,22 +666,22 @@ export default function Billing({
     }
   };
 
-  const subtotal = useMemo(() => {
+  const total = useMemo(() => {
     const lines = safeArray(currentDraft.lines);
-    return lines.reduce((s, l) => s + Number(safeGet(l, "line_total", 0)), 0);
+    return Number(lines.reduce((s, l) => s + Number(safeGet(l, "line_total", 0)), 0).toFixed(2));
   }, [currentDraft.lines]);
 
   const sgst = useMemo(
-    () => Number((subtotal * (sgstPercentage / 100)).toFixed(2)),
-    [subtotal, sgstPercentage],
+    () => Number((total * (sgstPercentage / 100)).toFixed(2)),
+    [total, sgstPercentage],
   );
   const cgst = useMemo(
-    () => Number((subtotal * (cgstPercentage / 100)).toFixed(2)),
-    [subtotal, cgstPercentage],
+    () => Number((total * (cgstPercentage / 100)).toFixed(2)),
+    [total, cgstPercentage],
   );
-  const total = useMemo(
-    () => Number((subtotal + sgst + cgst).toFixed(2)),
-    [subtotal, sgst, cgst],
+  const subtotal = useMemo(
+    () => Number((total - sgst - cgst).toFixed(2)),
+    [total, sgst, cgst],
   );
 
   // These are defined later in the file; keep stable call sites without
@@ -703,6 +713,15 @@ export default function Billing({
           bill_date: billingDate,
           modified_from_bill_id: currentDraft.modified_from_bill_id,
           session_id: sessionId,
+          items: lines.map((l) => ({
+            item_name: l.name,
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+            line_total: l.line_total,
+            item_code: l.alpha_code || l.code,
+            numeric_item_code: l.numeric_code,
+            is_separate: l.is_separate,
+          })),
         };
 
         const createdBill = await createBillAPI(payload);
@@ -739,13 +758,12 @@ export default function Billing({
               const billsToPrint = [];
 
               if (regularItems.length > 0) {
-                const sub = regularItems.reduce(
-                  (s, i) => s + Number(i.line_total || 0),
-                  0,
+                const grandVal = Number(
+                  regularItems.reduce((s, i) => s + Number(i.line_total || 0), 0).toFixed(2)
                 );
-                const sGstVal = Number((sub * (sgstPercentage / 100)).toFixed(2));
-                const cGstVal = Number((sub * (cgstPercentage / 100)).toFixed(2));
-                const grandVal = Number((sub + sGstVal + cGstVal).toFixed(2));
+                const sGstVal = Number((grandVal * (sgstPercentage / 100)).toFixed(2));
+                const cGstVal = Number((grandVal * (cgstPercentage / 100)).toFixed(2));
+                const sub = Number((grandVal - sGstVal - cGstVal).toFixed(2));
 
                 billsToPrint.push({
                   ...fullBillData,
@@ -762,13 +780,12 @@ export default function Billing({
               }
 
               if (splitItems.length > 0) {
-                const sub = splitItems.reduce(
-                  (s, i) => s + Number(i.line_total || 0),
-                  0,
+                const grandVal = Number(
+                  splitItems.reduce((s, i) => s + Number(i.line_total || 0), 0).toFixed(2)
                 );
-                const sGstVal = Number((sub * (sgstPercentage / 100)).toFixed(2));
-                const cGstVal = Number((sub * (cgstPercentage / 100)).toFixed(2));
-                const grandVal = Number((sub + sGstVal + cGstVal).toFixed(2));
+                const sGstVal = Number((grandVal * (sgstPercentage / 100)).toFixed(2));
+                const cGstVal = Number((grandVal * (cgstPercentage / 100)).toFixed(2));
+                const sub = Number((grandVal - sGstVal - cGstVal).toFixed(2));
 
                 billsToPrint.push({
                   ...fullBillData,
@@ -846,7 +863,7 @@ export default function Billing({
         fetchActiveTablesRef.current?.();
 
         setEntryCode("");
-        setQty(1);
+        setQty("1");
       } catch (e) {
         console.error("Bill creation error:", e);
         toast.error(
@@ -930,11 +947,13 @@ export default function Billing({
           "numeric_code",
         );
 
-        // Prompt for dynamic price if item price is 0 or name contains MISC
+        // Prompt for dynamic price if item price is 0, name contains MISC, or code is 189
         if (
           Number(unitPrice) === 0 ||
           (typeof itemName === "string" &&
-            itemName.toUpperCase().includes("MISC"))
+            itemName.toUpperCase().includes("MISC")) ||
+          String(itemNumericCode).trim() === "189" ||
+          String(itemAlphaCode).trim().toLowerCase() === "189"
         ) {
           const customPriceStr = window.prompt(
             `Enter amount for ${itemName}:`,
@@ -954,12 +973,13 @@ export default function Billing({
           unitPrice = customPrice;
         }
 
+        const quantityNum = parseFloat(qty) || 1;
         const newLine = {
           code: activeCode.toUpperCase(),
           name: itemName,
-          quantity: qty || 1,
+          quantity: quantityNum,
           unit_price: Number(unitPrice),
-          line_total: Number((unitPrice * (qty || 1)).toFixed(2)),
+          line_total: Number((unitPrice * quantityNum).toFixed(2)),
           numeric_code: itemNumericCode,
           alpha_code: itemAlphaCode,
           is_separate: !!item.is_separate,
@@ -996,7 +1016,7 @@ export default function Billing({
             },
           }));
           setEntryCode("");
-          setQty(1);
+          setQty("1");
           if (itemCodeRef.current) {
             itemCodeRef.current.focus();
           }
@@ -1064,13 +1084,12 @@ export default function Billing({
             const billsToPrint = [];
 
             if (regularItems.length > 0) {
-              const sub = regularItems.reduce(
-                (s, i) => s + Number(i.line_total || 0),
-                0,
+              const grandVal = Number(
+                regularItems.reduce((s, i) => s + Number(i.line_total || 0), 0).toFixed(2)
               );
-              const sGstVal = Number((sub * (sgstPercentage / 100)).toFixed(2));
-              const cGstVal = Number((sub * (cgstPercentage / 100)).toFixed(2));
-              const grandVal = Number((sub + sGstVal + cGstVal).toFixed(2));
+              const sGstVal = Number((grandVal * (sgstPercentage / 100)).toFixed(2));
+              const cGstVal = Number((grandVal * (cgstPercentage / 100)).toFixed(2));
+              const sub = Number((grandVal - sGstVal - cGstVal).toFixed(2));
 
               billsToPrint.push({
                 ...fullBillData,
@@ -1087,13 +1106,12 @@ export default function Billing({
             }
 
             if (splitItems.length > 0) {
-              const sub = splitItems.reduce(
-                (s, i) => s + Number(i.line_total || 0),
-                0,
+              const grandVal = Number(
+                splitItems.reduce((s, i) => s + Number(i.line_total || 0), 0).toFixed(2)
               );
-              const sGstVal = Number((sub * (sgstPercentage / 100)).toFixed(2));
-              const cGstVal = Number((sub * (cgstPercentage / 100)).toFixed(2));
-              const grandVal = Number((sub + sGstVal + cGstVal).toFixed(2));
+              const sGstVal = Number((grandVal * (sgstPercentage / 100)).toFixed(2));
+              const cGstVal = Number((grandVal * (cgstPercentage / 100)).toFixed(2));
+              const sub = Number((grandVal - sGstVal - cGstVal).toFixed(2));
 
               billsToPrint.push({
                 ...fullBillData,
@@ -1268,8 +1286,8 @@ export default function Billing({
       // Merge local draft values so qty edits show immediately without waiting for poll.
       // For whichever draft key matches a DB group, override item_count + total_amount
       // with the live draft state (which is already updated optimistically in updateQty).
-      if (drafts) {
-        Object.entries(safeObject(drafts)).forEach(([draftKey, draft]) => {
+      if (draftsRef.current) {
+        Object.entries(safeObject(draftsRef.current)).forEach(([draftKey, draft]) => {
           const lines = safeArray(draft?.lines);
           if (!lines.length) return;
           const header = safeObject(draft?.header);
@@ -1299,7 +1317,7 @@ export default function Billing({
     } catch (err) {
       console.error("Failed to fetch active tables", err);
     }
-  }, [billingDate, drafts]);
+  }, [billingDate]);
 
   useEffect(() => {
     fetchActiveTablesRef.current = fetchActiveTables;
@@ -1326,54 +1344,41 @@ export default function Billing({
     return () => clearInterval(interval);
   }, [fetchActiveTables, fetchLastBillNumber]);
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === "F2") {
-        e.preventDefault();
-        setShowHelp((prev) => {
-          if (!prev) {
-            setHelpTab("active");
-            return true;
-          }
-          if (helpTab === "active") return false;
-          setHelpTab("active");
-          return true;
-        });
-      } else if (e.key === "F1") {
-        e.preventDefault();
-        setShowHelp((prev) => {
-          if (!prev) {
-            setHelpTab("shortcuts");
-            return true;
-          }
-          if (helpTab === "shortcuts") return false;
-          setHelpTab("shortcuts");
-          return true;
-        });
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [helpTab]);
-
   const formatDuration = (ms) => {
     const safeMs = Math.max(0, ms);
     const seconds = Math.floor(safeMs / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
-    if (hours > 0) return `${hours}h ${minutes % 60}m`;
-    return `${minutes}m ${seconds % 60}s`;
+    if (hours > 0) return `${hours}H ${minutes % 60}M`;
+    return `${minutes}M ${seconds % 60}S`;
   };
 
   useEffect(() => {
     const handleGlobalKeyDown = (event) => {
       if (event.key === "F1") {
         event.preventDefault();
-        setShowHelp(true);
-        setHelpTab("shortcuts");
+        setShowF4Popup((prev) => {
+          if (prev && helpTab === "shortcuts") return false;
+          setHelpTab("shortcuts");
+          return true;
+        });
+      } else if (event.key === "F2") {
+        event.preventDefault();
+        setShowF4Popup((prev) => {
+          if (prev && helpTab === "active") return false;
+          setHelpTab("active");
+          return true;
+        });
+      } else if (event.key === "F4") {
+        event.preventDefault();
+        setShowF4Popup((prev) => !prev);
       } else if (event.key === "Escape") {
         event.preventDefault();
+        if (setCurrentTable) setCurrentTable("1");
         setCurrentParty("1");
+        if (showF4Popup) {
+          setShowF4Popup(false);
+        }
         setTimeout(() => {
           if (tableNoRef.current) {
             tableNoRef.current.focus();
@@ -1392,14 +1397,14 @@ export default function Billing({
         (event.ctrlKey || event.metaKey) &&
         (event.key === "f" || event.code === "KeyF")
       ) {
-        // Override standard ctrl+f
         event.preventDefault();
-        setShowHelp(true);
+        setShowF4Popup(true);
+        setHelpTab("shortcuts");
       } else if (event.key === "F3") {
         event.preventDefault();
         setIsSplitBillMode((prev) => {
           const newState = !prev;
-          toast.success(`Split Bill Mode ${newState ? "Enabled" : "Disabled"}`);
+          toast.success(`SPLIT BILL MODE ${newState ? "ENABLED" : "DISABLED"}`);
           return newState;
         });
       }
@@ -1409,7 +1414,7 @@ export default function Billing({
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
     };
-  }, [handlePrintBill]);
+  }, [handlePrintBill, helpTab, showF4Popup, setCurrentTable, setCurrentParty]);
 
   const tempBillNumber = useMemo(() => {
     const existingBillNum = safeGet(currentDraft, "header.bill_number");
@@ -1427,7 +1432,7 @@ export default function Billing({
       : tempBillNumber;
 
   useEffect(() => {
-    if (showHelp) {
+    if (showF4Popup && helpTab === "shortcuts") {
       setSearchQuery("");
       setFilteredItems([...menuItems]);
       setSelectedHelpIndex(0);
@@ -1435,9 +1440,9 @@ export default function Billing({
         if (searchInputRef.current) {
           searchInputRef.current.focus();
         }
-      }, 0);
+      }, 50);
     }
-  }, [showHelp, menuItems]);
+  }, [showF4Popup, helpTab, menuItems]);
 
   useEffect(() => {
     const lowercasedQuery = searchQuery.toLowerCase();
@@ -1469,7 +1474,7 @@ export default function Billing({
           String(safeGet(selectedItem, "numeric_code", "")).trim() ||
           String(safeGet(selectedItem, "alpha_code", "")).trim();
         setEntryCode(code);
-        setShowHelp(false);
+        setShowF4Popup(false);
         setSearchQuery("");
         if (qtyRef.current) {
           qtyRef.current.focus();
@@ -1478,7 +1483,7 @@ export default function Billing({
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
-      setShowHelp(false);
+      setShowF4Popup(false);
       if (itemCodeRef.current) {
         itemCodeRef.current.focus();
       }
@@ -1486,302 +1491,327 @@ export default function Billing({
   };
 
   return (
-    <div className="grid grid-cols-12 gap-6 pb-4">
-      <div className="col-span-8 flex flex-col h-full">
-        <Card className="flex flex-col h-full">
-          <CardHeader className="flex-none">
-            <CardTitle className="flex justify-between items-center">
-              <span>Billing for {billingDate}</span>
-              <div className="flex items-center whitespace-nowrap">
-                <Input
-                  type="checkbox"
-                  id="splitBillModeHeader"
-                  checked={isSplitBillMode}
-                  onChange={(e) => setIsSplitBillMode(e.target.checked)}
-                  className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
-                    }`}
-                />
-                <Label
-                  htmlFor="splitBillModeHeader"
-                  className={`!mb-0 cursor-pointer text-xs font-medium ${isSplitBillMode ? "text-green-700" : "text-gray-600"
-                    }`}
-                >
-                  SPLIT BILL
-                </Label>
+    <div className="billing-screen-overhaul w-full h-full flex flex-col pb-4">
+      <Card className="flex flex-col h-full w-full">
+        <CardHeader className="flex-none">
+          <CardTitle className="flex justify-between items-center">
+            <span>Billing for {billingDate}</span>
+            <div className="flex items-center whitespace-nowrap">
+              <Input
+                type="checkbox"
+                id="splitBillModeHeader"
+                checked={isSplitBillMode}
+                onChange={(e) => setIsSplitBillMode(e.target.checked)}
+                className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded !w-auto cursor-pointer ${
+                  isSplitBillMode ? "bg-orange-500 border-orange-500" : ""
+                }`}
+              />
+              <Label
+                htmlFor="splitBillModeHeader"
+                className={`!mb-0 cursor-pointer text-xs font-medium ${
+                  isSplitBillMode ? "text-green-700" : "text-gray-600"
+                }`}
+              >
+                SPLIT BILL
+              </Label>
 
-                {isSplitBillMode && (
-                  <span className="ml-2 bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded border border-green-200 animate-pulse">
-                    ACTIVE
-                  </span>
-                )}
-              </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col flex-1 overflow-hidden">
-            <div className="flex-none space-y-4 mb-4">
-              <div className="grid grid-cols-4 gap-4">
-                <div>
-                  <Label>Table No</Label>
-                  <Input
-                    ref={tableNoRef}
-                    placeholder="Type & Enter"
-                    value={currentTable}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "") {
-                        if (setCurrentTable) setCurrentTable("");
-                        return;
-                      }
-
-                      const num = parseInt(val, 10);
-
-                      // Validation: Allow only numbers, max 30
-                      if (!isNaN(num) && num >= 1 && num <= 30) {
-                        if (setCurrentTable) setCurrentTable(val);
-                        // Trigger section update IMMEDIATELY on change
-                        setSectionByTable(val);
-                      } else {
-                        // Optional: Show toast or just ignore invalid input
-                        // toast.error("Table number must be between 1 and 30");
-                      }
-                    }}
-                    onFocus={(e) => e.target.select()}
-                    onKeyDown={handleTableNoKeyDown}
-                  />
-                </div>
-                <div>
-                  <Label>Party No.</Label>
-                  <Input
-                    ref={partyNoRef}
-                    value={currentParty}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "") {
-                        setCurrentParty("");
-                        return;
-                      }
-
-                      const num = parseInt(val, 10);
-
-                      // Validation: Allow only numbers, less than 10 (1-9)
-                      if (!isNaN(num) && num >= 1 && num < 10) {
-                        setCurrentParty(String(num));
-                      } else {
-                        toast.error("Party number must be between 1 and 9");
-                      }
-                    }}
-                    onFocus={(e) => e.target.select()}
-                    onKeyDown={handlePartyNoKeyDown}
-                  />
-                </div>
-                <div>
-                  <Label>Section</Label>
-                  <Input
-                    ref={sectionRef}
-                    value={safeGet(currentDraft, "header.section", "G")}
-                    readOnly
-                    onKeyDown={handleSectionKeyDown}
-                  />
-                </div>
-                <div>
-                  <Label>Bill No.</Label>
-                  <Input value={displayBillNumber || "..."} readOnly />
-                </div>
-              </div>
+              {isSplitBillMode && (
+                <span className="ml-2 bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded border border-green-200 animate-pulse">
+                  ACTIVE
+                </span>
+              )}
             </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex-none space-y-4 mb-4">
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <Label>Table No</Label>
+                <Input
+                  ref={tableNoRef}
+                  placeholder="Type & Enter"
+                  value={currentTable}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") {
+                      if (setCurrentTable) setCurrentTable("");
+                      return;
+                    }
 
-            <div className="grid gap-4 mb-4 flex-none" style={{ gridTemplateColumns: "3fr 2fr 7fr" }}>
-              <div>
-                <Label>Item Code</Label>
-                <Input
-                  ref={itemCodeRef}
-                  type="text"
-                  placeholder="Enter Item Code"
-                  value={entryCode}
-                  onChange={(e) => setEntryCode(e.target.value)}
-                  onKeyDown={handleItemCodeKeyDown}
-                />
-              </div>
-              <div>
-                <Label>Quantity</Label>
-                <Input
-                  ref={qtyRef}
-                  type="number"
-                  min="1"
-                  value={qty}
-                  onChange={(e) => setQty(Number(e.target.value) || 1)}
+                    const num = parseInt(val, 10);
+
+                    // Validation: Allow only numbers, max 30
+                    if (!isNaN(num) && num >= 1 && num <= 30) {
+                      if (setCurrentTable) setCurrentTable(val);
+                      // Trigger section update IMMEDIATELY on change
+                      setSectionByTable(val);
+                    } else {
+                      // Optional: Show toast or just ignore invalid input
+                      // toast.error("Table number must be between 1 and 30");
+                    }
+                  }}
                   onFocus={(e) => e.target.select()}
-                  onKeyDown={handleQtyKeyDown}
+                  onKeyDown={handleTableNoKeyDown}
                 />
               </div>
               <div>
-                <Label>Item Name</Label>
-                <div
-                  className="w-full border border-gray-300 rounded-md bg-gray-100 flex items-center px-3 text-lg font-bold text-orange-500 overflow-hidden whitespace-nowrap text-ellipsis"
-                  style={{ height: "38px" }}
-                >
-                  {matchedItem ? safeGet(matchedItem, "name", "") : <span className="text-gray-500 text-sm font-normal">Enter Code...</span>}
-                </div>
+                <Label>Party No.</Label>
+                <Input
+                  ref={partyNoRef}
+                  value={currentParty}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") {
+                      setCurrentParty("");
+                      return;
+                    }
+
+                    const num = parseInt(val, 10);
+
+                    // Validation: Allow only numbers, less than 10 (1-9)
+                    if (!isNaN(num) && num >= 1 && num < 10) {
+                      setCurrentParty(String(num));
+                    } else {
+                      toast.error("Party number must be between 1 and 9");
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={handlePartyNoKeyDown}
+                />
+              </div>
+              <div>
+                <Label>Section</Label>
+                <Input
+                  ref={sectionRef}
+                  value={safeGet(currentDraft, "header.section", "G")}
+                  readOnly
+                  onKeyDown={handleSectionKeyDown}
+                />
+              </div>
+              <div>
+                <Label>Bill No.</Label>
+                <Input value={displayBillNumber || "..."} readOnly />
               </div>
             </div>
-
-            <div
-              ref={scrollContainerRef}
-              className="overflow-y-auto border rounded-md relative bg-white"
-              style={{ height: "500px", minHeight: "300px" }}
-            >
-              <Table>
-                <TableHeader className="sticky top-0 bg-white z-10 shadow-sm">
-                  <TableRow>
-                    <TableHead className="text-lg font-bold py-3 text-black">
-                      No.
-                    </TableHead>
-                    <TableHead className="text-lg font-bold py-3 text-black">
-                      Item
-                    </TableHead>
-                    <TableHead className="text-lg font-bold py-3 text-black">
-                      Qty
-                    </TableHead>
-                    <TableHead className="text-lg font-bold py-3 text-black">
-                      Rate
-                    </TableHead>
-                    <TableHead className="text-lg font-bold py-3 text-black">
-                      Amount
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {safeArray(currentDraft.lines).map((l, idx) => (
-                    <TableRow
-                      key={idx}
-                      ref={(el) => (itemRowRefs.current[idx] = el)}
-                      tabIndex={0}
-                      onKeyDown={(e) => handleRowKeyDown(e, idx)}
-                      className="focus:bg-blue-50 outline-none ring-2 ring-transparent focus:ring-blue-300 border-b border-gray-200"
-                    >
-                      <TableCell className="!py-0 text-base font-bold text-gray-800">
-                        {idx + 1}
-                      </TableCell>
-                      <TableCell className="!py-0">
-                        <div className="flex items-center">
-                          <span className="mr-3 text-lg font-bold text-black tracking-wide">
-                            {safeGet(l, "name", "Unknown Item")}
-                          </span>
-                          {isSplitBillMode && (
-                            <button
-                              onClick={() => toggleLineSplit(idx)}
-                              className={`ml-2 px-3 py-0.5 text-xs font-bold rounded shadow-sm border-2 transition-all cursor-pointer ${l.is_separate
-                                ? "bg-green-100 text-green-700 border-green-500"
-                                : "bg-gray-100 text-gray-400 border-gray-300 hover:bg-gray-200"
-                                }`}
-                              title="Toggle Split Status"
-                            >
-                              SPLIT
-                            </button>
-                          )}
-                          <div className="flex space-x-1.5 ml-4">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-6 px-1.5 bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100 text-xs font-bold transition-all"
-                              onClick={() => handleMoveItemClick(idx)}
-                              title="Move Item to another Table"
-                            >
-                              *
-                            </Button>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="!py-0">
-                        <Input
-                          ref={(el) => (itemQtyRefs.current[idx] = el)}
-                          type="number"
-                          min="1"
-                          className="w-16 h-7 text-lg font-bold text-center border border-gray-300 focus:border-blue-500"
-                          value={safeGet(l, "quantity", "")}
-                          onChange={(e) => updateQty(idx, e.target.value)}
-                          onKeyDown={(e) => handleTableQtyKeyDown(e, idx)}
-                        />
-                      </TableCell>
-                      <TableCell className="!py-0 text-base font-semibold text-gray-700">
-                        {Number(safeGet(l, "unit_price", 0)).toFixed(2)}
-                      </TableCell>
-                      <TableCell className="!py-0 text-base font-bold text-black">
-                        {Number(safeGet(l, "line_total", 0)).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="col-span-4 space-y-6 sticky-sidebar">
-        <div className={`help-panel ${showHelp ? "visible" : ""}`}>
-          <div className="help-header">
-            <div className="help-tabs">
-              <button
-                className={`help-tab-btn ${helpTab === "shortcuts" ? "active" : ""
-                  }`}
-                onClick={() => setHelpTab("shortcuts")}
-              >
-                Shortcuts
-              </button>
-              <button
-                className={`help-tab-btn ${helpTab === "active" ? "active" : ""
-                  }`}
-                onClick={() => setHelpTab("active")}
-              >
-                Active Bills ({activeTables.length})
-              </button>
-            </div>
-            <button className="close-help" onClick={() => setShowHelp(false)}>
-              ×
-            </button>
           </div>
 
-          <div className="help-content">
-            {helpTab === "shortcuts" ? (
-              <>
-                <p className="help-hint">
-                  Press F1 in Item Code to search for items.
-                </p>
-                {showHelp && (
+          <div className="grid gap-4 mb-4 flex-none items-end" style={{ gridTemplateColumns: "3fr 2fr 7fr 4fr" }}>
+            <div>
+              <Label>Item Code</Label>
+              <Input
+                ref={itemCodeRef}
+                type="text"
+                placeholder="ENTER ITEM CODE"
+                value={entryCode}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setEntryCode(val);
+                  if (/^\d{3}$/.test(val)) {
+                    if (qtyRef.current) {
+                      qtyRef.current.focus();
+                      qtyRef.current.select();
+                    }
+                  }
+                }}
+                onKeyDown={handleItemCodeKeyDown}
+              />
+            </div>
+            <div>
+              <Label>Quantity</Label>
+              <Input
+                ref={qtyRef}
+                type="number"
+                min="0.001"
+                step="any"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                onKeyDown={handleQtyKeyDown}
+              />
+            </div>
+            <div>
+              <Label>Item Name</Label>
+              <div
+                className="w-full border border-gray-300 rounded-md bg-gray-100 flex items-center px-3 text-lg font-bold text-orange-500 overflow-hidden whitespace-nowrap text-ellipsis"
+                style={{ height: "38px" }}
+              >
+                {matchedItem ? safeGet(matchedItem, "name", "") : <span className="text-gray-500 text-sm font-normal">ENTER CODE...</span>}
+              </div>
+            </div>
+            <div>
+              <Label>Grand Total</Label>
+              <div
+                className="w-full border border-green-700 rounded-md bg-green-950 flex items-center justify-end px-3 text-4xl font-black text-green-400 overflow-hidden whitespace-nowrap grand-total-display"
+                style={{ height: "60px" }}
+              >
+                ₹{total.toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto flex-1 border border-gray-200 rounded-md">
+            <Table>
+              <TableHeader className="bg-gray-100 sticky top-0 z-10">
+                <TableRow>
+                  <TableHead className="w-12 text-lg font-bold py-3 text-black">
+                    S.No
+                  </TableHead>
+                  <TableHead className="text-lg font-bold py-3 text-black">
+                    Item Name
+                  </TableHead>
+                  <TableHead className="w-24 text-lg font-bold py-3 text-black">
+                    Qty
+                  </TableHead>
+                  <TableHead className="w-32 text-lg font-bold py-3 text-black">
+                    Rate
+                  </TableHead>
+                  <TableHead className="text-lg font-bold py-3 text-black">
+                    Amount
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {safeArray(currentDraft.lines).map((l, idx) => (
+                  <TableRow
+                    key={idx}
+                    ref={(el) => (itemRowRefs.current[idx] = el)}
+                    tabIndex={0}
+                    onKeyDown={(e) => handleRowKeyDown(e, idx)}
+                    className="focus:bg-blue-50 outline-none ring-2 ring-transparent focus:ring-blue-300 border-b border-gray-200"
+                  >
+                    <TableCell className="!py-0 text-base font-bold text-gray-800">
+                      {idx + 1}
+                    </TableCell>
+                    <TableCell className="!py-0">
+                      <div className="flex items-center">
+                        <span className="mr-3 text-lg font-bold text-black tracking-wide">
+                          {safeGet(l, "name", "Unknown Item")}
+                        </span>
+                        {isSplitBillMode && (
+                          <button
+                            onClick={() => toggleLineSplit(idx)}
+                            className={`ml-2 px-3 py-0.5 text-xs font-bold rounded shadow-sm border-2 transition-all cursor-pointer ${
+                              l.is_separate
+                                ? "bg-green-100 text-green-700 border-green-500"
+                                : "bg-gray-100 text-gray-400 border-gray-300 hover:bg-gray-200"
+                            }`}
+                            title="Toggle Split Status"
+                          >
+                            SPLIT
+                          </button>
+                        )}
+                        <div className="flex space-x-1.5 ml-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-1.5 bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100 text-xs font-bold transition-all"
+                            onClick={() => handleMoveItemClick(idx)}
+                            title="Move Item to another Table"
+                          >
+                            MOVE
+                          </Button>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="!py-0">
+                      <input
+                        ref={(el) => (itemQtyRefs.current[idx] = el)}
+                        type="text"
+                        className="w-16 h-7 text-lg font-bold text-center border border-gray-300 focus:border-blue-500"
+                        value={safeGet(l, "quantity", "")}
+                        onChange={(e) => updateQty(idx, e.target.value)}
+                        onKeyDown={(e) => handleTableQtyKeyDown(e, idx)}
+                        onBlur={(e) => {
+                          const val = e.target.value;
+                          const num = Number(val);
+                          if (val === "" || isNaN(num) || num <= 0) {
+                            removeLine(idx);
+                          }
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell className="!py-0 text-base font-semibold text-gray-700">
+                      {Number(safeGet(l, "unit_price", 0)).toFixed(2)}
+                    </TableCell>
+                    <TableCell className="!py-0 text-base font-bold text-black">
+                      {Number(safeGet(l, "line_total", 0)).toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {showF4Popup && (
+        <div className="f4-popup-overlay">
+          <div className="f4-popup-content">
+            <button
+              className="f4-popup-close"
+              onClick={() => setShowF4Popup(false)}
+            >
+              ×
+            </button>
+            <div className="f4-popup-tabs">
+              <button
+                className={`f4-popup-tab-btn ${
+                  helpTab === "shortcuts" ? "active" : ""
+                }`}
+                onClick={() => setHelpTab("shortcuts")}
+              >
+                SHORTCUTS
+              </button>
+              <button
+                className={`f4-popup-tab-btn ${
+                  helpTab === "active" ? "active" : ""
+                }`}
+                onClick={() => setHelpTab("active")}
+              >
+                ACTIVE BILLS ({activeTables.length})
+              </button>
+            </div>
+
+            <div className="f4-popup-body">
+              {helpTab === "shortcuts" ? (
+                <div className="space-y-4">
+                  <p className="text-lg text-yellow-500 font-bold">
+                    PRESS F1 IN ITEM CODE TO SEARCH FOR ITEMS.
+                  </p>
                   <div className="mb-4">
                     <Input
                       ref={searchInputRef}
                       type="text"
-                      placeholder="Search by code or name..."
+                      placeholder="SEARCH BY CODE OR NAME..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={handleSearchKeyDown}
                     />
                     {searchQuery && filteredItems.length > 0 && (
-                      <div className="search-results-table">
+                      <div className="f4-search-results">
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Code</TableHead>
-                              <TableHead>Name</TableHead>
-                              <TableHead>Price</TableHead>
+                              <TableHead>CODE</TableHead>
+                              <TableHead>NAME</TableHead>
+                              <TableHead>PRICE</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {filteredItems.map((item, index) => (
                               <TableRow
                                 key={safeGet(item, "id", Math.random())}
-                                className={`cursor-pointer hover:bg-gray-100 ${selectedHelpIndex === index
-                                  ? "bg-blue-100"
-                                  : ""
-                                  }`}
+                                className={`cursor-pointer hover:bg-gray-800 ${
+                                  selectedHelpIndex === index ? "bg-blue-900 text-white" : ""
+                                }`}
                                 onClick={() => {
                                   setEntryCode(
                                     safeGet(item, "numeric_code", "") ||
-                                    safeGet(item, "alpha_code", ""),
+                                      safeGet(item, "alpha_code", ""),
                                   );
-                                  setShowHelp(false);
+                                  setShowF4Popup(false);
+                                  setSearchQuery("");
                                   if (qtyRef.current) {
                                     qtyRef.current.focus();
                                     qtyRef.current.select();
@@ -1794,7 +1824,7 @@ export default function Billing({
                                     "-"}
                                 </TableCell>
                                 <TableCell>
-                                  {safeGet(item, "name", "Unknown")}
+                                  {safeGet(item, "name", "UNKNOWN")}
                                 </TableCell>
                                 <TableCell>
                                   {Number(
@@ -1809,123 +1839,104 @@ export default function Billing({
                     )}
                     {searchQuery && filteredItems.length === 0 && (
                       <div className="text-center py-4 text-gray-500">
-                        No items found
+                        NO ITEMS FOUND
                       </div>
                     )}
                   </div>
-                )}
-                <h3>Keyboard Shortcuts</h3>
-                <ul className="shortcut-list">
-                  <li>
-                    <kbd>F1</kbd>: Open item search in Help Panel
-                  </li>
-                  <li>
-                    <kbd>F2</kbd>: Toggle Active Bills
-                  </li>
-                  <li>
-                    <kbd>F3</kbd>: Toggle Split Bill Mode
-                  </li>
-                  <li>
-                    <kbd>Esc</kbd>: Go to Table No.
-                  </li>
-                  <li>
-                    <kbd>Enter</kbd>: Move between fields / Add item
-                  </li>
-                  <li>
-                    <kbd>Arrow Up/Down</kbd>: Navigate search results
-                  </li>
-                  <li>
-                    <kbd>PageDown</kbd>: Move from Table No. to Item Code
-                  </li>
-                  <li>
-                    <kbd>End</kbd> / <kbd>Home</kbd>: Finalize and Print Bill
-                  </li>
-                </ul>
-              </>
-            ) : (
-              <div className="active-bills-list">
-                {activeTables.length === 0 ? (
-                  <div className="no-active-bills">No active bills</div>
-                ) : (
-                  <table className="active-bills-table">
-                    <thead>
-                      <tr>
-                        <th>Table</th>
-                        <th>Items</th>
-                        <th>Total</th>
-                        <th>Running For</th>
-                        <th>Last Order</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeTables.map((t) => (
-                        <tr key={`${t.table_no}-${t.party_no}`}>
-                          <td>
-                            {t.table_no}{" "}
-                            {t.party_no !== "1" ? `(${t.party_no})` : ""}
-                          </td>
-                          <td>{t.item_count}</td>
-                          <td>₹{t.total_amount.toFixed(2)}</td>
-                          <td className="time-running">
-                            {formatDuration(now - t.first_order_at)}
-                          </td>
-                          <td className="time-ago">
-                            {formatDuration(now - t.last_order_at)} ago
-                          </td>
+                  <h3 className="text-xl font-bold border-b border-gray-700 pb-1 mt-6">
+                    KEYBOARD SHORTCUTS
+                  </h3>
+                  <ul className="f4-shortcut-list">
+                    <li>
+                      <span>F1: OPEN ITEM SEARCH IN POPUP</span>
+                      <kbd>F1</kbd>
+                    </li>
+                    <li>
+                      <span>F2: OPEN ACTIVE BILLS IN POPUP</span>
+                      <kbd>F2</kbd>
+                    </li>
+                    <li>
+                      <span>F4: TOGGLE SHORTCUTS & ACTIVE BILLS POPUP</span>
+                      <kbd>F4</kbd>
+                    </li>
+                    <li>
+                      <span>F3: TOGGLE SPLIT BILL MODE</span>
+                      <kbd>F3</kbd>
+                    </li>
+                    <li>
+                      <span>ESC: GO TO TABLE NO.</span>
+                      <kbd>ESC</kbd>
+                    </li>
+                    <li>
+                      <span>ENTER: MOVE BETWEEN FIELDS / ADD ITEM</span>
+                      <kbd>ENTER</kbd>
+                    </li>
+                    <li>
+                      <span>ARROW UP/DOWN: NAVIGATE SEARCH RESULTS</span>
+                      <kbd>↑/↓</kbd>
+                    </li>
+                    <li>
+                      <span>PAGEDOWN: MOVE FROM TABLE NO. TO ITEM CODE</span>
+                      <kbd>PGDN</kbd>
+                    </li>
+                    <li>
+                      <span>END / HOME: FINALIZE AND PRINT BILL</span>
+                      <kbd>END/HOME</kbd>
+                    </li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="active-bills-list">
+                  {activeTables.length === 0 ? (
+                    <div className="no-active-bills text-center py-8 text-gray-500">
+                      NO ACTIVE BILLS
+                    </div>
+                  ) : (
+                    <table className="f4-active-bills-table">
+                      <thead>
+                        <tr className="border-b border-gray-700 text-gray-400 font-bold">
+                          <th>TABLE</th>
+                          <th>ITEMS</th>
+                          <th>TOTAL</th>
+                          <th>RUNNING FOR</th>
+                          <th>LAST ORDER</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
+                      </thead>
+                      <tbody>
+                        {activeTables.map((t) => (
+                          <tr
+                            key={`${t.table_no}-${t.party_no}`}
+                            onClick={() => {
+                              if (setCurrentTable) {
+                                setCurrentTable(String(t.table_no));
+                              }
+                              setCurrentParty(String(t.party_no));
+                              setShowF4Popup(false);
+                            }}
+                          >
+                            <td>
+                              {t.table_no}{" "}
+                              {t.party_no !== "1" ? `(${t.party_no})` : ""}
+                            </td>
+                            <td>{t.item_count}</td>
+                            <td>₹{t.total_amount.toFixed(2)}</td>
+                            <td className="text-blue-400 font-mono">
+                              {formatDuration(now - t.first_order_at)}
+                            </td>
+                            <td className="text-red-400">
+                              {formatDuration(now - t.last_order_at)} AGO
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Finalize Bill</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span>{subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>SGST ({sgstPercentage}%):</span>
-                <span>{sgst.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>CGST ({cgstPercentage}%):</span>
-                <span>{cgst.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-lg border-t pt-2 my-2">
-                <span>Grand Total:</span>
-                <span>{total.toFixed(2)}</span>
-              </div>
-              <Button
-                onClick={handlePrintBill}
-                disabled={
-                  loading ||
-                  isShiftLoading ||
-                  safeArray(currentDraft.lines).length === 0
-                }
-                className="w-full"
-                size="lg"
-              >
-                {isShiftLoading ? (
-                  <Loader2 size={16} className="mr-2" />
-                ) : loading ? (
-                  <Loader2 size={16} className="mr-2" />
-                ) : (
-                  "Print Bill"
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      )}
     </div>
   );
 }

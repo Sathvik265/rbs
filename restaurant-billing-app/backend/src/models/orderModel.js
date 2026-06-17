@@ -17,6 +17,7 @@ const OrderModel = {
       unit_price,
       line_total,
       created_at, // IMPORTANT: Must enable passing this to match Bill's timestamp (FK)
+      is_separate,
     } = orderData;
 
     // Default bill_date to current date if not provided
@@ -36,7 +37,30 @@ const OrderModel = {
     if (created_at) {
       query = `INSERT INTO orders (
             track, clerk_initials, table_no, party_no, bill_number, bill_date,
-            item_code, numeric_item_code, item_name, quantity, unit_price, line_total, created_at
+            item_code, numeric_item_code, item_name, quantity, unit_price, line_total, created_at, is_separate
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          RETURNING *`;
+      params = [
+        track,
+        clerk_initials,
+        table_no,
+        party_no,
+        bill_number,
+        finalBillDate,
+        item_code,
+        numeric_item_code,
+        item_name,
+        quantity,
+        unit_price,
+        line_total,
+        created_at,
+        is_separate === true,
+      ];
+    } else {
+      query = `INSERT INTO orders (
+            track, clerk_initials, table_no, party_no, bill_number, bill_date,
+            item_code, numeric_item_code, item_name, quantity, unit_price, line_total, is_separate
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           RETURNING *`;
@@ -53,28 +77,7 @@ const OrderModel = {
         quantity,
         unit_price,
         line_total,
-        created_at,
-      ];
-    } else {
-      query = `INSERT INTO orders (
-            track, clerk_initials, table_no, party_no, bill_number, bill_date,
-            item_code, numeric_item_code, item_name, quantity, unit_price, line_total
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          RETURNING *`;
-      params = [
-        track,
-        clerk_initials,
-        table_no,
-        party_no,
-        bill_number,
-        finalBillDate,
-        item_code,
-        numeric_item_code,
-        item_name,
-        quantity,
-        unit_price,
-        line_total,
+        is_separate === true,
       ];
     }
 

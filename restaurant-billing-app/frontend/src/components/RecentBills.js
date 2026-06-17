@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { getBillsByDate, getBillById } from "../services/api";
+import { useUser } from "../context/UserContext";
 import "../styles/RecentBills.css";
 
 function RecentBills({ billingDate }) {
+  const { track } = useUser();
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -33,14 +35,21 @@ function RecentBills({ billingDate }) {
   }, [billingDate]);
 
   const filteredBills = bills.filter(
-    (bill) =>
-      (bill.bill_number || "").toString().includes(searchTerm) ||
-      String(bill.table_no || "")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
-      String(bill.track || "")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()),
+    (bill) => {
+      // Show only bills matching the current active track (if track is selected)
+      const matchesTrack = !track || String(bill.track).toLowerCase() === String(track).toLowerCase();
+      if (!matchesTrack) return false;
+
+      return (
+        (bill.bill_number || "").toString().includes(searchTerm) ||
+        String(bill.table_no || "")
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        String(bill.track || "")
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())
+      );
+    }
   );
 
   // Normalize bill returned by backend to a consistent shape used by UI
