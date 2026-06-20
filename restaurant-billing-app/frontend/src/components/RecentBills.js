@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { getBillsByDate, getBillById } from "../services/api";
+import { useUser } from "../context/UserContext";
 import "../styles/RecentBills.css";
 
 function RecentBills({ billingDate }) {
+  const { track } = useUser();
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -33,14 +35,21 @@ function RecentBills({ billingDate }) {
   }, [billingDate]);
 
   const filteredBills = bills.filter(
-    (bill) =>
-      (bill.bill_number || "").toString().includes(searchTerm) ||
-      String(bill.table_no || "")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
-      String(bill.track || "")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()),
+    (bill) => {
+      // Show only bills matching the current active track (if track is selected)
+      const matchesTrack = !track || String(bill.track).toLowerCase() === String(track).toLowerCase();
+      if (!matchesTrack) return false;
+
+      return (
+        (bill.bill_number || "").toString().includes(searchTerm) ||
+        String(bill.table_no || "")
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        String(bill.track || "")
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase())
+      );
+    }
   );
 
   // Normalize bill returned by backend to a consistent shape used by UI
@@ -73,6 +82,7 @@ function RecentBills({ billingDate }) {
         n && typeof n === "object" ? n.name || n.item_name || "" : n || "";
 
       return {
+        code: it.item_code_numeric || it.numeric_item_code || it.numeric_code || "",
         name: finalName,
         quantity: finalQty,
         unit_price:
@@ -302,15 +312,17 @@ function RecentBills({ billingDate }) {
                   <table className="items-table">
                     <thead>
                       <tr>
-                        <th>Item</th>
-                        <th className="col-qty">Qty</th>
-                        <th className="col-price">Price</th>
-                        <th className="col-total">Total</th>
+                        <th style={{ width: "15%", textAlign: "left" }}>Code</th>
+                        <th style={{ width: "40%", textAlign: "left" }}>Item</th>
+                        <th className="col-qty" style={{ width: "15%", textAlign: "right" }}>Qty</th>
+                        <th className="col-price" style={{ width: "15%", textAlign: "right" }}>Price</th>
+                        <th className="col-total" style={{ width: "15%", textAlign: "right" }}>Total</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedBill.items.map((it, i) => (
                         <tr key={i}>
+                          <td>{it.code}</td>
                           <td>{it.name}</td>
                           <td className="col-qty">{it.quantity}</td>
                           <td className="col-price">
@@ -322,7 +334,7 @@ function RecentBills({ billingDate }) {
                         </tr>
                       ))}
                       <tr className="total-row">
-                        <td colSpan={3} className="total-label">
+                        <td colSpan={4} className="total-label">
                           Total Amount:
                         </td>
                         <td className="col-total">

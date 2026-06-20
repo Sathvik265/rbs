@@ -16,7 +16,7 @@ const ItemModel = {
   // Get item by code
   async getItemByCode(code) {
     const result = await pool.query(
-      "SELECT * FROM items WHERE alpha_code = $1 OR numeric_code = $1",
+      "SELECT * FROM items WHERE alpha_code = $1 OR CAST(numeric_code AS TEXT) = $1",
       [code],
     );
     return result.rows[0];
@@ -146,7 +146,7 @@ const ItemModel = {
       `SELECT * FROM items 
        WHERE name ILIKE $1 
           OR alpha_code ILIKE $1 
-          OR numeric_code ILIKE $1
+          OR CAST(numeric_code AS TEXT) ILIKE $1
        ORDER BY name`,
       [`%${searchTerm}%`],
     );

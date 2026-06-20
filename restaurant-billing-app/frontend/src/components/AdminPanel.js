@@ -33,6 +33,7 @@ import {
 import { API, toast, safeGet, safeArray, safeObject } from "../utils/helpers";
 import ClerkManagement from "./ClerkManagement";
 import SplitBillSettings from "./Admin/SplitBillSettings";
+import TrackControl from "./Admin/TrackControl";
 
 // ================== RECONCILIATION ==================
 
@@ -459,6 +460,9 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
           <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="split-bill">Split Bill</TabsTrigger>
           {mode === "admin-full" && (
+            <TabsTrigger value="track-control">Track Control</TabsTrigger>
+          )}
+          {mode === "admin-full" && (
             <TabsTrigger
               value="purge"
               className="text-red-600 data-[state=active]:text-red-800"
@@ -554,6 +558,17 @@ export default function EnhancedAdminPanel({ mode, sessionId, jumpTarget }) {
         <TabsContent value="split-bill">
           <SplitBillSettings />
         </TabsContent>
+
+        {mode === "admin-full" && (
+          <TabsContent value="track-control">
+            <TrackControl
+              onResetComplete={() => {
+                // After EOD reset, navigate back to dashboard if desired
+                setAdminActiveTab("dashboard");
+              }}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

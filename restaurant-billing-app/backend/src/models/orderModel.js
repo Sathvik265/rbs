@@ -17,10 +17,16 @@ const OrderModel = {
       unit_price,
       line_total,
       created_at, // IMPORTANT: Must enable passing this to match Bill's timestamp (FK)
+      is_separate,
     } = orderData;
 
     // Default bill_date to current date if not provided
-    const finalBillDate = bill_date || new Date().toISOString().split("T")[0];
+    const finalBillDate = bill_date || new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(new Date());
 
     // If created_at is provided, we MUST use it. Otherwise default to database default (which might fail FK if no matching bill exists)
     // We include it in columns.
@@ -31,7 +37,30 @@ const OrderModel = {
     if (created_at) {
       query = `INSERT INTO orders (
             track, clerk_initials, table_no, party_no, bill_number, bill_date,
-            item_code, numeric_item_code, item_name, quantity, unit_price, line_total, created_at
+            item_code, numeric_item_code, item_name, quantity, unit_price, line_total, created_at, is_separate
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          RETURNING *`;
+      params = [
+        track,
+        clerk_initials,
+        table_no,
+        party_no,
+        bill_number,
+        finalBillDate,
+        item_code,
+        numeric_item_code,
+        item_name,
+        quantity,
+        unit_price,
+        line_total,
+        created_at,
+        is_separate === true,
+      ];
+    } else {
+      query = `INSERT INTO orders (
+            track, clerk_initials, table_no, party_no, bill_number, bill_date,
+            item_code, numeric_item_code, item_name, quantity, unit_price, line_total, is_separate
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           RETURNING *`;
@@ -48,28 +77,7 @@ const OrderModel = {
         quantity,
         unit_price,
         line_total,
-        created_at,
-      ];
-    } else {
-      query = `INSERT INTO orders (
-            track, clerk_initials, table_no, party_no, bill_number, bill_date,
-            item_code, numeric_item_code, item_name, quantity, unit_price, line_total
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-          RETURNING *`;
-      params = [
-        track,
-        clerk_initials,
-        table_no,
-        party_no,
-        bill_number,
-        finalBillDate,
-        item_code,
-        numeric_item_code,
-        item_name,
-        quantity,
-        unit_price,
-        line_total,
+        is_separate === true,
       ];
     }
 
@@ -116,17 +124,30 @@ const OrderModel = {
     await pool.query("DELETE FROM orders WHERE id = $1", [orderId]);
   },
 
-  // Update order quantity
-  async updateOrderQuantity(orderId, newQuantity, newLineTotal) {
+  // Update order quantity and split status
+  async updateOrder(orderId, newQuantity, newLineTotal, is_separate) {
     const result = await pool.query(
       `UPDATE orders 
-       SET quantity = $1, line_total = $2, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3
+       SET quantity = $1, line_total = $2, is_separate = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4
        RETURNING *`,
-      [newQuantity, newLineTotal, orderId]
+      [newQuantity, newLineTotal, is_separate === true, orderId]
     );
     return result.rows[0];
   },
+
+  // Move an order to another table/party
+  async moveOrder(orderId, targetTableNo, targetPartyNo, targetCreatedAt, targetTrack, targetClerk) {
+    const result = await pool.query(
+      `UPDATE orders 
+       SET table_no = $1, party_no = $2, created_at = $3, track = $4, clerk_initials = $5, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $6
+       RETURNING *`,
+      [parseInt(targetTableNo, 10), targetPartyNo, targetCreatedAt, targetTrack, targetClerk, orderId]
+    );
+    return result.rows[0];
+  },
+
 
   // Get order by ID
   async getOrderById(orderId) {

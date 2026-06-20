@@ -7,248 +7,217 @@ import {
   Button,
   Loader2,
 } from "./ui/UIComponents";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "./ui/Table";
 import { getShiftStatus, reopenShift, closeShift } from "../services/api";
 import { toast, safeGet, safeArray } from "../utils/helpers";
 
-export default function ShiftTab({
-  mode,
-  sessionId,
-  currentShift,
-  currentDate,
-}) {
-  const [shifts, setShifts] = useState([]);
+// The four canonical tracks — always render exactly these four rows
+const TRACKS = [
+  { id: "`", label: "`" },
+  { id: "``", label: "``" },
+  { id: "RBS1", label: "RBS1" },
+  { id: "RBS2", label: "RBS2" },
+];
+
+
+export default function ShiftTab({ mode, sessionId, currentShift, currentDate }) {
+  const [sessionsByTrack, setSessionsByTrack] = useState({});
   const [loading, setLoading] = useState(false);
-  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [actingOn, setActingOn] = useState(null); // track id currently being toggled
 
   const isAdmin = mode && mode.includes("admin");
   const isClerk = mode === "clerk";
 
+  // Load sessions and index them by shift_name (last-write wins — keeps the
+  // latest session for each track regardless of how many rows exist in the DB)
   const loadShiftStatus = useCallback(async () => {
-    if (!isAdmin) return;
-
     setLoading(true);
     try {
-      const res = await getShiftStatus();
-      setShifts(safeArray(res));
+      const rows = safeArray(await getShiftStatus());
+      const byTrack = {};
+      for (const row of rows) {
+        const key = row.shift_name;
+        // Prefer OPEN sessions; otherwise keep the most-recent one
+        if (!byTrack[key] || row.status === "OPEN" || new Date(row.start_time) > new Date(byTrack[key].start_time)) {
+          byTrack[key] = row;
+        }
+      }
+      setSessionsByTrack(byTrack);
     } catch (e) {
       console.error("Failed to load shift status:", e);
       toast.error("Failed to load shift status");
-      setShifts([]);
     } finally {
       setLoading(false);
     }
-  }, [isAdmin]);
+  }, []);
 
   useEffect(() => {
-    if (isAdmin) {
-      loadShiftStatus();
-      const interval = setInterval(loadShiftStatus, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [isAdmin, loadShiftStatus]);
+    loadShiftStatus();
+    const interval = setInterval(loadShiftStatus, 30000);
+    return () => clearInterval(interval);
+  }, [loadShiftStatus]);
 
-  const handleCloseShift = async () => {
-    if (!sessionId) return;
-
+  // Toggle a track open ↔ closed
+  const handleToggle = async (trackId) => {
+    const session = sessionsByTrack[trackId];
+    if (!session) return;
+    setActingOn(trackId);
     try {
-      const res = await closeShift(sessionId);
-      toast.success(`Shift ${res.shift_name} closed successfully`);
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
-    } catch (e) {
-      console.error("Failed to close shift:", e);
-      toast.error(safeGet(e, "response.data.detail", "Failed to close shift"));
-    }
-
-    setShowCloseConfirm(false);
-  };
-
-  const handleShiftAction = async (shiftId, currentStatus) => {
-    if (!isAdmin) return;
-
-    try {
-      if (currentStatus === "OPEN") {
-        await closeShift(shiftId);
-        toast.success(`Shift closed successfully`);
+      if (session.status === "OPEN") {
+        await closeShift(session.session_id);
+        toast.success(`Track "${trackId}" closed`);
       } else {
-        await reopenShift(shiftId);
-        toast.success(`Shift reopened successfully`);
+        await reopenShift(session.session_id);
+        toast.success(`Track "${trackId}" re-opened`);
       }
-      loadShiftStatus();
+      await loadShiftStatus();
     } catch (e) {
-      console.error("Failed to perform shift action:", e);
-      toast.error(
-        safeGet(e, "response.data.detail", "Failed to perform shift action"),
-      );
+      toast.error(safeGet(e, "response.data.detail", "Action failed"));
+    } finally {
+      setActingOn(null);
     }
   };
 
-  const ClerkView = () => (
-    <div className="text-center p-6 bg-blue-50 rounded-lg">
-      <h3 className="text-lg font-semibold text-blue-900 mb-2">
-        Current Shift: {currentShift || "Unknown"}
-      </h3>
-      <p className="text-sm text-blue-700 mb-4">
-        You are currently working in shift {currentShift} on {currentDate}
-      </p>
-      <Button
-        variant="destructive"
-        onClick={() => setShowCloseConfirm(true)}
-        className="w-full max-w-xs"
-      >
-        Close Shift & Logout
-      </Button>
-    </div>
-  );
-
-  const AdminView = () => (
-    <>
-      {loading ? (
-        <div className="text-center py-8">
-          <Loader2 size={24} className="mb-2" />
-          <p>Loading shift status...</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <Button onClick={loadShiftStatus} variant="outline" size="sm">
-              Refresh Status
-            </Button>
-          </div>
-
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Shift Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Start Time</TableHead>
-                <TableHead>End Time</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {shifts.map((shift) => (
-                <TableRow key={shift.session_id}>
-                  <TableCell className="font-medium">
-                    {shift.shift_name}
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium ${
-                        shift.status === "OPEN"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {shift.status}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    {shift.start_time
-                      ? new Date(shift.start_time).toLocaleTimeString()
-                      : "-"}
-                  </TableCell>
-                  <TableCell>
-                    {shift.end_time
-                      ? new Date(shift.end_time).toLocaleTimeString()
-                      : "-"}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant={
-                        shift.status === "OPEN" ? "destructive" : "success"
-                      }
-                      onClick={() =>
-                        handleShiftAction(shift.session_id, shift.status)
-                      }
-                    >
-                      {shift.status === "OPEN" ? "Close" : "Re-open"}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-
-          {shifts.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              No shifts found for this date
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  );
-
-  return (
-    <>
+  // ── Clerk view: simple info card ─────────────────────────────────────────
+  if (isClerk) {
+    return (
       <Card>
-        <CardHeader>
-          <CardTitle>Shift Management</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Shift Information</CardTitle></CardHeader>
         <CardContent>
-          {isAdmin && (
-            <div className="mb-4">
-              <Button
-                onClick={() => setShowCloseConfirm(true)}
-                variant="destructive"
-                size="sm"
-              >
-                Close Current Shift & Logout
-              </Button>
-            </div>
-          )}
-          {isClerk ? (
-            <ClerkView />
-          ) : isAdmin ? (
-            <AdminView />
-          ) : (
-            <p>Access Denied</p>
-          )}
+          <div style={{
+            padding: "1.25rem", background: "#eff6ff", borderRadius: "0.5rem",
+            textAlign: "center",
+          }}>
+            <p style={{ fontWeight: 600, fontSize: "1.05rem", marginBottom: "0.25rem" }}>
+              Current Track: {currentShift || "—"}
+            </p>
+            <p style={{ color: "#3b82f6", fontSize: "0.85rem" }}>
+              Date: {currentDate || "—"}
+            </p>
+          </div>
         </CardContent>
       </Card>
+    );
+  }
 
-      {showCloseConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <Card className="max-w-md mx-4">
-            <CardHeader>
-              <CardTitle>Close Shift</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-4">
-                Are you sure you want to close this shift? This will log you
-                out.
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowCloseConfirm(false)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={handleCloseShift}
-                  className="flex-1"
-                >
-                  Yes, Close Shift
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+  // ── Admin view: 4-track grid ──────────────────────────────────────────────
+  if (!isAdmin) {
+    return (
+      <Card>
+        <CardContent style={{ padding: "2rem", textAlign: "center", color: "#6b7280" }}>
+          Access denied
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <CardTitle>Track Management</CardTitle>
+          <Button variant="outline" size="sm" onClick={loadShiftStatus} disabled={loading}>
+            {loading ? <Loader2 size={14} className="animate-spin" style={{ marginRight: 4 }} /> : null}
+            Refresh
+          </Button>
         </div>
-      )}
-    </>
+      </CardHeader>
+      <CardContent>
+        {loading && Object.keys(sessionsByTrack).length === 0 ? (
+          <div style={{ textAlign: "center", padding: "2rem" }}>
+            <Loader2 size={24} className="animate-spin" />
+            <p style={{ marginTop: "0.5rem", color: "#6b7280" }}>Loading…</p>
+          </div>
+        ) : (
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+            gap: "1rem",
+          }}>
+            {TRACKS.map(({ id, label }) => {
+              const session = sessionsByTrack[id];
+              const isOpen = session?.status === "OPEN";
+              const isBusy = actingOn === id;
+              const noSession = !session;
+
+              return (
+                <div
+                  key={id}
+                  style={{
+                    border: `2px solid ${isOpen ? "#86efac" : "#fca5a5"}`,
+                    borderRadius: "0.75rem",
+                    padding: "1.25rem",
+                    background: isOpen ? "#f0fdf4" : "#fff7f7",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.6rem",
+                    transition: "border-color 0.2s",
+                  }}
+                >
+                  {/* Track label + ID */}
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "2rem", color: "#000000" }}>{label}</div>
+                    <div style={{ fontSize: "0rem", color: "#000000", fontFamily: "monospace" }}>
+                      {id}
+                    </div>
+                  </div>
+
+                  {/* Status badge */}
+                  <div>
+                    <span style={{
+                      display: "inline-block",
+                      padding: "0.2rem 0.65rem",
+                      borderRadius: "9999px",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      background: isOpen ? "#dcfce7" : "#fee2e2",
+                      color: isOpen ? "#166534" : "#991b1b",
+                    }}>
+                      {noSession ? "No Session" : isOpen ? "● OPEN" : "○ CLOSED"}
+                    </span>
+                  </div>
+
+                  {/* Clerk */}
+                  {session?.clerk_initials && (
+                    <div style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+                      Clerk: <strong>{session.clerk_initials}</strong>
+                    </div>
+                  )}
+
+                  {/* Times */}
+                  {session?.start_time && (
+                    <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>
+                      Opened: {new Date(session.start_time).toLocaleTimeString()}
+                    </div>
+                  )}
+                  {session?.end_time && (
+                    <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>
+                      Closed: {new Date(session.end_time).toLocaleTimeString()}
+                    </div>
+                  )}
+
+                  {/* Action button */}
+                  <Button
+                    size="sm"
+                    disabled={isBusy || noSession}
+                    onClick={() => handleToggle(id)}
+                    style={{
+                      marginTop: "auto",
+                      background: isOpen ? "#ef4444" : "#22c55e",
+                      color: "white",
+                      border: "none",
+                      opacity: noSession ? 0.4 : 1,
+                    }}
+                  >
+                    {isBusy
+                      ? <Loader2 size={13} className="animate-spin" />
+                      : isOpen ? "Close Track" : "Open Track"}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

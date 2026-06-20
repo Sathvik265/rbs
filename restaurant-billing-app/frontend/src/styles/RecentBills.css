@@ -21,7 +21,7 @@
 
 .recent-bills-header h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 1.25rem;
   color: #ffffff;
 }
 .search-inline {
@@ -67,11 +67,11 @@
 }
 .bill-title {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 1rem;
 }
 .bill-time {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 .card-right {
   display: flex;
@@ -83,7 +83,7 @@
   font-weight: 700;
 }
 .expand-icon {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: #e5e5e5;
 }
 

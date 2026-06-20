@@ -22,8 +22,10 @@ const reportRoutes = require("./routes/reportRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const reconciliationRoutes = require("./routes/reconciliationRoutes");
 const printerRoutes = require("./routes/printerRoutes");
+const trackRoutes = require("./routes/trackRoutes");
 const reportController = require("./controllers/reportController");
 const SettingsModel = require("./models/settingsModel");
+const ShiftModel = require("./models/shiftModel");
 const { resolveAdminMode } = require("./auth/config");
 const { createSession, deleteSession } = require("./auth/sessionStore");
 const {
@@ -40,10 +42,10 @@ app.use(
   }),
 );
 
-// Rate limiting - development tuned
+// Rate limiting - development & multi-device tuned
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000,
+  max: 100000, // Greatly increased to support multi-terminal POS systems
 });
 app.use("/api/", limiter);
 
@@ -71,6 +73,7 @@ app.use("/api/shifts", requireAuth, shiftRoutes);
 app.use("/api/items", requireAuth, itemRoutes);
 app.use("/api/tables", requireAuth, tableRoutes);
 app.use("/api/printer", printerRoutes);
+app.use("/api/tracks", trackRoutes); // Track lockdown & EOD
 app.use("/api/reports", requireAdminAny, reportRoutes);
 app.use("/api/dashboard", requireAdminAny, dashboardRoutes);
 app.use("/api/reconciliation", requireAdminAny, reconciliationRoutes);
@@ -83,9 +86,9 @@ app.put("/api/settings", requireAdminAny, reportController.updateSettings);
 app.get("/api/auth/shift-status", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT session_id, shift_name, status, start_time, end_time
+      `SELECT session_id, shift_name, status, is_locked, last_bill_number, start_time, end_time
        FROM sessions
-       ORDER BY shift_name, start_time`,
+       ORDER BY shift_name, start_time DESC`,
     );
     res.json(result.rows);
   } catch (error) {
@@ -99,8 +102,8 @@ app.post("/api/auth/login", async (req, res) => {
   try {
     const { staff_code: initials, date, track, password = "" } = req.body;
 
-    // Normalize initials to uppercase for DB consistency
-    const upperStaffCode = initials ? String(initials).toUpperCase() : null;
+    // Normalize initials to uppercase and limit to 10 characters for DB consistency
+    const upperStaffCode = initials ? String(initials).toUpperCase().slice(0, 10) : null;
 
     if (!initials || !date || !track) {
       return res.status(400).json({
@@ -116,17 +119,6 @@ app.post("/api/auth/login", async (req, res) => {
       if (!mode) {
         return res.status(401).json({
           detail: "Invalid admin password",
-        });
-      }
-    } else {
-      const clerkCheck = await pool.query(
-        "SELECT clerk_initials FROM settings WHERE clerk_initials = $1",
-        [upperStaffCode],
-      );
-
-      if (clerkCheck.rows.length === 0) {
-        return res.status(401).json({
-          detail: "Invalid credentials. Clerk not found in system.",
         });
       }
     }
@@ -148,6 +140,31 @@ app.post("/api/auth/login", async (req, res) => {
         .json({ detail: "Shift is closed for this track/date" });
     }
 
+    // LOCKDOWN CHECK: Only block clerks when the track is locked AND
+    // there is no currently OPEN session. If admin has already reopened
+    // the track (status = OPEN), the clerk should be allowed in.
+    if (mode === "clerk") {
+      const lockCheck = await pool.query(
+        `SELECT s.is_locked
+           FROM sessions s
+           WHERE s.shift_name = $1
+             AND s.is_locked = TRUE
+             AND NOT EXISTS (
+               SELECT 1 FROM sessions s2
+               WHERE s2.shift_name = $1 AND s2.status = 'OPEN' AND s2.is_locked = FALSE
+             )
+           LIMIT 1`,
+        [track],
+      );
+      if (lockCheck.rows.length > 0) {
+        return res.status(423).json({
+          detail:
+            "This track is logged out. Please contact an admin to unlock it.",
+          locked: true,
+        });
+      }
+    }
+
     // Find an existing open session for this track (regardless of clerk)
     // The database constraint allows only ONE open session per shift_name
     let shiftSessionResult = await pool.query(
@@ -159,13 +176,19 @@ app.post("/api/auth/login", async (req, res) => {
     let shift_session_id;
 
     if (shiftSessionResult.rows.length > 0) {
-      // Reuse the existing open session for this track
+      // Reuse the existing open session for this track.
+      // Also clear is_locked — covers the case where clerk logged out
+      // (setting is_locked=TRUE) but the admin has since reopened the track.
       shift_session_id = shiftSessionResult.rows[0].session_id;
+      await pool.query(
+        `UPDATE sessions SET is_locked = FALSE WHERE session_id = $1`,
+        [shift_session_id],
+      );
     } else {
       // No open session exists for this track, create a new one
       const createResult = await pool.query(
-        `INSERT INTO sessions (shift_name, clerk_initials, session_date, status, start_time)
-     VALUES ($1, $2, $3, 'OPEN', CURRENT_TIMESTAMP)
+        `INSERT INTO sessions (shift_name, clerk_initials, session_date, status, start_time, is_locked)
+     VALUES ($1, $2, $3, 'OPEN', CURRENT_TIMESTAMP, FALSE)
      RETURNING session_id`,
         [track, upperStaffCode, date],
       );
@@ -201,9 +224,26 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-app.post("/api/auth/logout", requireAuth, (req, res) => {
+app.post("/api/auth/logout", requireAuth, async (req, res) => {
+  const { mode, track } = req.auth;
+
+  // If a clerk logs out of a track, explicitly close the session.
+  // This automatically locks it and marks it CLOSED until an admin reopens it.
+  if (mode === "clerk" && track) {
+    try {
+      const openSession = await ShiftModel.getCurrentOpenSession(track);
+      if (openSession) {
+        await ShiftModel.closeSession(openSession.session_id, "LOGOUT");
+        console.log(`🔒 Track '${track}' session closed on clerk logout.`);
+      }
+    } catch (err) {
+      console.error(`Failed to close track '${track}' on logout:`, err.message);
+      // Non-fatal — still complete the logout
+    }
+  }
+
   deleteSession(req.auth.token);
-  res.json({ detail: "Logged out" });
+  res.json({ detail: "Logged out", track_locked: mode === "clerk" && !!track });
 });
 
 // ================ MENU ROUTES (UNCHANGED) ================
@@ -242,13 +282,27 @@ app.post("/api/menu", requireAdminFull, async (req, res) => {
     // The database constraint requires an ARRAY with objects containing 'qty' and 'name' fields
     let categoryJson;
     if (typeof category === "string" && category.trim()) {
-      // If it's a plain string, wrap it in JSON array format with qty
-      categoryJson = JSON.stringify([
-        {
-          qty: 1, // Default quantity
-          name: category.trim(),
-        },
-      ]);
+      const trimmed = category.trim();
+      let isJson = false;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && (typeof parsed === "object" || Array.isArray(parsed))) {
+          categoryJson = JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
+          isJson = true;
+        }
+      } catch (e) {
+        // Not a valid JSON string, treat as plain text
+      }
+
+      if (!isJson) {
+        // If it's a plain string, wrap it in JSON array format with qty
+        categoryJson = JSON.stringify([
+          {
+            qty: 1, // Default quantity
+            name: trimmed,
+          },
+        ]);
+      }
     } else if (typeof category === "object" && category !== null) {
       // If it's already an object, wrap in array
       if (Array.isArray(category)) {
@@ -345,13 +399,29 @@ app.put("/api/menu/:id", requireAdminFull, async (req, res) => {
     // Ensure category is properly formatted as JSON for database (Same logic as POST)
     let categoryJson;
     if (typeof category === "string" && category.trim()) {
-      categoryJson = JSON.stringify([
-        {
-          qty: 1,
-          name: category.trim(),
-        },
-      ]);
+      const trimmed = category.trim();
+      let isJson = false;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && (typeof parsed === "object" || Array.isArray(parsed))) {
+          categoryJson = JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
+          isJson = true;
+        }
+      } catch (e) {
+        // Not a valid JSON string, treat as plain text
+      }
+
+      if (!isJson) {
+        // If it's a plain string, wrap it in JSON array format with qty
+        categoryJson = JSON.stringify([
+          {
+            qty: 1, // Default quantity
+            name: trimmed,
+          },
+        ]);
+      }
     } else if (typeof category === "object" && category !== null) {
+      // If it's already an object, wrap in array
       if (Array.isArray(category)) {
         categoryJson = JSON.stringify(category);
       } else {
@@ -363,6 +433,7 @@ app.put("/api/menu/:id", requireAdminFull, async (req, res) => {
         ]);
       }
     } else {
+      // Default empty category
       categoryJson = JSON.stringify([{ qty: 1, name: "" }]);
     }
 
@@ -407,10 +478,12 @@ app.get("/api/menu/lookup/:code", requireAuth, async (req, res) => {
   try {
     const { code } = req.params;
     const upperCode = code.toUpperCase();
+    const numericVal = !isNaN(Number(code)) && code.trim() !== '' ? Number(code) : -1;
+    
     const result = await pool.query(
       `SELECT * FROM items 
-             WHERE (UPPER(alpha_code) = $1 OR UPPER(numeric_code) = $1) LIMIT 1`,
-      [upperCode],
+             WHERE (id = $2 OR UPPER(alpha_code) = $1 OR CAST(numeric_code AS TEXT) = $1 OR numeric_code = $2 OR UPPER(name) = $1) LIMIT 1`,
+      [upperCode, numericVal],
     );
 
     if (result.rows.length === 0)

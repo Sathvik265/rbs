@@ -30,6 +30,7 @@ router.get(
 );
 router.post("/orders", billingController.createOrder);
 router.put("/orders/:orderId", billingController.updateOrder);
+router.post("/orders/:orderId/move", billingController.moveOrder);
 router.delete("/orders/:orderId", billingController.deleteOrder);
 router.delete(
   "/orders/table/:tableNo/party/:partyNo",

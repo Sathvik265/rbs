@@ -116,7 +116,6 @@ CREATE TABLE IF NOT EXISTS bills (
     items_json JSONB,
     order_id VARCHAR(50),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(bill_number, bill_date),
     -- Composite Unique Key for FK reference (Added from Update-3)
     CONSTRAINT uq_bills_composite_key UNIQUE (table_no, party_no, created_at, track, clerk_initials)
 );
@@ -181,6 +180,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_table_no ON orders(table_no);
 CREATE INDEX IF NOT EXISTS idx_orders_bill_number_date ON orders(bill_number, bill_date); -- Update-1
 
 CREATE INDEX IF NOT EXISTS idx_tables_section_name ON tables(section_name);
+
+CREATE UNIQUE INDEX IF NOT EXISTS bills_bill_number_bill_date_unique ON bills(bill_number, bill_date, track) WHERE bill_number > 0;
 
 -- ========================================================================
 -- 5. CREATE FUNCTIONS
