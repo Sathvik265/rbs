@@ -334,6 +334,15 @@ export function ShiftReport({ sessionId }) {
     date: new Date().toISOString().split("T")[0],
     shiftName: "`",
   });
+  const [activeReportType, setActiveReportType] = useState("list");
+  const [summaryReport, setSummaryReport] = useState(null);
+  const [detailedReport, setDetailedReport] = useState(null);
+  const [settings, setSettings] = useState({});
+  const [asciiPreview, setAsciiPreview] = useState("");
+
+  useEffect(() => {
+    fetchSettings().then((data) => setSettings(data || {}));
+  }, []);
 
   const generateReport = async () => {
     setLoading(true);
@@ -345,6 +354,30 @@ export function ShiftReport({ sessionId }) {
         },
       });
       setReport(res.data);
+      setActiveReportType("list");
+
+      const rawText = generateAsciiReport(
+        `Shift Bills (${filters.date.slice(5)} - ${filters.shiftName})`,
+        [
+          { header: "Bill", accessor: (r) => r.bill_number, width: 6 },
+          { header: "Tbl", accessor: (r) => r.table_no, width: 4 },
+          {
+            header: "Amount",
+            accessor: (r) => Number(r.grand_total).toFixed(2),
+            width: 9,
+            align: "right",
+          },
+          {
+            header: "Time",
+            accessor: (r) => new Date(r.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+            width: 9,
+            align: "right",
+          },
+        ],
+        res.data,
+        settings
+      );
+      setAsciiPreview(rawText.replace(/\.\r?\n/g, ""));
       toast.success("Shift report generated successfully");
     } catch (e) {
       console.error("Failed to generate shift report:", e);
@@ -405,6 +438,31 @@ export function ShiftReport({ sessionId }) {
         total_amount: grandTotal,
         date: "",
       });
+
+      setSummaryReport(summaryData);
+      setActiveReportType("summary");
+
+      const rawText = generateAsciiReport(
+        `Shift Summary (${filters.date})`,
+        [
+          { header: "Shift Name", accessor: (r) => r.shift_name, width: 14 },
+          {
+            header: "GST Rs",
+            accessor: (r) => Number(r.gst_amount).toFixed(2),
+            width: 8,
+            align: "right",
+          },
+          {
+            header: "Total Rs",
+            accessor: (r) => Number(r.total_amount).toFixed(2),
+            width: 9,
+            align: "right",
+          },
+        ],
+        summaryData,
+        settings
+      );
+      setAsciiPreview(rawText.replace(/\.\r?\n/g, ""));
 
       sendToPosPrinter(
         `Shift Summary (${filters.date})`,
@@ -467,6 +525,26 @@ export function ShiftReport({ sessionId }) {
         final_total: finalTotal,
       });
 
+      setDetailedReport(detailedData);
+      setActiveReportType("detailed");
+
+      const rawText = generateAsciiReport(
+        `Detailed Shift Rpt (${filters.shiftName})`,
+        [
+          { header: "Item Desc", accessor: (r) => r.item_name, width: 19 },
+          { header: "Qty", accessor: (r) => r.total_quantity, width: 4 },
+          {
+            header: "Total Rs",
+            accessor: (r) => Number(r.final_total).toFixed(2),
+            width: 8,
+            align: "right",
+          },
+        ],
+        detailedData,
+        settings
+      );
+      setAsciiPreview(rawText.replace(/\.\r?\n/g, ""));
+
       sendToPosPrinter(
         `Detailed Shift Rpt (${filters.shiftName})`,
         [
@@ -521,10 +599,6 @@ export function ShiftReport({ sessionId }) {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={generateReport} disabled={loading}>
-              {loading ? <Loader2 size={16} className="mr-2" /> : null}
-              Generate List
-            </Button>
             {report && report.length > 0 && (
               <Button onClick={handlePrint} variant="outline">
                 Print Bill List
@@ -550,38 +624,142 @@ export function ShiftReport({ sessionId }) {
             </Button>
           </div>
 
-          {report && (
-            <div className="mt-6 space-y-4">
-              {report.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Bill No</TableHead>
-                      <TableHead>Table</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Time</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {report.map((bill) => (
-                      <TableRow key={bill.id}>
-                        <TableCell>{bill.bill_number}</TableCell>
-                        <TableCell>{bill.table_no}</TableCell>
-                        <TableCell>
-                          {Number(bill.grand_total).toFixed(2)}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(bill.created_at).toLocaleTimeString()}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <div className="text-center py-8 text-gray-500">
-                  No bills found for the selected shift
+          {asciiPreview && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6 border-t pt-6">
+              {/* HTML Report View (Colspan 7) */}
+              <div className="lg:col-span-7 space-y-4">
+                {activeReportType === "list" && report && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-gray-800">Shift Bills</h3>
+                    {report.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Bill No</TableHead>
+                            <TableHead>Table</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Time</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {report.map((bill) => (
+                            <TableRow key={bill.id}>
+                              <TableCell>{bill.bill_number}</TableCell>
+                              <TableCell>{bill.table_no}</TableCell>
+                              <TableCell>
+                                ₹{Number(bill.grand_total).toFixed(2)}
+                              </TableCell>
+                              <TableCell>
+                                {new Date(bill.created_at).toLocaleTimeString()}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        No bills found for the selected shift
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeReportType === "summary" && summaryReport && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-gray-800">Shift Summary Report</h3>
+                    {summaryReport.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Shift Name</TableHead>
+                            <TableHead className="text-right">GST Rs</TableHead>
+                            <TableHead className="text-right">Total Rs</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {summaryReport.map((row, idx) => (
+                            <TableRow
+                              key={idx}
+                              className={row.shift_name === "** TOTAL **" ? "font-bold bg-gray-50 text-black border-t-2 border-gray-400" : ""}
+                            >
+                              <TableCell>{row.shift_name}</TableCell>
+                              <TableCell className="text-right">
+                                ₹{Number(row.gst_amount).toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                ₹{Number(row.total_amount).toFixed(2)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        No shift summary found for this date
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeReportType === "detailed" && detailedReport && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-bold text-gray-800">Detailed Shift Report ({filters.shiftName})</h3>
+                    {detailedReport.length > 0 ? (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Item Desc</TableHead>
+                            <TableHead className="text-right">Qty</TableHead>
+                            <TableHead className="text-right">Total Rs</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {detailedReport.map((row, idx) => (
+                            <TableRow
+                              key={idx}
+                              className={row.item_name === "** TOTAL **" ? "font-bold bg-gray-50 text-black border-t-2 border-gray-400" : ""}
+                            >
+                              <TableCell>{row.item_name}</TableCell>
+                              <TableCell className="text-right">
+                                {row.total_quantity}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                ₹{Number(row.final_total).toFixed(2)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        No items found for this shift
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Thermal Receipt Print Spool Preview (Colspan 5) */}
+              <div className="lg:col-span-5 flex flex-col items-center justify-start bg-gray-50 dark:bg-gray-900 p-4 rounded-lg border border-gray-200">
+                <span className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">POS Bill Paper Preview</span>
+                <div style={{
+                  background: "#ffffff",
+                  color: "#000000",
+                  fontFamily: "'Courier New', Courier, monospace",
+                  fontSize: "12px",
+                  lineHeight: "1.3",
+                  padding: "20px 15px",
+                  borderLeft: "2px dashed #ccc",
+                  borderRight: "2px dashed #ccc",
+                  boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)",
+                  width: "100%",
+                  maxWidth: "300px",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all"
+                }}>
+                  {asciiPreview}
                 </div>
-              )}
+              </div>
             </div>
           )}
         </div>

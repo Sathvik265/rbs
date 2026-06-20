@@ -6,6 +6,7 @@ const {
   verifyOrderIntegrity,
   verifyBillIntegrity,
   roundMoney,
+  getSectionForTable,
 } = require("../utils/billingIntegrity");
 
 const billingController = {
@@ -87,40 +88,9 @@ const billingController = {
       // We need to know which bill to finalize.
       // The frontend might not send created_at, so we rely on finding the ACTIVE provisional bill.
 
-      let { table_no, party_no, track, clerk_initials } = billData;
+      let { table_no, party_no, track, clerk_initials, items } = billData;
 
-      // IMPORTANT FIX: If orders exist for this table/party, use THEIR track/clerk values
-      // because that's what the provisional bill was created with
-      const allOrders = await OrderModel.getPendingOrdersByTableAndParty(
-        table_no,
-        party_no,
-      );
-
-      // Filter out stale orders that belong to previous days. The frontend ignores them.
-      let existingOrders = allOrders;
-      if (billData.bill_date) {
-        existingOrders = allOrders.filter(o => {
-          let orderDateStr = "";
-          let rawDate = o.bill_date;
-          if (rawDate) {
-            const d = new Date(rawDate);
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, "0");
-            const day = String(d.getDate()).padStart(2, "0");
-            orderDateStr = `${year}-${month}-${day}`;
-          }
-          return orderDateStr === billData.bill_date;
-        });
-      }
-
-      if (existingOrders && existingOrders.length > 0) {
-        // Use the track and clerk_initials from the first order
-        track = existingOrders[0].track;
-        clerk_initials = existingOrders[0].clerk_initials;
-      }
-
-      // Look up the active provisional bill to get the linking 'created_at'
-      // Look up the active provisional bill strictly by table/party
+      // 1. Find or Create Provisional Bill first
       const provisionalRes = await pool.query(
         `SELECT * FROM bills WHERE table_no = $1 AND party_no = $2 AND bill_number = 0 ORDER BY created_at DESC LIMIT 1`,
         [parseInt(table_no), party_no],
@@ -128,33 +98,87 @@ const billingController = {
       let provisionalBill = provisionalRes.rows[0];
 
       if (!provisionalBill) {
-        // RECOVERY LOGIC: If orders exist but bill is missing, create a new one on the fly.
-        if (existingOrders && existingOrders.length > 0) {
-          const now = new Date();
-          const provisionalBillData = {
-            bill_date:
-              billData.bill_date || new Date().toISOString().split("T")[0],
+        const now = new Date();
+        const provisionalBillData = {
+          bill_date:
+            billData.bill_date || new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'Asia/Kolkata',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit'
+            }).format(new Date()),
+          table_no: parseInt(table_no),
+          party_no: party_no,
+          section: billData.section || "G",
+          track: track || "`",
+          clerk_initials: clerk_initials || "CLK",
+          created_at: now,
+        };
+
+        provisionalBill =
+          await BillingModel.createProvisionalBill(provisionalBillData);
+      }
+
+      // 2. Sync database orders with the items sent from the frontend if provided
+      if (Array.isArray(items) && items.length > 0) {
+        await OrderModel.clearOrders(table_no, party_no);
+        for (const item of items) {
+          await OrderModel.createOrder({
+            track: track || provisionalBill.track,
+            clerk_initials: clerk_initials || provisionalBill.clerk_initials,
             table_no: parseInt(table_no),
             party_no: party_no,
-            section: billData.section || "G",
-            track: track,
-            clerk_initials: clerk_initials,
-            created_at: now,
-          };
-
-          provisionalBill =
-            await BillingModel.createProvisionalBill(provisionalBillData);
-
-          // Update orders to link to this new bill (using created_at as FK)
-          await pool.query(
-            `UPDATE orders SET created_at = $1 WHERE table_no = $2 AND party_no = $3`,
-            [provisionalBill.created_at, parseInt(table_no), party_no],
-          );
-        } else {
-          return res.status(404).json({
-            error: "No active provisional bill found to finalize.",
+            bill_number: 0,
+            bill_date: provisionalBill.bill_date,
+            item_code: item.item_code,
+            numeric_item_code: item.numeric_item_code,
+            item_name: item.item_name,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            line_total: item.line_total,
+            created_at: provisionalBill.created_at,
+            is_separate: item.is_separate,
           });
         }
+      }
+
+      // 3. Fetch all orders (now guaranteed to match the frontend state)
+      const allOrders = await OrderModel.getPendingOrdersByTableAndParty(
+        table_no,
+        party_no,
+      );
+
+      // Filter out stale orders that belong to previous days.
+      let existingOrders = allOrders;
+      if (provisionalBill.bill_date) {
+        const getFormattedDateStr = (dateInput) => {
+          if (!dateInput) return "";
+          const d = new Date(dateInput);
+          try {
+            return new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'Asia/Kolkata',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit'
+            }).format(d);
+          } catch (e) {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            return `${year}-${month}-${day}`;
+          }
+        };
+
+        const provisionalBillDateStr = getFormattedDateStr(provisionalBill.bill_date);
+
+        existingOrders = allOrders.filter(o => {
+          return getFormattedDateStr(o.bill_date) === provisionalBillDateStr;
+        });
+      }
+
+      if (existingOrders && existingOrders.length > 0) {
+        track = existingOrders[0].track;
+        clerk_initials = existingOrders[0].clerk_initials;
       }
 
       const totalsCheck = await verifyBillIntegrity({
@@ -168,7 +192,12 @@ const billingController = {
         return res.status(400).json({ error: totalsCheck.detail, computed: totalsCheck.computed });
       }
 
-      const bill_date = new Date().toISOString().split("T")[0];
+      const bill_date = billData.bill_date || new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
 
       const finalizeData = {
         ...billData,
@@ -292,7 +321,12 @@ const billingController = {
 
       // Ensure bill_date is present, default to today if not
       if (!orderData.bill_date) {
-        orderData.bill_date = new Date().toISOString().split("T")[0];
+        orderData.bill_date = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(new Date());
       }
 
       const orderCheck = await verifyOrderIntegrity(orderData);
@@ -311,6 +345,7 @@ const billingController = {
         orderData.party_no,
         orderData.track,
         orderData.clerk_initials,
+        orderData.bill_date,
       );
 
       if (!provisionalBill) {
@@ -347,11 +382,7 @@ const billingController = {
   async updateOrder(req, res) {
     try {
       const { orderId } = req.params;
-      const { quantity } = req.body;
-
-      if (!quantity) {
-        return res.status(400).json({ error: "quantity is required" });
-      }
+      const { quantity, is_separate } = req.body;
 
       const existingOrder = await OrderModel.getOrderById(orderId);
 
@@ -359,19 +390,25 @@ const billingController = {
         return res.status(404).json({ error: "Order not found" });
       }
 
-      const safeQuantity = Number(quantity);
-
-      if (!Number.isFinite(safeQuantity) || safeQuantity <= 0) {
-        return res.status(400).json({ error: "Invalid quantity" });
+      let safeQuantity = Number(existingOrder.quantity);
+      if (quantity !== undefined) {
+        safeQuantity = Number(quantity);
+        if (!Number.isFinite(safeQuantity) || safeQuantity <= 0) {
+          return res.status(400).json({ error: "Invalid quantity" });
+        }
       }
+
+      const finalIsSeparate = is_separate !== undefined ? is_separate : existingOrder.is_separate;
 
       const line_total = roundMoney(
         safeQuantity * Number(existingOrder.unit_price || 0),
       );
-      const updatedOrder = await OrderModel.updateOrderQuantity(
+      
+      const updatedOrder = await OrderModel.updateOrder(
         orderId,
         safeQuantity,
         line_total,
+        finalIsSeparate
       );
 
       res.json(updatedOrder);
@@ -460,6 +497,84 @@ const billingController = {
       res
         .status(500)
         .json({ error: "Failed to purge bills", details: error.message });
+    }
+  },
+
+  // Move order to another table
+  async moveOrder(req, res) {
+    try {
+      const { orderId } = req.params;
+      const { targetTableNo, targetPartyNo = "1" } = req.body;
+
+      if (!targetTableNo) {
+        return res.status(400).json({ error: "targetTableNo is required" });
+      }
+
+      // 1. Get the existing order to move
+      const order = await OrderModel.getOrderById(orderId);
+      if (!order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      // If already at target table, do nothing
+      if (parseInt(order.table_no, 10) === parseInt(targetTableNo, 10) && order.party_no === targetPartyNo) {
+        return res.json(order);
+      }
+
+      // Determine default track and clerk credentials from user auth session (or fallback to original order track/clerk)
+      let targetTrack = (req.auth && req.auth.track) ? req.auth.track : order.track;
+      let targetClerk = (req.auth && req.auth.staff_code) ? req.auth.staff_code : order.clerk_initials;
+      let targetCreatedAt;
+
+      // 2. Check if the target table already has active pending orders
+      const targetOrders = await OrderModel.getPendingOrdersByTableAndParty(targetTableNo, targetPartyNo);
+
+      if (targetOrders && targetOrders.length > 0) {
+        // Target table is already occupied; inherit its active credentials to merge properly under the same provisional bill
+        targetTrack = targetOrders[0].track;
+        targetClerk = targetOrders[0].clerk_initials;
+        targetCreatedAt = targetOrders[0].created_at;
+      } else {
+        // Target table is empty; locate or create a new provisional bill
+        let targetProvisionalBill = await BillingModel.getProvisionalBill(
+          targetTableNo,
+          targetPartyNo,
+          targetTrack,
+          targetClerk,
+          order.bill_date
+        );
+
+        if (!targetProvisionalBill) {
+          const now = new Date();
+          const provisionalBillData = {
+            bill_date: order.bill_date,
+            table_no: targetTableNo,
+            party_no: targetPartyNo,
+            section: getSectionForTable(targetTableNo),
+            track: targetTrack,
+            clerk_initials: targetClerk,
+            created_at: now,
+          };
+
+          targetProvisionalBill = await BillingModel.createProvisionalBill(provisionalBillData);
+        }
+        targetCreatedAt = targetProvisionalBill.created_at;
+      }
+
+      // 3. Move the order by updating all 5 composite foreign key columns: table_no, party_no, created_at, track, and clerk_initials
+      const updatedOrder = await OrderModel.moveOrder(
+        orderId,
+        targetTableNo,
+        targetPartyNo,
+        targetCreatedAt,
+        targetTrack,
+        targetClerk
+      );
+
+      res.json(updatedOrder);
+    } catch (error) {
+      console.error("Error moving order:", error);
+      res.status(500).json({ error: "Failed to move order", details: error.message });
     }
   },
 };

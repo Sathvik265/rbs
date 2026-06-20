@@ -39,6 +39,13 @@ function isCustomPriceAllowed(item, itemName, expectedUnitPrice) {
     return true;
   }
 
+  if (
+    String(item?.numeric_code || "").trim() === "189" ||
+    String(item?.alpha_code || "").trim().toLowerCase() === "189"
+  ) {
+    return true;
+  }
+
   return String(itemName || item?.name || "")
     .toUpperCase()
     .includes("MISC");
@@ -108,16 +115,16 @@ async function verifyBillIntegrity({ orders, clerkInitials, submittedTotals }) {
     return { ok: false, detail: "No pending orders found to finalize" };
   }
 
-  const subtotal = roundMoney(
+  const grand_total = roundMoney(
     orders.reduce((sum, order) => sum + Number(order.line_total || 0), 0),
   );
   const settings = await SettingsModel.getSettings(clerkInitials || "CLK");
   const sgstRate = Number(settings?.sgst_percentage || 0);
   const cgstRate = Number(settings?.cgst_percentage || 0);
-  const sgst = roundMoney((subtotal * sgstRate) / 100);
-  const cgst = roundMoney((subtotal * cgstRate) / 100);
+  const sgst = roundMoney(grand_total * (sgstRate / 100));
+  const cgst = roundMoney(grand_total * (cgstRate / 100));
   const tax_amount = roundMoney(sgst + cgst);
-  const grand_total = roundMoney(subtotal + tax_amount);
+  const subtotal = roundMoney(grand_total - tax_amount);
 
   const submitted = {
     subtotal: roundMoney(submittedTotals.subtotal),
@@ -135,18 +142,21 @@ async function verifyBillIntegrity({ orders, clerkInitials, submittedTotals }) {
     grand_total,
   };
 
+  const TOLERANCE = 0.02; // Allow up to 2 cents rounding drift between frontend & backend
+
   const matches =
-    submitted.subtotal === computed.subtotal &&
-    submitted.sgst === computed.sgst &&
-    submitted.cgst === computed.cgst &&
-    submitted.tax_amount === computed.tax_amount &&
-    submitted.grand_total === computed.grand_total;
+    Math.abs(submitted.subtotal - computed.subtotal) <= TOLERANCE &&
+    Math.abs(submitted.sgst     - computed.sgst)     <= TOLERANCE &&
+    Math.abs(submitted.cgst     - computed.cgst)     <= TOLERANCE &&
+    Math.abs(submitted.tax_amount - computed.tax_amount) <= TOLERANCE &&
+    Math.abs(submitted.grand_total - computed.grand_total) <= TOLERANCE;
 
   if (!matches) {
     return {
       ok: false,
       detail: "Submitted bill totals failed backend verification",
       computed,
+      submitted,
     };
   }
 

@@ -1,11 +1,12 @@
 const pool = require("../db");
+const BillingModel = require('./billingModel');
 
   const _getTrackColumn = (track) => {
-    const validTracks = ["`", "``", "RBS1", "RBS2"];
-    if (validTracks.includes(track)) {
-      return `"${track}"`;
-    }
-    return '"`"'; // Fallback
+    if (track === "`") return "track_morning";
+    if (track === "``") return "track_afternoon";
+    if (track === "RBS1") return "track_rbs1";
+    if (track === "RBS2") return "track_rbs2";
+    return "track_morning"; // Fallback
   };
   
   const _resetRunningBill = async (track) => {
@@ -114,17 +115,35 @@ const ShiftModel = {
     }
   },
 
-  // Close a session
+  // Close a session — also locks the track and snapshots the bill counter
   async closeSession(sessionUuid, closedBy) {
-    // Fallback to legacy `sessions` table (uses session_id)
+    // First, snapshot the current bill counter for this track
+    let lastBillNumber = 0;
+    try {
+      // Need to know the shift_name before updating
+      const preQuery = await pool.query(
+        `SELECT shift_name FROM sessions WHERE session_id = $1`,
+        [sessionUuid]
+      );
+      if (preQuery.rows.length > 0) {
+        const shiftName = preQuery.rows[0].shift_name;
+        const counterRow = await BillingModel.getLastBillNumber(null, shiftName);
+        lastBillNumber = parseInt(counterRow?.last_bill_number) || 0;
+      }
+    } catch (e) {
+      console.error('Could not snapshot bill counter on session close:', e);
+    }
+
     const result = await pool.query(
       `UPDATE sessions
          SET status = 'CLOSED',
              end_time = CURRENT_TIMESTAMP,
-             closed_by = $1
+             closed_by = $1,
+             is_locked = TRUE,
+             last_bill_number = $3
          WHERE session_id = $2
          RETURNING *`,
-      [closedBy, sessionUuid]
+      [closedBy, sessionUuid, lastBillNumber]
     );
 
     const updatedSession = result.rows[0];
@@ -133,7 +152,6 @@ const ShiftModel = {
     if (updatedSession.shift_name) {
       await _resetRunningBill(updatedSession.shift_name);
     }
-    // Also attempt to close the corresponding shift_sessions row (match by shift_name and session_date)
 
     return updatedSession;
   },
@@ -244,13 +262,14 @@ const ShiftModel = {
     await pool.query("DELETE FROM sessions WHERE id = $1", [sessionId]);
   },
 
-  // Reopen a closed session
+  // Reopen a closed session — also clears the lock so clerks can access again
   async reopenSession(sessionUuid) {
     const result = await pool.query(
       `UPDATE sessions
        SET status = 'OPEN',
            end_time = NULL,
-           closed_by = NULL
+           closed_by = NULL,
+           is_locked = FALSE
        WHERE session_id = $1
        RETURNING *`,
       [sessionUuid]
@@ -261,6 +280,54 @@ const ShiftModel = {
 
     return updatedSession;
   },
+  // ==================== LOCK / EOD FUNCTIONS ====================
+
+  /**
+   * Set or clear the is_locked flag on a track's session.
+   * @param {string} shiftName  e.g. 'RBS1'
+   * @param {boolean} isLocked  true = locked, false = unlocked
+   */
+  async setTrackLocked(shiftName, isLocked) {
+    const result = await pool.query(
+      `UPDATE sessions
+         SET is_locked = $1
+         WHERE shift_name = $2
+         RETURNING session_id, shift_name, status, is_locked, last_bill_number`,
+      [isLocked, shiftName]
+    );
+    return result.rows[0] || null;
+  },
+
+  /**
+   * Get the lock status + last bill number for a single track.
+   * @param {string} shiftName
+   */
+  async getTrackLockStatus(shiftName) {
+    const result = await pool.query(
+      `SELECT session_id, shift_name, status, is_locked, last_bill_number,
+              clerk_initials, start_time, end_time
+         FROM sessions
+         WHERE shift_name = $1
+         LIMIT 1`,
+      [shiftName]
+    );
+    return result.rows[0] || null;
+  },
+
+  /**
+   * Get lock status + bill number for ALL tracks.
+   * Used by the Admin Track Control dashboard.
+   */
+  async getAllTrackStatuses() {
+    const result = await pool.query(
+      `SELECT session_id, shift_name, status, is_locked, last_bill_number,
+              clerk_initials, start_time, end_time
+         FROM sessions
+         ORDER BY shift_name`
+    );
+    return result.rows;
+  },
+
   // ==================== HELPER FUNCTIONS ====================
 
   // Get current shift type based on time

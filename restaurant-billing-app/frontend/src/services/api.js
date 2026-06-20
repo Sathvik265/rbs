@@ -122,6 +122,11 @@ export const createOrder = async (orderData) => {
   return response.data;
 };
 
+export const updateOrder = async (orderId, orderData) => {
+  const response = await api.put(`/billing/orders/${orderId}`, orderData);
+  return response.data;
+};
+
 export const getAllPendingOrders = async () => {
   const response = await api.get("/billing/orders");
   return response.data;
@@ -259,6 +264,45 @@ export const getTopItems = async () => {
 // ==================== RECONCILIATION ====================
 export const getUnprintedBills = async () => {
   const response = await api.get("/reconciliation/unprinted");
+  return response.data;
+};
+
+// ==================== TRACK LOCKDOWN & EOD ====================
+
+/**
+ * Fetch lock status + last bill number for all 4 tracks.
+ * No admin required — used by LoginPanel to show locked state.
+ */
+export const getTrackStatuses = async () => {
+  const response = await api.get("/tracks/status");
+  return response.data;
+};
+
+/**
+ * Admin: Lock or unlock a specific track.
+ * @param {string} track  e.g. 'RBS1'
+ * @param {boolean} isLocked
+ */
+export const setTrackLock = async (track, isLocked) => {
+  const response = await api.patch(`/tracks/${encodeURIComponent(track)}/lock`, {
+    is_locked: isLocked,
+  });
+  return response.data;
+};
+
+/**
+ * Admin: Run the EOD audit — returns all unprinted bills grouped by track.
+ */
+export const getEODAudit = async () => {
+  const response = await api.get("/tracks/eod-audit");
+  return response.data;
+};
+
+/**
+ * Admin: Perform the EOD reset — zeros all bill counters and locks all tracks.
+ */
+export const triggerEODReset = async () => {
+  const response = await api.post("/tracks/eod-reset", { confirm: true });
   return response.data;
 };
 

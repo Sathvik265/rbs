@@ -1,23 +1,28 @@
 const pool = require("../db");
 
 const SettingsModel = {
-  // Get settings for a specific clerk
+  // Get settings for a specific clerk - returns master CLK row but with requested initials
   async getSettings(clerk_initials) {
     const code = clerk_initials ? clerk_initials.toUpperCase() : "CLK";
     const result = await pool.query(
-      "SELECT * FROM settings WHERE clerk_initials = $1",
-      [code],
+      "SELECT * FROM settings WHERE clerk_initials = 'CLK'"
     );
 
     if (result.rows.length === 0) {
-      // If not found, try to ensure it exists (auto-provision)
-      return await this.ensureSettings(code);
+      const provisioned = await this.ensureSettings("CLK");
+      return {
+        ...provisioned,
+        clerk_initials: code
+      };
     }
 
-    return result.rows[0];
+    return {
+      ...result.rows[0],
+      clerk_initials: code
+    };
   },
 
-  // Update settings for a specific clerk
+  // Update settings globally (updates the master CLK row and syncs to active clerk)
   async updateSettings(clerk_initials, data) {
     const code = clerk_initials ? clerk_initials.toUpperCase() : "CLK";
     const {
@@ -29,33 +34,58 @@ const SettingsModel = {
       cgst_percentage,
     } = data;
 
-    // Check if exists
+    // Check if master CLK exists
     const check = await pool.query(
-      "SELECT id FROM settings WHERE clerk_initials = $1",
-      [code],
+      "SELECT id FROM settings WHERE clerk_initials = 'CLK'"
     );
 
     if (check.rows.length === 0) {
-      // Create if checks fail (though ensureSettings should prevent this)
-      await this.ensureSettings(code);
+      await this.ensureSettings("CLK");
     }
 
     const result = await pool.query(
       `UPDATE settings 
-         SET hotel_name = $1, address = $2, phone = $3, gstin = $4, sgst_percentage = $6, cgst_percentage = $7
-         WHERE clerk_initials = $5 
-         RETURNING *`,
+       SET hotel_name = $1, address = $2, phone = $3, gstin = $4, sgst_percentage = $5, cgst_percentage = $6
+       WHERE clerk_initials = 'CLK' 
+       RETURNING *`,
       [
         hotel_name,
         address,
         phone,
         gstin,
-        code,
         sgst_percentage ?? 2.5,
         cgst_percentage ?? 2.5,
       ],
     );
-    return result.rows[0];
+
+    // Sync to this specific clerk's settings row as well
+    if (code !== "CLK") {
+      await pool.query(
+        `INSERT INTO settings (hotel_name, address, phone, gstin, sgst_percentage, cgst_percentage, clerk_initials, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (clerk_initials) DO UPDATE SET 
+           hotel_name = EXCLUDED.hotel_name,
+           address = EXCLUDED.address,
+           phone = EXCLUDED.phone,
+           gstin = EXCLUDED.gstin,
+           sgst_percentage = EXCLUDED.sgst_percentage,
+           cgst_percentage = EXCLUDED.cgst_percentage`,
+        [
+          hotel_name,
+          address,
+          phone,
+          gstin,
+          sgst_percentage ?? 2.5,
+          cgst_percentage ?? 2.5,
+          code
+        ]
+      );
+    }
+
+    return {
+      ...result.rows[0],
+      clerk_initials: code
+    };
   },
 
   // Ensure settings exist for a clerk (auto-provisioning)
