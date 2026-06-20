@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { UserProvider } from "./context/UserContext";
 import "./styles/App.css";
+import { registerServiceWorker } from './serviceWorkerRegistration';
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
@@ -12,3 +13,6 @@ root.render(
     </UserProvider>
   </React.StrictMode>,
 );
+
+// Register service worker in production builds
+registerServiceWorker();
