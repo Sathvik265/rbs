@@ -1,71 +1,82 @@
 const express = require("express");
 const router = express.Router();
-const fs = require("fs");
+const fs = require("fs").promises;
+const fsSyncCheck = require("fs");
 const path = require("path");
-const { exec } = require("child_process");
+const { execFile } = require("child_process");
+const { randomUUID } = require("crypto");
+const os = require("os");
 
-router.post("/print", (req, res) => {
+// Cache configuration at startup to avoid repeated lookups
+const PRINTER_NAME = process.env.PRINTER_NAME || "Generic  Text Only";
+const MAX_PRINT_SIZE = 10 * 1024 * 1024; // 10MB limit
+const EXEC_TIMEOUT = 25000; // 25 second timeout
+const TEMP_DIR = os.tmpdir();
+const IS_WINDOWS = process.platform === "win32";
+
+router.post("/print", async (req, res) => {
   const { text } = req.body;
 
+  // Input validation
   if (!text) {
     return res.status(400).json({ error: "No print text provided" });
   }
 
-  // Define a temporary file path to store the ASCII receipt
-  const tempFilePath = path.join(__dirname, "..", "..", "temp_receipt.txt");
+  if (typeof text !== "string" || text.length > MAX_PRINT_SIZE) {
+    return res.status(413).json({ error: "Print content exceeds maximum size limit" });
+  }
+
+  // Use unique temp file per request to prevent race conditions
+  const tempFilePath = path.join(TEMP_DIR, `receipt_${randomUUID()}.txt`);
 
   try {
-    // Write the receipt string to the temporary file
-    fs.writeFileSync(tempFilePath, text, "utf8");
-
-    // macOS / Linux / non-Windows development bypass
-    if (process.platform !== "win32") {
+    // Handle non-Windows development environment
+    if (!IS_WINDOWS) {
       console.log("\n=================== MOCK PRINT JOB (macOS/Linux) ===================");
       console.log(text);
       console.log("===================================================================\n");
-
-      // Clean up the temporary file
-      try {
-        if (fs.existsSync(tempFilePath)) {
-          fs.unlinkSync(tempFilePath);
-        }
-      } catch (e) {}
-
       return res.json({ message: "Mock print successful (Non-Windows environment logs print text)" });
     }
 
-    // Windows RAW byte bypass method (avoids graphical spooler padding + unicode bugs)
-    // Relies on the printer being shared on the network/localhost.
-    const printerShareName = process.env.PRINTER_NAME || "Generic  Text Only";
-    
-    // /b flag forces a raw binary copy straight to the port, preventing *any* Windows driver modifications
-    const cmdCommand = `copy /b "${tempFilePath}" "\\\\localhost\\${printerShareName}"`;
+    // Write the receipt asynchronously (non-blocking)
+    await fs.writeFile(tempFilePath, text, "utf8");
 
-    // Execute the raw copy
-    exec(cmdCommand, (error, stdout, stderr) => {
-      // Clean up the temporary file
-      try {
-        if (fs.existsSync(tempFilePath)) {
-          fs.unlinkSync(tempFilePath);
+    // Execute the raw copy with timeout protection
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Print job execution timeout"));
+      }, 30000);
+
+      // Use execFile (more secure and performant than exec)
+      execFile(
+        "cmd.exe",
+        ["/c", `copy /b "${tempFilePath}" "\\\\localhost\\${PRINTER_NAME}"`],
+        { timeout: EXEC_TIMEOUT },
+        (error) => {
+          clearTimeout(timeout);
+          if (error) reject(error);
+          else resolve();
         }
-      } catch (cleanupErr) {
-        console.error("Failed to delete temp receipt file", cleanupErr);
-      }
-
-      if (error) {
-        console.warn("Direct print failed (No physical printer connected or shared):", error.message);
-        // Soft fallback: return 200 with warning so frontend flow does not halt
-        return res.json({ 
-          message: "Processed bill, but printer connection failed.", 
-          warning: "Printer not found. Is it turned on and shared on network?" 
-        });
-      }
-
-      res.json({ message: "Print job sent successfully" });
+      );
     });
+
+    res.json({ message: "Print job sent successfully" });
   } catch (err) {
-    console.error("File generation failed:", err);
-    return res.status(500).json({ error: "Failed to create temporary print file" });
+    console.warn("Print operation failed:", err.message);
+    // Soft fallback: return 200 with warning so frontend flow does not halt
+    res.json({ 
+      message: "Processed bill, but printer connection failed.", 
+      warning: "Printer not found. Is it turned on and shared on network?" 
+    });
+  } finally {
+    // Guarantee cleanup in all scenarios
+    try {
+      if (fsSyncCheck.existsSync(tempFilePath)) {
+        await fs.unlink(tempFilePath);
+      }
+    } catch (cleanupErr) {
+      console.error("Failed to cleanup temp file:", cleanupErr);
+    }
   }
 });
 
