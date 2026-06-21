@@ -10,13 +10,7 @@ By default the script places the assembled package in the folder where you run i
 
 param(
   [string]$OutputZip = "rbs-deploy.zip",
-  [string]$RepoRoot = (Get-Location).Path,
-  [switch]$MsDeploy,                        # create msdeploy package
-  [string]$IISAppName,                      # e.g. 'Default Web Site/MyApp' for local deployment
-  [string]$RemoteComputerName,              # e.g. 'https://server:8172/msdeploy.axd' for remote
-  [string]$RemoteUserName,
-  [string]$RemotePassword,
-  [string]$RemoteAuthType = 'Basic'
+  [string]$RepoRoot = (Get-Location).Path
 )
 
 Set-StrictMode -Version Latest
@@ -91,29 +85,7 @@ Write-Host "Creating ZIP package: $OutputZip"
 if (Test-Path $OutputZip) { Remove-Item -Force $OutputZip }
 Compress-Archive -Path (Join-Path $tempDeploy '*') -DestinationPath $OutputZip -Force
 
-# Optionally create an msdeploy package if msdeploy is present
-$msdeploy = Get-Command msdeploy -ErrorAction SilentlyContinue
-if ($msdeploy -and $MsDeploy) {
-  $msdeployPackage = [System.IO.Path]::ChangeExtension($OutputZip, '.msdeploy.zip')
-  Write-Host "msdeploy found - creating msdeploy package: $msdeployPackage"
-  & msdeploy -verb:sync -source:dirPath="$tempDeploy" -dest:package="$msdeployPackage" -allowUnrecognizedProvider -verbose
-
-  # If user requested deployment to local IIS app
-  if ($IISAppName) {
-    Write-Host "Deploying msdeploy package to local IIS app: $IISAppName"
-    & msdeploy -verb:sync -source:package="$msdeployPackage" -dest:iisApp="$IISAppName" -allowUnrecognizedProvider -verbose
-  }
-
-  # If user provided remote computerName and credentials, deploy to remote web management service
-  if ($RemoteComputerName) {
-    Write-Host "Deploying msdeploy package to remote: $RemoteComputerName"
-    $dest = "auto,computerName='$RemoteComputerName',userName='$RemoteUserName',password='$RemotePassword',authType='$RemoteAuthType'"
-    & msdeploy -verb:sync -source:package="$msdeployPackage" -dest:$dest -allowUnrecognizedProvider -verbose
-  }
-}
-
 Write-Host "Cleaning temporary files..."
 Remove-Item -Recurse -Force $tempDeploy
 
 Write-Host "Package created: $(Resolve-Path $OutputZip)"
-if ($msdeploy) { Write-Host "msdeploy package also created: $(Resolve-Path $msdeployPackage)" }

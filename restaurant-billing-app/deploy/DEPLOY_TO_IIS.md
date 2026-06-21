@@ -77,10 +77,10 @@ Option A — NSSM (simple and reliable):
 2. Install the service:
 
 ```powershell
-# Example values — adjust paths and env values
+# Example values — adjust paths as needed
 nssm install RBSBackend "C:\Program Files\nodejs\node.exe" "C:\inetpub\wwwroot\rbs\backend\src\app.js"
 nssm set RBSBackend AppDirectory "C:\inetpub\wwwroot\rbs\backend"
-nssm set RBSBackend AppEnvironmentExtra "DB_USER=postgres;DB_PASSWORD=your_pw;DB_HOST=127.0.0.1;DB_NAME=restaurant_billing;PORT=8000"
+nssm set RBSBackend Start SERVICE_AUTO_START
 nssm start RBSBackend
 ```
 
@@ -90,14 +90,13 @@ Tip: a helper script `install-nssm.ps1` is included in the repository under `res
 .\restaurant-billing-app\deploy\install-nssm.ps1 \
   -AppPath 'C:\inetpub\wwwroot\rbs\backend\src\app.js' \
   -AppDirectory 'C:\inetpub\wwwroot\rbs\backend' \
-  -EnvString 'PORT=8000;DB_HOST=127.0.0.1;DB_USER=postgres;DB_PASSWORD=your_pw;DB_NAME=restaurant_billing' \
   -StartService
 ```
 
 Notes about NSSM and the helper:
 - The script does not bundle `nssm.exe`; download NSSM from https://nssm.cc/ and place `nssm.exe` on the server PATH or pass `-NssmPath 'C:\tools\nssm\nssm.exe'` to the helper.
 - Run the helper PowerShell elevated (Administrator) when installing services.
-- The helper sets `AppEnvironmentExtra` for the service; you can also keep a server-local `backend/.env` and reference values there (do NOT commit secrets to git).
+- The app reads its configuration from a `.env` file in the AppDirectory. Ensure the `.env` file is present on the server with the correct database credentials before starting the service.
 
 Option B — pm2-windows-service or other process manager: install and configure per tool docs.
 
@@ -130,20 +129,21 @@ Notes:
 - The `service-worker.js` file should be at the site root (`/service-worker.js`) so its scope covers the app. The CRA-based setup usually puts it in `build/`.
 - Test install flow using Chrome/Edge: open DevTools > Application > Manifest and Service Worker panels to confirm registration and scope.
 
-## 7. Packaging for deploy (zip) and optional msdeploy
+## 7. Packaging for deploy (zip)
 
-Manual package (simple):
+Create a deployment package using the provided script:
+
+```powershell
+cd restaurant-billing-app\deploy
+.\publish-to-zip.ps1 -OutputZip ..\rbs-deploy.zip
+```
+
+Or manually package:
 
 ```powershell
 cd deploy
 Compress-Archive -Path * -DestinationPath ..\rbs-deploy.zip -Force
 # Copy rbs-deploy.zip to server and extract to IIS site folder
-```
-
-msdeploy (if available): use your CI to create a package and push to the server via Web Deploy. Example:
-
-```powershell
-msdeploy -verb:sync -source:dirPath="C:\ci\rbs\deploy" -dest:computerName="https://server:8172/msdeploy.axd",userName="$user",password="$pw",authType="Basic",includeAcls="False"
 ```
 
 ## 8. Post-deploy checklist
