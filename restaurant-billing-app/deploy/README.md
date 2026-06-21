@@ -17,12 +17,14 @@ Included helper scripts:
 Quick `install-nssm.ps1` example (run elevated on the server):
 
 ```powershell
-.\tools\install-nssm.ps1 \
-	-AppPath 'C:\inetpub\wwwroot\rbs\backend\src\app.js' \
-	-AppDirectory 'C:\inetpub\wwwroot\rbs\backend' \
-	-StartService
+.\tools\install-nssm.ps1 -AppPath 'C:\inetpub\wwwroot\anandbhavan\backend\src\app.js' \
+  -AppDirectory 'C:\inetpub\wwwroot\anandbhavan\backend' \
+  -NssmPath '<pathToNssm.exe>' \
+  -StartService
 ```
 
 The app will read its database configuration from the `.env` file in the AppDirectory. Ensure the `.env` file is present on the server with the correct database credentials before starting the service.
 
 Note: `nssm.exe` is not bundled; download it from https://nssm.cc/ and place it on the server PATH or provide `-NssmPath` to the helper.
+
+Important: the frontend deployment uses IIS rewrite rules, so the IIS URL Rewrite module is required. Download and install it from https://www.iis.net/downloads/microsoft/url-rewrite before deploying the site.
