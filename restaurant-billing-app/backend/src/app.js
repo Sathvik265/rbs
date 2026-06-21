@@ -482,7 +482,7 @@ app.get("/api/menu/lookup/:code", requireAuth, async (req, res) => {
     
     const result = await pool.query(
       `SELECT * FROM items 
-             WHERE (id = $2 OR UPPER(alpha_code) = $1 OR CAST(numeric_code AS TEXT) = $1 OR numeric_code = $2 OR UPPER(name) = $1) LIMIT 1`,
+             WHERE (id = $2 OR UPPER(alpha_code) = $1 OR UPPER(numeric_code) = $1 OR UPPER(name) = $1) LIMIT 1`,
       [upperCode, numericVal],
     );
 

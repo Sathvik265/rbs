@@ -18,15 +18,30 @@ router.post("/print", (req, res) => {
     // Write the receipt string to the temporary file
     fs.writeFileSync(tempFilePath, text, "utf8");
 
+    // macOS / Linux / non-Windows development bypass
+    if (process.platform !== "win32") {
+      console.log("\n=================== MOCK PRINT JOB (macOS/Linux) ===================");
+      console.log(text);
+      console.log("===================================================================\n");
+
+      // Clean up the temporary file
+      try {
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+        }
+      } catch (e) {}
+
+      return res.json({ message: "Mock print successful (Non-Windows environment logs print text)" });
+    }
+
     // Windows RAW byte bypass method (avoids graphical spooler padding + unicode bugs)
     // Relies on the printer being shared on the network/localhost.
-    // The default name "Generic  Text Only" matches your current Windows share name perfectly.
     const printerShareName = process.env.PRINTER_NAME || "Generic  Text Only";
     
     // /b flag forces a raw binary copy straight to the port, preventing *any* Windows driver modifications
     const cmdCommand = `copy /b "${tempFilePath}" "\\\\localhost\\${printerShareName}"`;
 
-    // Execute the raw copy (Node's exec natively uses cmd.exe on Windows)
+    // Execute the raw copy
     exec(cmdCommand, (error, stdout, stderr) => {
       // Clean up the temporary file
       try {
@@ -38,8 +53,12 @@ router.post("/print", (req, res) => {
       }
 
       if (error) {
-        console.error("Direct print failed:", error);
-        return res.status(500).json({ error: "Failed to send print job to Windows Spooler" });
+        console.warn("Direct print failed (No physical printer connected or shared):", error.message);
+        // Soft fallback: return 200 with warning so frontend flow does not halt
+        return res.json({ 
+          message: "Processed bill, but printer connection failed.", 
+          warning: "Printer not found. Is it turned on and shared on network?" 
+        });
       }
 
       res.json({ message: "Print job sent successfully" });

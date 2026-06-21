@@ -155,8 +155,8 @@ try {
     createdb -U $dbUser -h $dbHost -p $dbPort $dbName 2>$null
 }
 
-# Run Final.sql script (Create schema and Populate DB)
-$sqlFile = Join-Path $scriptPath "Final.sql"
+# Run Final_Dump_Fixed.sql script (Create schema and Populate DB)
+$sqlFile = Join-Path $scriptPath "Final_Dump_Fixed.sql"
 if (Test-Path $sqlFile) {
     Write-Host "   - Executing schema & population script ($sqlFile)..." -ForegroundColor Cyan
     psql -U $dbUser -h $dbHost -p $dbPort -d $dbName -f $sqlFile
@@ -166,7 +166,7 @@ if (Test-Path $sqlFile) {
         Write-Error "Failed to apply schema script. Please check connection/password."
     }
 } else {
-    Write-Error "Final.sql not found in $scriptPath"
+    Write-Error "Final_Dump_Fixed.sql not found in $scriptPath"
 }
 
 # ==============================================================================

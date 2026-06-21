@@ -82,6 +82,7 @@ export default function Billing({
   }, [drafts]);
 
   const [showF4Popup, setShowF4Popup] = useState(false);
+  const [helpTab, setHelpTab] = useState("shortcuts");
   const [searchQuery, setSearchQuery] = useState("");
   const [menuItems, setMenuItems] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
@@ -325,7 +326,10 @@ export default function Billing({
 
   // --- NAVIGATION HANDLERS ---
   const handleTableNoKeyDown = (event) => {
-    if (event.key === "PageDown") {
+    const isCmdOrCtrl = event.metaKey || event.ctrlKey;
+    const isAlt = event.altKey;
+    // Mac alternative: Cmd+D or Alt+D instead of PageDown
+    if (event.key === "PageDown" || (isCmdOrCtrl && event.key.toLowerCase() === "d") || (isAlt && event.key.toLowerCase() === "d")) {
       event.preventDefault();
       if (itemCodeRef.current) itemCodeRef.current.focus();
     } else if (event.key === "Enter" || event.key === "Tab") {
@@ -359,7 +363,10 @@ export default function Billing({
   };
 
   const handleItemCodeKeyDown = (e) => {
-    if (e.key === "F1") {
+    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+    const isAlt = e.altKey;
+    // Mac alternative: Cmd+1 or Alt+1 instead of F1
+    if (e.key === "F1" || (isCmdOrCtrl && e.key === "1") || (isAlt && e.key === "1")) {
       e.preventDefault();
       setShowF4Popup(true);
       setHelpTab("shortcuts");
@@ -387,6 +394,7 @@ export default function Billing({
           String(safeGet(i, "name", "")).trim().toLowerCase() === entryCodeStr.toLowerCase(),
       );
       if (item) {
+        // Focus quantity instead of adding directly
         if (qtyRef.current) {
           qtyRef.current.focus();
           qtyRef.current.select();
@@ -405,10 +413,12 @@ export default function Billing({
   };
 
   const handleQtyKeyDown = (e) => {
+    const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+    const isAlt = e.altKey;
     if (e.key === "Enter") {
       e.preventDefault();
       addItem();
-    } else if (e.key === "PageDown") {
+    } else if (e.key === "PageDown" || (isCmdOrCtrl && e.key.toLowerCase() === "d") || (isAlt && e.key.toLowerCase() === "d")) {
       e.preventDefault();
       if (itemQtyRefs.current[0]) {
         itemQtyRefs.current[0].focus();
@@ -1026,6 +1036,12 @@ export default function Billing({
       } catch (e) {
         console.error("Add item error:", e);
         toast.error(safeGet(e, "response.data.detail", "Item not found"));
+        setShowF4Popup(true);
+        setHelpTab("shortcuts");
+        if (itemCodeRef.current) {
+          itemCodeRef.current.focus();
+          itemCodeRef.current.select();
+        }
         return null;
       }
     },
@@ -1042,6 +1058,8 @@ export default function Billing({
       setEntryCode,
       setQty,
       itemCodeRef,
+      setShowF4Popup,
+      setHelpTab,
     ],
   );
 
@@ -1210,7 +1228,6 @@ export default function Billing({
   ]);
 
   // --- Active Bills Logic ---
-  const [helpTab, setHelpTab] = useState("shortcuts");
   const [activeTables, setActiveTables] = useState([]);
   const [now, setNow] = useState(new Date());
   const [lastBillNumber, setLastBillNumber] = useState(0);
@@ -1355,21 +1372,27 @@ export default function Billing({
 
   useEffect(() => {
     const handleGlobalKeyDown = (event) => {
-      if (event.key === "F1") {
+      const isCmdOrCtrl = event.metaKey || event.ctrlKey;
+      const isAlt = event.altKey;
+
+      // F1 or Cmd+1 / Alt+1
+      if (event.key === "F1" || (isCmdOrCtrl && event.key === "1") || (isAlt && event.key === "1")) {
         event.preventDefault();
         setShowF4Popup((prev) => {
           if (prev && helpTab === "shortcuts") return false;
           setHelpTab("shortcuts");
           return true;
         });
-      } else if (event.key === "F2") {
+      // F2 or Cmd+2 / Alt+2
+      } else if (event.key === "F2" || (isCmdOrCtrl && event.key === "2") || (isAlt && event.key === "2")) {
         event.preventDefault();
         setShowF4Popup((prev) => {
           if (prev && helpTab === "active") return false;
           setHelpTab("active");
           return true;
         });
-      } else if (event.key === "F4") {
+      // F4 or Cmd+4 / Alt+4
+      } else if (event.key === "F4" || (isCmdOrCtrl && event.key === "4") || (isAlt && event.key === "4")) {
         event.preventDefault();
         setShowF4Popup((prev) => !prev);
       } else if (event.key === "Escape") {
@@ -1385,22 +1408,30 @@ export default function Billing({
             tableNoRef.current.select();
           }
         }, 0);
-      } else if (event.key === "End" || event.key === "Home") {
+      // End/Home or Cmd+Enter / Cmd+P / Ctrl+P
+      } else if (
+        event.key === "End" || 
+        event.key === "Home" || 
+        (isCmdOrCtrl && event.key === "Enter") || 
+        (isCmdOrCtrl && event.key.toLowerCase() === "p")
+      ) {
         event.preventDefault();
         handlePrintBill();
-      } else if (event.key === "PageDown") {
+      // PageDown or Cmd+D / Alt+D
+      } else if (event.key === "PageDown" || (isCmdOrCtrl && event.key.toLowerCase() === "d") || (isAlt && event.key.toLowerCase() === "d")) {
         event.preventDefault();
         if (itemCodeRef.current) {
           itemCodeRef.current.focus();
         }
       } else if (
-        (event.ctrlKey || event.metaKey) &&
+        isCmdOrCtrl &&
         (event.key === "f" || event.code === "KeyF")
       ) {
         event.preventDefault();
         setShowF4Popup(true);
         setHelpTab("shortcuts");
-      } else if (event.key === "F3") {
+      // F3 or Cmd+3 / Alt+3
+      } else if (event.key === "F3" || (isCmdOrCtrl && event.key === "3") || (isAlt && event.key === "3")) {
         event.preventDefault();
         setIsSplitBillMode((prev) => {
           const newState = !prev;
@@ -1608,7 +1639,12 @@ export default function Billing({
                   const val = e.target.value;
                   setEntryCode(val);
                   if (/^\d{3}$/.test(val)) {
-                    if (qtyRef.current) {
+                    const exists = menuItems.some(
+                      (i) =>
+                        String(safeGet(i, "numeric_code", "")).trim() === val.trim() ||
+                        String(safeGet(i, "alpha_code", "")).trim().toLowerCase() === val.trim().toLowerCase()
+                    );
+                    if (exists && qtyRef.current) {
                       qtyRef.current.focus();
                       qtyRef.current.select();
                     }
@@ -1788,7 +1824,7 @@ export default function Billing({
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyDown={handleSearchKeyDown}
                     />
-                    {searchQuery && filteredItems.length > 0 && (
+                    {filteredItems.length > 0 && (
                       <div className="f4-search-results">
                         <Table>
                           <TableHeader>
